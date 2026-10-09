@@ -1,0 +1,14 @@
+{
+  "name": "@parkeazy/shared-ui",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Reusable UI primitives grounded in ParkEazy Design System shared across Customer Website, Host Portal, and Admin Panel",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@parkeazy/shared-types": "*",
+    "@parkeazy/branding": "*",
+    "lucide-react": "^0.546.0",
+    "react": "^19.0.0"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "@parkeazy/branding",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Centralized branding provider, theme manager, and token resolution for ParkEazy portals",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@parkeazy/shared-types": "*",
+    "@parkeazy/validation": "*",
+    "react": "^19.0.0"
+  }
+}

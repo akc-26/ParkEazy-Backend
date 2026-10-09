@@ -1,0 +1,86 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ParkEazyTenantBrandingConfig",
+  "description": "Authoritative schema for ParkEazy white-label tenant branding configuration",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "tenantId",
+    "displayName",
+    "tagline",
+    "colors",
+    "typography",
+    "assets"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "enum": ["1.0.0"]
+    },
+    "tenantId": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+$"
+    },
+    "displayName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "legalName": {
+      "type": "string"
+    },
+    "tagline": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "colors": {
+      "type": "object",
+      "required": ["primary", "secondary", "accent", "background", "surface", "border"],
+      "properties": {
+        "primary": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "primaryHover": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "primaryContainer": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "secondary": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "secondaryContainer": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "accent": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "background": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "surface": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "surfaceLow": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "onSurface": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "onSurfaceVariant": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "border": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "statusSuccess": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "statusWarning": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "statusDanger": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" }
+      }
+    },
+    "typography": {
+      "type": "object",
+      "required": ["headingFont", "bodyFont"],
+      "properties": {
+        "headingFont": { "type": "string" },
+        "bodyFont": { "type": "string" },
+        "tabularNumbers": { "type": "boolean" }
+      }
+    },
+    "assets": {
+      "type": "object",
+      "required": ["logoUrl", "iconUrl", "faviconUrl"],
+      "properties": {
+        "logoUrl": { "type": "string" },
+        "logoDarkUrl": { "type": "string" },
+        "iconUrl": { "type": "string" },
+        "faviconUrl": { "type": "string" }
+      }
+    },
+    "support": {
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "format": "email" },
+        "phone": { "type": "string" },
+        "helpUrl": { "type": "string" }
+      }
+    }
+  }
+}

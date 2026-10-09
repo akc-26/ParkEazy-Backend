@@ -1,0 +1,27 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "types": ["vite/client"],
+    "allowJs": true,
+    "noEmit": true,
+    "paths": {
+      "@/*": ["./*"],
+      "@parkeazy/config": ["./packages/config/src/index.ts"],
+      "@parkeazy/shared-types": ["./packages/shared-types/src/index.ts"],
+      "@parkeazy/branding": ["./packages/branding/src/index.ts"],
+      "@parkeazy/validation": ["./packages/validation/src/index.ts"],
+      "@parkeazy/api-client": ["./packages/api-client/src/index.ts"],
+      "@parkeazy/shared-ui": ["./packages/shared-ui/src/index.ts"]
+    }
+  },
+  "include": [
+    "src",
+    "apps",
+    "services",
+    "packages",
+    "tests"
+  ]
+}

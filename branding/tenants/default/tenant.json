@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "1.0.0",
+  "tenantId": "default",
+  "displayName": "ParkEazy",
+  "legalName": "ParkEazy Mobility Technologies Pvt. Ltd.",
+  "tagline": "Park smart. Arrive easy.",
+  "description": "Premium white-label marketplace connecting urban drivers with guaranteed, secure parking spaces.",
+  "colors": {
+    "primary": "#0F766E",
+    "primaryHover": "#115E59",
+    "primaryContainer": "#0F766E",
+    "secondary": "#006B5F",
+    "secondaryContainer": "#14B8A6",
+    "accent": "#D6A84F",
+    "background": "#F8FAFC",
+    "surface": "#FFFFFF",
+    "surfaceLow": "#F1F3FF",
+    "onSurface": "#101828",
+    "onSurfaceVariant": "#344054",
+    "border": "#E4E7EC",
+    "statusSuccess": "#12B76A",
+    "statusWarning": "#F79009",
+    "statusDanger": "#F04438"
+  },
+  "typography": {
+    "headingFont": "Plus Jakarta Sans, sans-serif",
+    "bodyFont": "Inter, sans-serif",
+    "tabularNumbers": true
+  },
+  "assets": {
+    "logoUrl": "/assets/branding/logo.svg",
+    "logoDarkUrl": "/assets/branding/logo-dark.svg",
+    "iconUrl": "/assets/branding/icon.svg",
+    "faviconUrl": "/assets/branding/favicon.svg"
+  },
+  "support": {
+    "email": "support@parkeazy.com",
+    "phone": "+91 44 4800 2200",
+    "helpUrl": "/help"
+  }
+}
