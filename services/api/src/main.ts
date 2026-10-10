@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { API_CONFIG } from '@parkeazy/config';
+import { ApiExceptionFilter } from './common/filters/api-exception.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -18,6 +19,9 @@ async function bootstrap() {
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
   });
+
+  // Apply standard global exception filter for consistent, safe error JSON
+  app.useGlobalFilters(new ApiExceptionFilter());
 
   // Global versioned prefix for future business endpoints
   // e.g. /api/v1/spaces, /api/v1/bookings

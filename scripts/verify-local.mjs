@@ -26,7 +26,7 @@ let overallPass = true;
 
 function logHeader() {
   console.log('\n==============================================================================');
-  console.log('  ParkEazy — Consolidated Local Verification (Part 02)');
+  console.log('  ParkEazy — Consolidated Local Verification (Part 03)');
   console.log('  Platform: ' + process.platform + ' | Node: ' + process.version);
   console.log('==============================================================================\n');
 }
@@ -375,6 +375,83 @@ async function check12ProductionRoutingConfig() {
 }
 
 // -----------------------------------------------------------------------------
+// Check 13: Database Foundations & Migration Integrity (Part 03)
+// -----------------------------------------------------------------------------
+async function check13DatabaseFoundations() {
+  const startTime = Date.now();
+  try {
+    const migrationFile = path.join(rootDir, 'services/api/src/database/migrations/001_initial_schema.sql');
+    const migrateScript = path.join(rootDir, 'scripts/migrate.mjs');
+    const seedScript = path.join(rootDir, 'scripts/seed.mjs');
+    const dbDistModule = path.join(rootDir, 'services/api/dist/database/database.module.js');
+
+    if (!fs.existsSync(migrationFile)) {
+      recordResult(13, 'Database Foundations & Migration Integrity', false, 'Missing 001_initial_schema.sql', Date.now() - startTime);
+      return;
+    }
+    if (!fs.existsSync(migrateScript)) {
+      recordResult(13, 'Database Foundations & Migration Integrity', false, 'Missing scripts/migrate.mjs', Date.now() - startTime);
+      return;
+    }
+    if (!fs.existsSync(seedScript)) {
+      recordResult(13, 'Database Foundations & Migration Integrity', false, 'Missing scripts/seed.mjs', Date.now() - startTime);
+      return;
+    }
+    if (!fs.existsSync(dbDistModule)) {
+      recordResult(13, 'Database Foundations & Migration Integrity', false, 'Missing compiled database module in services/api/dist', Date.now() - startTime);
+      return;
+    }
+
+    const sqlContent = fs.readFileSync(migrationFile, 'utf8');
+    const requiredTables = ['tenants', 'users', 'role_assignments', 'parking_facilities', 'parking_spaces', 'operating_schedules', 'reservation_holds', 'bookings'];
+    for (const tbl of requiredTables) {
+      if (!sqlContent.includes(`CREATE TABLE IF NOT EXISTS ${tbl}`)) {
+        recordResult(13, 'Database Foundations & Migration Integrity', false, `Missing required table definition: ${tbl}`, Date.now() - startTime);
+        return;
+      }
+    }
+
+    recordResult(13, 'Database Foundations & Migration Integrity', true, '8 core relational tables, migrations runner, and seed scripts verified', Date.now() - startTime);
+  } catch (err) {
+    recordResult(13, 'Database Foundations & Migration Integrity', false, err.message, Date.now() - startTime);
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Check 14: Shared Domain Contracts & Validation Exports (Part 03)
+// -----------------------------------------------------------------------------
+async function check14DomainContractsValidation() {
+  const startTime = Date.now();
+  try {
+    const typesIndex = path.join(rootDir, 'packages/shared-types/src/index.ts');
+    const validationIndex = path.join(rootDir, 'packages/validation/src/index.ts');
+
+    const typesContent = fs.readFileSync(typesIndex, 'utf8');
+    const validationContent = fs.readFileSync(validationIndex, 'utf8');
+
+    const expectedTypeExports = ['common', 'user', 'payment', 'booking', 'parking'];
+    for (const exp of expectedTypeExports) {
+      if (!typesContent.includes(`export * from './${exp}';`)) {
+        recordResult(14, 'Shared Domain Contracts & Validation', false, `shared-types index missing export: ${exp}`, Date.now() - startTime);
+        return;
+      }
+    }
+
+    const expectedValExports = ['tenant-validator', 'common-validators', 'pagination-validator', 'domain-validators'];
+    for (const exp of expectedValExports) {
+      if (!validationContent.includes(`export * from './${exp}';`)) {
+        recordResult(14, 'Shared Domain Contracts & Validation', false, `validation index missing export: ${exp}`, Date.now() - startTime);
+        return;
+      }
+    }
+
+    recordResult(14, 'Shared Domain Contracts & Validation', true, 'All shared contracts and validation schemas verified with complete exports', Date.now() - startTime);
+  } catch (err) {
+    recordResult(14, 'Shared Domain Contracts & Validation', false, err.message, Date.now() - startTime);
+  }
+}
+
+// -----------------------------------------------------------------------------
 // Main Runner
 // -----------------------------------------------------------------------------
 async function runAllChecks() {
@@ -392,6 +469,8 @@ async function runAllChecks() {
   await check10BasePaths();
   await check11ApiRouteSeparation();
   await check12ProductionRoutingConfig();
+  await check13DatabaseFoundations();
+  await check14DomainContractsValidation();
 
   console.log('\n------------------------------------------------------------------------------');
   const passCount = results.filter(r => r.passed).length;
@@ -403,7 +482,7 @@ async function runAllChecks() {
     console.error('❌ Consolidated verification FAILED. See details above.\n');
     process.exit(1);
   } else {
-    console.log('✅ Consolidated verification SUCCEEDED. All 12 checks PASSED.\n');
+    console.log(`✅ Consolidated verification SUCCEEDED. All ${results.length} checks PASSED.\n`);
     process.exit(0);
   }
 }

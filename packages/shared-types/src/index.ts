@@ -3,3 +3,6 @@ export * from './health';
 export * from './portal';
 export * from './parking';
 export * from './booking';
+export * from './common';
+export * from './user';
+export * from './payment';

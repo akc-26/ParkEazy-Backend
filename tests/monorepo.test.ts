@@ -64,5 +64,12 @@ describe('ParkEazy Monorepo Foundation & Workspace Tooling', () => {
     expect(health.version).toBe(API_CONFIG.version);
     expect(health.details?.apiPrefix).toBe('/api/v1');
     expect(health.details?.plannedDatabase).toBe('PostgreSQL');
+    expect(health.details?.database?.engine).toBe('PostgreSQL');
+  });
+
+  it('should verify HealthService database health readiness method', () => {
+    const service = new HealthService();
+    const dbHealth = service.getDatabaseHealth();
+    expect(dbHealth.engine).toBe('PostgreSQL');
   });
 });
