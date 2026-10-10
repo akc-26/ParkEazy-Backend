@@ -46,6 +46,3 @@ Thumbs.db
 .temp/
 .tmp/
 *.tmp
-
-# Local troubleshooting backups - never commit
-*.bak

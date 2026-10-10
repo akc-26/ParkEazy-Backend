@@ -1,8 +1,9 @@
 # ParkEazy — White-Label Parking Space Marketplace Monorepo
 
-> **Phase**: Part 00 — Project Foundation, Monorepo Scaffold, and Design-Source Mapping  
+> **Phase**: Part 01 — Authoritative Design Audit, Functional Requirements, Traceability and Implementation Blueprint  
 > **Application Repository**: `https://github.com/akc-26/ParkEazy-Backend`  
-> **Authoritative Design Repository**: `https://github.com/akc-26/ParkEazy-Web-Design`
+> **Authoritative Design Repository**: `https://github.com/akc-26/ParkEazy-Web-Design` (Commit: `0881328`)  
+> **Continuity Baseline**: Part 00 Foundation (Commit: `3238969` on `feature/part-00-project-foundation`)
 
 ---
 
@@ -10,13 +11,30 @@
 
 **ParkEazy** is an enterprise-grade, white-label urban parking marketplace platform that connects drivers with guaranteed, secure parking spaces across commercial garages, tech parks, shopping malls, and verified residential facilities.
 
-This repository represents the **Part 00 monorepo foundation**, establishing:
-- Standardized npm workspace tooling and TypeScript configuration
-- Three independently runnable web portals: Customer Marketplace Website, Host Operations Portal, and Platform Administration Panel
-- Shared backend REST API scaffold built with NestJS featuring an active health check endpoint
-- Centralized white-label branding system consumed across all three portals
+This repository represents the **Part 01 project baseline**, establishing:
+- Standardized npm workspace tooling and TypeScript configuration across 3 portals and NestJS backend
+- Three independently runnable web portals: Customer Marketplace Website (`apps/website`), Host Operations Portal (`apps/host`), and Platform Administration Panel (`apps/admin`)
+- Shared backend REST API scaffold built with NestJS featuring an active health check endpoint (`services/api`)
+- Centralized white-label branding system (`branding/` and `@parkeazy/branding`) consumed across all three portals
 - Six shared workspace packages eliminating code duplication
-- Complete audit and mapping of the 111 screens from the authoritative Google Stitch website design export
+- Complete audit, mapping, and traceability matrix for all **111 exported Stitch design screens**
+- Comprehensive architectural blueprints, domain models, API specifications, and decisions register
+
+---
+
+## 2. Core Documentation Index
+
+| Document | Description |
+| :--- | :--- |
+| [`docs/PART_01_REQUIREMENTS_BLUEPRINT.md`](docs/PART_01_REQUIREMENTS_BLUEPRINT.md) | Verified and proposed requirements, customer & host journeys, admin capability matrix |
+| [`docs/PART_01_DESIGN_TRACEABILITY.md`](docs/PART_01_DESIGN_TRACEABILITY.md) | Complete 111-screen inventory mapped to routes, APIs, entities, validations, and tests |
+| [`docs/PART_01_DOMAIN_MODEL.md`](docs/PART_01_DOMAIN_MODEL.md) | Proposed PostgreSQL ER schema, booking state machines, and concurrency lock rules |
+| [`docs/PART_01_API_BLUEPRINT.md`](docs/PART_01_API_BLUEPRINT.md) | REST API endpoints under `/api/v1`, request/response DTOs, and error codes |
+| [`docs/PART_01_SECURITY_AND_TEST_STRATEGY.md`](docs/PART_01_SECURITY_AND_TEST_STRATEGY.md) | Threat modeling, zero-secret policies, concurrency stress testing, and design fidelity audit protocol |
+| [`docs/PART_01_DECISIONS_REGISTER.md`](docs/PART_01_DECISIONS_REGISTER.md) | Formal product, commercial, and technical decision log with approver requirements |
+| [`docs/PHASE_ROADMAP.md`](docs/PHASE_ROADMAP.md) | 15-phase implementation roadmap (Part 00 through Part 14) with entry/exit criteria |
+| [`docs/DEVELOPMENT_WORKFLOW.md`](docs/DEVELOPMENT_WORKFLOW.md) | Windows PowerShell setup, local scripts, and Git feature-branch workflow |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Monorepo boundary rules, package graph, and tenant isolation |
 
 ---
 

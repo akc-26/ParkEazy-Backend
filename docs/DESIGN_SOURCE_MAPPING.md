@@ -221,12 +221,23 @@ The 111 exported screen directories are classified by their established function
 
 ---
 
-## 5. Screen Implementation Checklist for Future Phases
+## 5. Screen Implementation Sequence (15-Phase Roadmap)
+
+For complete item-by-item traceability from original screen export to API endpoint, validation logic, and test criteria, see:
+- [`docs/PART_01_DESIGN_TRACEABILITY.md`](PART_01_DESIGN_TRACEABILITY.md) (Complete 111-screen traceability matrix)
+- [`docs/PART_01_REQUIREMENTS_BLUEPRINT.md`](PART_01_REQUIREMENTS_BLUEPRINT.md) (End-to-end customer & host journeys)
+- [`docs/PHASE_ROADMAP.md`](PHASE_ROADMAP.md) (Complete 15-phase execution plan from Part 00 to Part 14)
 
 | Phase | Milestone | Screens Targeted | Design References |
 | :---: | :--- | :--- | :--- |
-| **Part 01** | Multi-Portal Auth & Accounts | 19 screens | `pe_uw_02_01` to `pe_uw_02_10`, `pe_hw_01_01` to `pe_hw_01_09` |
-| **Part 02** | Facilities, Slots & Search | 27 screens | `pe_uw_03_01` to `pe_uw_03_08`, `pe_hw_02_01` to `pe_hw_02_09`, `pe_hp_04_01` |
-| **Part 03** | Bookings, Availability & QR | 27 screens | `pe_uw_04_01` to `pe_uw_04_09`, `pe_hw_03_01` to `pe_hw_04_09`, `pe_hp_07_01` |
-| **Part 04** | Payments, Commission & Payouts | 17 screens | `pe_uw_05_01` to `pe_uw_05_08`, `pe_hw_05_01` to `pe_hw_05_09` |
-| **Part 05** | Sessions, Settings & Telemetry | 21 screens | `pe_uw_06_01` to `pe_uw_07_09`, `pe_hw_06_01` to `pe_hw_06_09` |
+| **Part 04** | Authentication, Accounts & Roles | 19 screens | `pe_uw_02_01` to `pe_uw_02_10`, `pe_hw_01_01` to `pe_hw_01_09` |
+| **Part 05** | Space Listings & Host Inventory | 18 screens | `pe_hw_02_01` to `pe_hw_02_09`, `pe_hw_03_01` to `pe_hw_03_09`, `pe_hp_04_01` |
+| **Part 06** | Availability, Search & Discovery | 8 screens | `pe_uw_03_01` to `pe_uw_03_08` |
+| **Part 07** | Booking Lifecycle & Concurrency | 18 screens | `pe_uw_04_01` to `pe_uw_04_09`, `pe_uw_06_01` to `pe_uw_06_09` |
+| **Part 08** | Payments, Fees & Settlements | 17 screens | `pe_uw_05_01` to `pe_uw_05_08`, `pe_hw_05_01` to `pe_hw_05_09` |
+| **Part 09** | Customer Marketplace Website Delivery | 54 screens | Full `pe_uw_*` customer suite audit & implementation |
+| **Part 10** | Host Operations Portal Delivery | 57 screens | Full `pe_hw_*` & `pe_hp_*` host suite audit & implementation |
+| **Part 11** | Admin Governance & Implementation | Gaps / Requirements | Admin governance modules in `apps/admin` |
+| **Part 12** | Notifications, Support & Hardening | Cross-cutting | Alert centers, dispute desks, messaging channels |
+| **Part 13** | Cross-Platform Mobile Applications | 111 screens adapted | Ionic React + Capacitor for Android and iOS |
+| **Part 14** | White-Label Release Readiness & Deploy | All Portals | Security audit, multi-tenant deployment |

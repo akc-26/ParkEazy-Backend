@@ -10,11 +10,11 @@
     "preview": "vite preview --port=3001"
   },
   "dependencies": {
-    "@parkeazy/branding": "*",
-    "@parkeazy/config": "*",
-    "@parkeazy/shared-types": "*",
-    "@parkeazy/shared-ui": "*",
-    "@parkeazy/api-client": "*",
+    "@parkeazy/branding": "^0.1.0",
+    "@parkeazy/config": "^0.1.0",
+    "@parkeazy/shared-types": "^0.1.0",
+    "@parkeazy/shared-ui": "^0.1.0",
+    "@parkeazy/api-client": "^0.1.0",
     "lucide-react": "^0.546.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
