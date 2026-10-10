@@ -1,22 +1,42 @@
 {
-  "$schema": "https://json.schemastore.org/tsconfig",
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": false,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
     "useDefineForClassFields": false,
-    "strict": true,
-    "skipLibCheck": true,
-    "isolatedModules": true,
-    "resolveJsonModule": true,
-    "allowSyntheticDefaultImports": true,
-    "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true,
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true
+    "paths": {
+      "@/*": [
+        "./*"
+      ],
+      "@parkeazy/config": [
+        "./packages/config/src/index.ts"
+      ],
+      "@parkeazy/shared-types": [
+        "./packages/shared-types/src/index.ts"
+      ],
+      "@parkeazy/branding": [
+        "./packages/branding/src/index.ts"
+      ],
+      "@parkeazy/validation": [
+        "./packages/validation/src/index.ts"
+      ],
+      "@parkeazy/api-client": [
+        "./packages/api-client/src/index.ts"
+      ],
+      "@parkeazy/shared-ui": [
+        "./packages/shared-ui/src/index.ts"
+      ]
+    }
   }
 }

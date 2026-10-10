@@ -3,12 +3,22 @@
   "compilerOptions": {
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "target": "ES2022",
-    "types": ["node"],
-    "emitDecoratorMetadata": true,
-    "experimentalDecorators": true,
-    "outDir": "./dist",
-    "rootDir": "./src"
+    "outDir": "../../dist/api",
+    "rootDir": "../..",
+    "types": [
+      "node"
+    ],
+    "noEmit": false,
+    "sourceMap": true,
+    "declaration": false
   },
-  "include": ["src/**/*"]
+  "include": [
+    "src/**/*.ts",
+    "../../packages/shared-types/src/**/*.ts",
+    "../../packages/validation/src/**/*.ts"
+  ],
+  "exclude": [
+    "../../node_modules",
+    "../../dist"
+  ]
 }

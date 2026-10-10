@@ -76,6 +76,22 @@ export const SEED_USERS = [
   },
 ];
 
+export const SEED_HOST_PROFILE = {
+  id: '20000000-0000-4000-c000-000000000001',
+  userId: '00000000-0000-4000-a000-000000000002', // host.chennai@parkeazy.com
+  tenantId: 'default',
+  businessName: 'Chennai Parking Operations & Infrastructure Pvt Ltd',
+  panNumber: 'AAACR1234F',
+  gstin: '33AAACR1234F1Z5',
+  bankAccountNumber: '918273645019',
+  bankIfsc: 'HDFC0001089',
+  bankName: 'HDFC Bank, Anna Nagar West',
+  emergencyContactName: 'M. Senthil',
+  emergencyContactPhone: '+919876500002',
+  kycStatus: 'verified' as const,
+  isApproved: true,
+};
+
 export const SEED_FACILITIES = [
   {
     id: '10000000-0000-4000-b000-000000000104',

@@ -1,11 +1,5 @@
-import { Module, Global } from '@nestjs/common';
-import { DatabaseConfigService } from './database.config';
-import { DatabaseService } from './database.service';
-import { SeedService } from './seed.service';
-
-@Global()
-@Module({
-  providers: [DatabaseConfigService, DatabaseService, SeedService],
-  exports: [DatabaseConfigService, DatabaseService, SeedService],
-})
+import { Module } from '@nestjs/common';
+import { DatabaseConfigService } from './database.config.js';
+import { DatabaseService } from './database.service.js';
+@Module({ providers: [DatabaseConfigService, DatabaseService], exports: [DatabaseConfigService, DatabaseService] })
 export class DatabaseModule {}
