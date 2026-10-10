@@ -7,6 +7,7 @@ import { defineConfig } from 'vite';
 const currentDir = fileURLToPath(new URL('.', import.meta.url));
 
 export default defineConfig({
+  base: '/admin/',
   plugins: [react(), tailwindcss()],
   server: {
     port: 3003,

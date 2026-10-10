@@ -15,4 +15,10 @@ export class HealthController {
     const service = this.healthService || new HealthService();
     return service.getHealth();
   }
+
+  @Get('api/v1/health')
+  getApiV1Health(): HealthCheckResponse {
+    const service = this.healthService || new HealthService();
+    return service.getHealth();
+  }
 }

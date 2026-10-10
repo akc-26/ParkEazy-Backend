@@ -26,23 +26,25 @@ Deploy      Mobile      Notifs &    Admin       Host UI     Customer UI Payments
 - **Deliverables**: Root monorepo structure, 3 web apps (`apps/website`, `apps/host`, `apps/admin`), NestJS API (`services/api`), 6 shared packages, centralized branding, root scripts, initial design audit.
 - **Git Commit**: `3238969` on `feature/part-00-project-foundation`.
 
-### Part 01: Authoritative Design Audit, Functional Traceability & Blueprint [ACTIVE]
+### Part 01: Authoritative Design Audit, Functional Traceability & Blueprint [COMPLETED]
 - **Deliverables**:
   - Full audit of 111 Stitch export screens and `DESIGN.md` in `ParkEazy-Web-Design` (commit `0881328`).
   - Traceability matrix mapping every design screen to routes, APIs, entities, and tests.
   - End-to-end customer booking and host operational journey specifications.
   - Proposed domain models, REST API blueprint, and decisions register.
   - Admin panel gap report and phased roadmap.
-- **Exit Criteria**: All 8 blueprint documents committed and verified without breaking Part 00 builds.
+- **Git Commit Baseline**: `635ab80` on `feature/part-01-foundation-blueprint`.
 
-### Part 02: Development Tooling Hardening & Consolidated Verification Script
-- **Scope**:
-  - Implement single-command Windows PowerShell & CI script: `node scripts/verify-local.mjs`.
-  - Package-lock and workspace dependency reconciliation.
-  - Vite build optimization and ESM path resolution cleanup.
-  - Multi-portal parallel execution tooling (`npm run dev:all`).
-- **Entry Criteria**: Part 01 blueprint accepted.
-- **Deliverable**: Working, cross-platform `scripts/verify-local.mjs` reporting pass/fail for all targets.
+### Part 02: Same-Origin Routing, Developer Tooling & Design-Fidelity Enforcement [COMPLETED]
+- **Deliverables**:
+  - Same-origin URL routing architecture (`/`, `/host/`, `/admin/`, `/api/v1/`, `/health`).
+  - Strict API route separation and prevention of HTML fallback on backend routes.
+  - Cross-platform consolidated verification command: `node scripts/verify-local.mjs` (12/12 checks passing).
+  - Cross-platform production reverse proxy gateway: `node scripts/production-gateway.mjs`.
+  - Provider-neutral production Nginx configuration (`infrastructure/nginx/nginx.conf`).
+  - Automated routing tests in Vitest (`tests/routing.test.ts` — 10 tests passing; 16 tests total in monorepo).
+  - Preservation of authoritative design fidelity and explicit admin gap register (`PART_02_DESIGN_TRACEABILITY.md`).
+- **Entry Criteria for Part 03**: Verified local execution on Windows PowerShell and completed Part 02 report.
 
 ### Part 03: Shared Domain Contracts, Validation & Database Foundations
 - **Scope**:

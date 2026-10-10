@@ -11,12 +11,28 @@ import { Badge, Button, Card } from '@parkeazy/shared-ui';
 
 type ActiveView = 'workspace' | 'website' | 'host' | 'admin' | 'diagnostics';
 
+function getInitialView(): ActiveView {
+  if (typeof window === 'undefined') return 'website';
+  const path = window.location.pathname;
+  if (path === '/host' || path.startsWith('/host/')) return 'host';
+  if (path === '/admin' || path.startsWith('/admin/')) return 'admin';
+  if (path === '/overview' || path.startsWith('/overview/')) {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('tab') === 'diagnostics' ? 'diagnostics' : 'workspace';
+  }
+  if (path === '/diagnostics' || path.startsWith('/diagnostics/')) return 'diagnostics';
+  return 'website';
+}
+
 function MonorepoWorkspaceContent() {
   const { tenant } = useBrand();
-  const [activeView, setActiveView] = useState<ActiveView>('workspace');
+  const [activeView, setActiveView] = useState<ActiveView>(getInitialView);
   const [healthStatus, setHealthStatus] = useState<HealthCheckResponse | null>(null);
   const [healthLoading, setHealthLoading] = useState(false);
   const [healthError, setHealthError] = useState<string | null>(null);
+  const [currentPath, setCurrentPath] = useState<string>(
+    typeof window !== 'undefined' ? window.location.pathname : '/'
+  );
 
   // Validate tenant branding configuration on mount
   const validationResult = validateTenantConfig(tenant);
@@ -40,19 +56,77 @@ function MonorepoWorkspaceContent() {
     }
   };
 
+  const navigateTo = (view: ActiveView, targetPath?: string) => {
+    let path = targetPath;
+    if (!path) {
+      switch (view) {
+        case 'website':
+          path = '/';
+          break;
+        case 'host':
+          path = '/host/';
+          break;
+        case 'admin':
+          path = '/admin/';
+          break;
+        case 'workspace':
+          path = '/overview';
+          break;
+        case 'diagnostics':
+          path = '/overview?tab=diagnostics';
+          break;
+      }
+    }
+    if (typeof window !== 'undefined') {
+      const fullCurrent = window.location.pathname + window.location.search;
+      if (fullCurrent !== path) {
+        window.history.pushState({ view }, '', path);
+      }
+      setCurrentPath(window.location.pathname);
+    }
+    setActiveView(view);
+  };
+
   useEffect(() => {
     handleFetchHealth();
+
+    // Listen to browser Back / Forward events
+    const handlePopState = () => {
+      const resolved = getInitialView();
+      setActiveView(resolved);
+      if (typeof window !== 'undefined') {
+        setCurrentPath(window.location.pathname);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+
+    // Normalize paths without trailing slash
+    if (typeof window !== 'undefined') {
+      if (window.location.pathname === '/host') {
+        window.history.replaceState({ view: 'host' }, '', '/host/' + window.location.search);
+        setCurrentPath('/host/');
+      } else if (window.location.pathname === '/admin') {
+        window.history.replaceState({ view: 'admin' }, '', '/admin/' + window.location.search);
+        setCurrentPath('/admin/');
+      }
+    }
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
   }, []);
 
   return (
     <div className="min-h-screen flex flex-col bg-[#F8FAFC]">
-      {/* MONOREPO TOP COMMAND BAR */}
+      {/* SAME-ORIGIN TOP COMMAND & ROUTING BAR */}
       <nav className="sticky top-0 z-50 bg-[#101828] text-white border-b border-[#1E293B] shadow-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <button
-              onClick={() => setActiveView('workspace')}
+              onClick={() => navigateTo('workspace')}
               className="flex items-center gap-2.5 focus:outline-none text-left cursor-pointer"
+              title="Return to Monorepo Overview"
             >
               <div className="w-8 h-8 rounded-lg bg-[#0F766E] flex items-center justify-center font-black text-white text-base">
                 P
@@ -63,81 +137,98 @@ function MonorepoWorkspaceContent() {
                     ParkEazy
                   </span>
                   <span className="text-[10px] font-bold uppercase tracking-wider bg-[#14B8A6]/20 text-[#2DD4BF] px-1.5 py-0.5 rounded">
-                    Monorepo
+                    Same-Origin
                   </span>
                 </div>
                 <span className="text-[11px] text-[#94A3B8] font-mono mt-0.5">
-                  Part 00 Scaffold Foundation
+                  Route: {currentPath}
                 </span>
               </div>
             </button>
           </div>
 
-          {/* VIEW SWITCHER TABS */}
+          {/* SAME-ORIGIN ROUTE SELECTOR TABS */}
           <div className="flex items-center bg-[#1E293B] p-1 rounded-xl text-xs font-semibold gap-1 overflow-x-auto max-w-full">
             <button
-              onClick={() => setActiveView('workspace')}
-              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                activeView === 'workspace'
-                  ? 'bg-[#0F766E] text-white shadow-sm'
-                  : 'text-[#94A3B8] hover:text-white'
-              }`}
-            >
-              Overview
-            </button>
-            <button
-              onClick={() => setActiveView('website')}
-              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+              onClick={() => navigateTo('website', '/')}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
                 activeView === 'website'
                   ? 'bg-[#0F766E] text-white shadow-sm'
                   : 'text-[#94A3B8] hover:text-white'
               }`}
             >
-              Customer Website (:3001)
+              <span>Website</span>
+              <span className="text-[10px] opacity-75 font-mono">(/)</span>
             </button>
             <button
-              onClick={() => setActiveView('host')}
-              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+              onClick={() => navigateTo('host', '/host/')}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
                 activeView === 'host'
                   ? 'bg-[#0F766E] text-white shadow-sm'
                   : 'text-[#94A3B8] hover:text-white'
               }`}
             >
-              Host Portal (:3002)
+              <span>Host Portal</span>
+              <span className="text-[10px] opacity-75 font-mono">(/host/)</span>
             </button>
             <button
-              onClick={() => setActiveView('admin')}
-              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+              onClick={() => navigateTo('admin', '/admin/')}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
                 activeView === 'admin'
                   ? 'bg-[#0F766E] text-white shadow-sm'
                   : 'text-[#94A3B8] hover:text-white'
               }`}
             >
-              Admin Panel (:3003)
+              <span>Admin Panel</span>
+              <span className="text-[10px] opacity-75 font-mono">(/admin/)</span>
             </button>
             <button
-              onClick={() => setActiveView('diagnostics')}
-              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+              onClick={() => navigateTo('workspace', '/overview')}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeView === 'workspace'
+                  ? 'bg-[#0F766E] text-white shadow-sm'
+                  : 'text-[#94A3B8] hover:text-white'
+              }`}
+            >
+              <span>Overview</span>
+              <span className="text-[10px] opacity-75 font-mono">(/overview)</span>
+            </button>
+            <button
+              onClick={() => navigateTo('diagnostics', '/overview?tab=diagnostics')}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
                 activeView === 'diagnostics'
                   ? 'bg-[#0F766E] text-white shadow-sm'
                   : 'text-[#94A3B8] hover:text-white'
               }`}
             >
-              Diagnostics & API
+              <span>API Diagnostics</span>
             </button>
           </div>
 
-          <div className="hidden lg:flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-[#12B76A] animate-pulse" />
-            <span className="text-xs text-[#94A3B8] font-mono">Port 3000 (Preview)</span>
+          <div className="hidden lg:flex items-center gap-3">
+            <div className="flex items-center gap-1.5 bg-[#0F172A] px-2.5 py-1 rounded-md border border-[#334155] text-xs">
+              <span className="w-2 h-2 rounded-full bg-[#12B76A] animate-pulse" />
+              <span className="text-[#94A3B8] font-mono">Port {WORKSPACE_PORTS.preview}</span>
+            </div>
+            <span className="text-[11px] text-[#64748B] font-mono">Part 02</span>
           </div>
         </div>
       </nav>
 
       {/* RENDER ACTIVE VIEW */}
-      {activeView === 'website' && <CustomerWebsiteContent />}
-      {activeView === 'host' && <HostPortalContent />}
-      {activeView === 'admin' && <AdminPanelContent />}
+      {activeView === 'website' && <CustomerWebsiteContent onNavigateToHost={() => navigateTo('host', '/host/')} />}
+      {activeView === 'host' && (
+        <HostPortalContent
+          onNavigateToWebsite={() => navigateTo('website', '/')}
+          onNavigateToAdmin={() => navigateTo('admin', '/admin/')}
+        />
+      )}
+      {activeView === 'admin' && (
+        <AdminPanelContent
+          onNavigateToWebsite={() => navigateTo('website', '/')}
+          onNavigateToHost={() => navigateTo('host', '/host/')}
+        />
+      )}
 
       {/* OVERVIEW WORKSPACE HOME */}
       {activeView === 'workspace' && (

@@ -3,7 +3,13 @@ import { useBrand, BrandProvider } from '@parkeazy/branding';
 import { Button, Card, Badge, PortalBanner, MetricCard } from '@parkeazy/shared-ui';
 import { WORKSPACE_PORTS } from '@parkeazy/config';
 
-export function HostPortalContent() {
+export function HostPortalContent({
+  onNavigateToWebsite,
+  onNavigateToAdmin,
+}: {
+  onNavigateToWebsite?: () => void;
+  onNavigateToAdmin?: () => void;
+} = {}) {
   const { tenant } = useBrand();
 
   return (
@@ -45,8 +51,13 @@ export function HostPortalContent() {
             <span className="text-xs text-[#667085] hidden sm:inline">
               Host ID: <code className="text-[#101828] font-mono">#HST-8821</code>
             </span>
-            <Button variant="secondary" size="sm">
-              Facility Switcher
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={onNavigateToWebsite}
+              title="Return to Customer Marketplace (/)"
+            >
+              Marketplace
             </Button>
             <Button variant="primary" size="sm">
               + Add Space

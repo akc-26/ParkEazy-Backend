@@ -10,6 +10,7 @@
   ],
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
+    "dev:same-origin": "vite --port=3001 --host=0.0.0.0",
     "dev:website": "vite apps/website --port=3001 --host=0.0.0.0",
     "dev:host": "vite apps/host --port=3002 --host=0.0.0.0",
     "dev:admin": "vite apps/admin --port=3003 --host=0.0.0.0",
@@ -22,6 +23,8 @@
     "build:api": "tsc -p services/api/tsconfig.json",
     "build:all": "npm run build && npm run build:website && npm run build:host && npm run build:admin && npm run build:api",
     "preview": "vite preview",
+    "gateway": "node scripts/production-gateway.mjs",
+    "verify": "node scripts/verify-local.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
     "test": "vitest run",

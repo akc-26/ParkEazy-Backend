@@ -23,10 +23,14 @@ async function bootstrap() {
   // e.g. /api/v1/spaces, /api/v1/bookings
   // Note: /health is also available at root level via custom controller routing
   app.setGlobalPrefix(API_CONFIG.prefix.replace(/^\//, ''), {
-    exclude: ['health'],
+    exclude: ['health', 'api/v1/health'],
   });
 
-  const port = process.env.API_PORT ? parseInt(process.env.API_PORT, 10) : API_CONFIG.defaultPort;
+  // The NestJS backend API listens on port 4000 (API_CONFIG.defaultPort)
+  // Vite same-origin proxy on port 3000/3001 forwards /api/v1 and /health to port 4000
+  const port = process.env.API_LISTEN_PORT
+    ? parseInt(process.env.API_LISTEN_PORT, 10)
+    : API_CONFIG.defaultPort;
   await app.listen(port);
   console.log(`[ParkEazy API] Server is listening at http://localhost:${port}`);
   console.log(`[ParkEazy API] Health check available at: http://localhost:${port}/health`);

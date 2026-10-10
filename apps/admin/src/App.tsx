@@ -3,7 +3,13 @@ import { useBrand, BrandProvider } from '@parkeazy/branding';
 import { Button, Card, Badge, PortalBanner } from '@parkeazy/shared-ui';
 import { WORKSPACE_PORTS } from '@parkeazy/config';
 
-export function AdminPanelContent() {
+export function AdminPanelContent({
+  onNavigateToWebsite,
+  onNavigateToHost,
+}: {
+  onNavigateToWebsite?: () => void;
+  onNavigateToHost?: () => void;
+} = {}) {
   const { tenant } = useBrand();
 
   return (
@@ -41,10 +47,25 @@ export function AdminPanelContent() {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-[#94A3B8] font-mono hidden sm:inline">
-              Role: System Auditor
-            </span>
+          <div className="flex items-center gap-2.5">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={onNavigateToWebsite}
+              className="bg-[#1E293B] text-white border-[#334155] hover:bg-[#334155]"
+              title="Return to Customer Marketplace (/)"
+            >
+              Marketplace
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={onNavigateToHost}
+              className="bg-[#1E293B] text-white border-[#334155] hover:bg-[#334155]"
+              title="Navigate to Host Portal (/host/)"
+            >
+              Host
+            </Button>
             <Button variant="secondary" size="sm" className="bg-[#1E293B] text-white border-[#334155] hover:bg-[#334155]">
               Audit Logs
             </Button>

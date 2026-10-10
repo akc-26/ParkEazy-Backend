@@ -3,7 +3,7 @@ import { useBrand, BrandProvider } from '@parkeazy/branding';
 import { Button, Card, Badge, PortalBanner, Header } from '@parkeazy/shared-ui';
 import { WORKSPACE_PORTS } from '@parkeazy/config';
 
-export function CustomerWebsiteContent() {
+export function CustomerWebsiteContent({ onNavigateToHost }: { onNavigateToHost?: () => void } = {}) {
   const { tenant } = useBrand();
   const [selectedVehicle, setSelectedVehicle] = useState<'car' | 'bike' | 'auto'>('car');
 
@@ -20,12 +20,17 @@ export function CustomerWebsiteContent() {
         navLinks={[
           { label: 'Find Parking', active: true },
           { label: 'How It Works' },
-          { label: 'Host a Space' },
+          { label: 'Host a Space', onClick: onNavigateToHost },
           { label: 'Help' },
         ]}
         rightActions={
           <div className="flex items-center gap-2.5">
-            <Button variant="secondary" size="sm">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={onNavigateToHost}
+              title="Navigate to Host Operations Portal (/host/)"
+            >
               Host Sign In
             </Button>
             <Button variant="primary" size="sm">
