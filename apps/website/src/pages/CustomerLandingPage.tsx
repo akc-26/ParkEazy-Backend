@@ -32,9 +32,9 @@ export function CustomerLandingPage({ currentUser, onNavigate, onLogout }: Props
               </span>
             </button>
             <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-[#344054]">
-              <a href="#search" className="text-[#0F766E] font-semibold">
+              <button onClick={() => onNavigate("/explore")} className="text-[#0F766E] font-semibold cursor-pointer">
                 Find Parking
-              </a>
+              </button>
               <a href="#how-it-works" className="hover:text-[#101828] transition-colors">
                 How It Works
               </a>
@@ -170,8 +170,11 @@ export function CustomerLandingPage({ currentUser, onNavigate, onLogout }: Props
                 <div className="flex flex-col justify-end">
                   <button
                     onClick={() => {
-                      if (!currentUser) onNavigate('/login');
-                      else onNavigate('/auth/success');
+                      if (!currentUser) {
+                        onNavigate('/login');
+                      } else {
+                        onNavigate(`/search?q=${encodeURIComponent(searchLocation)}&vehicle=${selectedVehicle}`);
+                      }
                     }}
                     className="w-full h-11 bg-[#0F766E] hover:bg-[#005c55] text-white text-sm font-bold rounded-lg shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer"
                   >

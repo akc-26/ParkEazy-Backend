@@ -13,6 +13,16 @@ import { CustomerAuthErrorStatesPage } from './pages/CustomerAuthErrorStatesPage
 import { CustomerSessionExpiredPage } from './pages/CustomerSessionExpiredPage';
 import { CustomerAccessSuccessPage } from './pages/CustomerAccessSuccessPage';
 
+// PH06: Availability, Search & Discovery Pages (8 authoritative screens)
+import { ExploreParkingPage } from './pages/ExploreParkingPage';
+import { LocationSearchSuggestionsPage } from './pages/LocationSearchSuggestionsPage';
+import { SearchFiltersPreferencesPage } from './pages/SearchFiltersPreferencesPage';
+import { SearchResultsListMapPage } from './pages/SearchResultsListMapPage';
+import { SearchResultsListViewPage } from './pages/SearchResultsListViewPage';
+import { SearchResultsMapViewPage } from './pages/SearchResultsMapViewPage';
+import { NoResultsAlternativeSuggestionsPage } from './pages/NoResultsAlternativeSuggestionsPage';
+import { SearchLoadingPermissionStatesPage } from './pages/SearchLoadingPermissionStatesPage';
+
 interface WebsiteAppProps {
   onNavigateToHost?: () => void;
 }
@@ -46,12 +56,11 @@ export function CustomerWebsiteContent({ onNavigateToHost }: WebsiteAppProps = {
         return;
       }
     }
-
     if (typeof window !== 'undefined') {
       if (window.location.pathname !== path) {
         window.history.pushState({}, '', path);
       }
-      setCurrentPath(path);
+      setCurrentPath(path.split('?')[0]);
       window.scrollTo(0, 0);
     }
   };
@@ -82,6 +91,84 @@ export function CustomerWebsiteContent({ onNavigateToHost }: WebsiteAppProps = {
     }
     navigateTo('/login');
   };
+
+  // --- PH06: Availability, Search & Discovery Routes ---
+
+  // 1. Explore Parking Catalog (explore_parking_pe_uw_03_01)
+  if (currentPath === '/explore' || currentPath === '/find-parking') {
+    return (
+      <ExploreParkingPage
+        currentUser={currentUser}
+        onNavigate={navigateTo}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
+  // 2. Location Search Suggestions Autocomplete (location_search_suggestions_pe_uw_03_02)
+  if (currentPath === '/search/suggestions') {
+    return (
+      <LocationSearchSuggestionsPage
+        onNavigate={navigateTo}
+      />
+    );
+  }
+
+  // 3. Search Filters & Preferences (search_filters_preferences_pe_uw_03_03)
+  if (currentPath === '/search/filters') {
+    return (
+      <SearchFiltersPreferencesPage
+        onNavigate={navigateTo}
+      />
+    );
+  }
+
+  // 4. Search Results List & Map Split View (search_results_list_map_pe_uw_03_04)
+  if (currentPath === '/search') {
+    return (
+      <SearchResultsListMapPage
+        onNavigate={navigateTo}
+      />
+    );
+  }
+
+  // 5. Search Results Pure Listing Feed (search_results_list_view_pe_uw_03_05)
+  if (currentPath === '/search/list') {
+    return (
+      <SearchResultsListViewPage
+        onNavigate={navigateTo}
+      />
+    );
+  }
+
+  // 6. Search Results Fullscreen Map (search_results_map_view_pe_uw_03_06)
+  if (currentPath === '/search/map') {
+    return (
+      <SearchResultsMapViewPage
+        onNavigate={navigateTo}
+      />
+    );
+  }
+
+  // 7. No Results & Fallback Alternative Suggestions (no_results_alternative_suggestions_pe_uw_03_07)
+  if (currentPath === '/search/empty' || currentPath === '/search/fallback') {
+    return (
+      <NoResultsAlternativeSuggestionsPage
+        onNavigate={navigateTo}
+      />
+    );
+  }
+
+  // 8. Search Loading & Geolocation Permission States (search_loading_error_location_permission_states_pe_uw_03_08)
+  if (currentPath === '/search/permission' || currentPath === '/search/states') {
+    return (
+      <SearchLoadingPermissionStatesPage
+        onNavigate={navigateTo}
+      />
+    );
+  }
+
+  // --- PH04: Authentication & Account Routes ---
 
   // 1. Customer Login (pe_uw_02_01)
   if (currentPath === '/login') {

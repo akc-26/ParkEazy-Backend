@@ -22,6 +22,11 @@ import {
   PublicationReadinessResult,
   PublicListingSummary,
   SpaceStatus,
+  SearchQueryPayload,
+  SearchResponse,
+  LocationSuggestion,
+  ExploreCatalogHub,
+  FallbackSuggestionsResponse,
 } from '@parkeazy/shared-types';
 
 export interface ApiClientOptions {
@@ -308,4 +313,28 @@ export class ParkEazyApiClient {
       return res.data || (res as any);
     },
   };
+
+  // --- Search & Discovery Subsystem (PH06) ---
+  public readonly search = {
+    query: async (payload: SearchQueryPayload): Promise<SearchResponse> => {
+      const res = await this.post<{ data: SearchResponse }>('/search/query', payload);
+      return res.data || (res as any);
+    },
+    getSuggestions: async (q?: string): Promise<LocationSuggestion[]> => {
+      const queryParam = q ? `?q=${encodeURIComponent(q)}` : '';
+      const res = await this.get<{ data: LocationSuggestion[] }>(`/search/suggestions${queryParam}`);
+      return res.data || (res as any);
+    },
+    getExploreCatalog: async (): Promise<ExploreCatalogHub[]> => {
+      const res = await this.get<{ data: ExploreCatalogHub[] }>('/search/explore');
+      return res.data || (res as any);
+    },
+    getFallback: async (location?: string): Promise<FallbackSuggestionsResponse> => {
+      const queryParam = location ? `?location=${encodeURIComponent(location)}` : '';
+      const res = await this.get<{ data: FallbackSuggestionsResponse }>(`/search/fallback${queryParam}`);
+      return res.data || (res as any);
+    },
+  };
 }
+
+export { ParkEazyApiClient as ApiClient };

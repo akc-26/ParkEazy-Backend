@@ -4,6 +4,7 @@ import { DatabaseModule } from './database/database.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { UsersModule } from './modules/users/users.module.js';
 import { FacilitiesModule } from './modules/facilities/facilities.module.js';
+import { SearchModule } from './modules/search/search.module.js';
 
 /**
  * Root Application Module for ParkEazy Backend REST API
@@ -13,10 +14,18 @@ import { FacilitiesModule } from './modules/facilities/facilities.module.js';
  * - DatabaseModule: PostgreSQL pool lifecycle, configuration, migrations & seeding
  * - AuthModule: Multi-tenant JWT auth, OTP challenges, password reset, session lifecycle
  * - UsersModule: Customer & Host profiles, RBAC, KYC verification
- * - FacilitiesModule: Space listings, inventory management, entrance rules, validation & public feed (PH05)
+ * - FacilitiesModule: Space listings, inventory management, entrance rules & public feed (PH05)
+ * - SearchModule: High-performance radius search, autocomplete suggestions & discovery (PH06)
  */
 @Module({
-  imports: [HealthModule, DatabaseModule, AuthModule, UsersModule, FacilitiesModule],
+  imports: [
+    HealthModule,
+    DatabaseModule,
+    AuthModule,
+    UsersModule,
+    FacilitiesModule,
+    SearchModule,
+  ],
   controllers: [],
   providers: [],
 })

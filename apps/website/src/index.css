@@ -35,10 +35,20 @@
   --color-on-error-container: #93000a;
   --color-primary-fixed: #9cf2e8;
   --color-primary-fixed-dim: #80d5cb;
+  --color-on-primary-fixed: #00201d;
+  --color-on-primary-fixed-variant: #00504a;
   --color-secondary-fixed: #71f8e4;
   --color-secondary-fixed-dim: #4fdbc8;
+  --color-on-secondary-fixed: #00201c;
+  --color-on-secondary-fixed-variant: #005048;
   --color-tertiary-fixed: #ffdea6;
   --color-tertiary-fixed-dim: #f0bf64;
+  --color-on-tertiary-fixed: #271900;
+  --color-on-tertiary-fixed-variant: #5e4200;
+  --color-background: #f9f9ff;
+  --color-on-background: #141b2c;
+  --color-surface-variant: #dbe2f9;
+
   --spacing-space-xs: 0.25rem;
   --spacing-space-sm: 0.5rem;
   --spacing-space-md: 1rem;
@@ -54,11 +64,183 @@
 @layer base {
   body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    color: var(--color-on-surface);
-    background-color: var(--color-surface);
+    color: #141b2c;
+    background-color: #f9f9ff;
   }
 
   h1, h2, h3, h4, h5, h6 {
     font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
   }
 }
+
+/* Custom Design System Utility Classes from Authoritative Stitch Designs */
+.font-headline-xl {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 2.25rem;
+  line-height: 2.75rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.font-headline-lg {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 1.75rem;
+  line-height: 2.25rem;
+  font-weight: 600;
+}
+
+.font-headline-sm {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 1.25rem;
+  line-height: 1.75rem;
+  font-weight: 600;
+}
+
+.font-body-lg {
+  font-family: 'Inter', sans-serif;
+  font-size: 1.125rem;
+  line-height: 1.75rem;
+}
+
+.font-body-md-medium {
+  font-family: 'Inter', sans-serif;
+  font-size: 1rem;
+  line-height: 1.5rem;
+  font-weight: 500;
+}
+
+.font-body-sm {
+  font-family: 'Inter', sans-serif;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+
+.font-label-md {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-weight: 700;
+}
+
+.font-label-sm {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 0.6875rem;
+  line-height: 0.875rem;
+  font-weight: 600;
+}
+
+.px-margin {
+  padding-left: clamp(1rem, 4vw, 2rem);
+  padding-right: clamp(1rem, 4vw, 2rem);
+}
+
+.py-space-md {
+  padding-top: 1rem;
+  padding-bottom: 1rem;
+}
+
+.py-space-lg {
+  padding-top: 1.5rem;
+  padding-bottom: 1.5rem;
+}
+
+.py-space-xl {
+  padding-top: 2rem;
+  padding-bottom: 2rem;
+}
+
+.py-space-2xl {
+  padding-top: 3rem;
+  padding-bottom: 3rem;
+}
+
+.gap-space-xs { gap: 0.25rem; }
+.gap-space-sm { gap: 0.5rem; }
+.gap-space-md { gap: 1rem; }
+.gap-space-lg { gap: 1.5rem; }
+.gap-space-xl { gap: 2rem; }
+
+.p-space-xs { padding: 0.25rem; }
+.p-space-sm { padding: 0.5rem; }
+.p-space-md { padding: 1rem; }
+.p-space-lg { padding: 1.5rem; }
+
+.px-space-xs { padding-left: 0.25rem; padding-right: 0.25rem; }
+.px-space-sm { padding-left: 0.5rem; padding-right: 0.5rem; }
+.px-space-md { padding-left: 1rem; padding-right: 1rem; }
+.px-space-lg { padding-left: 1.5rem; padding-right: 1.5rem; }
+
+.py-space-xs { padding-top: 0.25rem; padding-bottom: 0.25rem; }
+.py-space-sm { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+
+.mt-space-xs { margin-top: 0.25rem; }
+.mt-space-sm { margin-top: 0.5rem; }
+.mt-space-md { margin-top: 1rem; }
+.mt-space-lg { margin-top: 1.5rem; }
+
+.pt-space-xs { padding-top: 0.25rem; }
+.pt-space-sm { padding-top: 0.5rem; }
+.pt-space-md { padding-top: 1rem; }
+.pt-space-lg { padding-top: 1.5rem; }
+.pt-space-2xl { padding-top: 3rem; }
+
+.pb-space-xl { padding-bottom: 2rem; }
+
+/* ParkEazy Color Utility Fallbacks */
+.bg-surface { background-color: #f9f9ff; }
+.bg-surface-dim { background-color: #d2daf0; }
+.bg-surface-bright { background-color: #f9f9ff; }
+.bg-surface-container-lowest { background-color: #ffffff; }
+.bg-surface-container-low { background-color: #f1f3ff; }
+.bg-surface-container { background-color: #e9edff; }
+.bg-surface-container-high { background-color: #e0e8ff; }
+.bg-surface-container-highest { background-color: #dbe2f9; }
+.bg-surface-variant { background-color: #dbe2f9; }
+
+.text-on-surface { color: #141b2c; }
+.text-on-surface-variant { color: #3e4947; }
+.text-inverse-surface { color: #293041; }
+.text-inverse-on-surface { color: #edf0ff; }
+.text-outline { color: #6e7977; }
+.text-outline-variant { color: #bdc9c6; }
+
+.bg-primary { background-color: #005c55; }
+.text-primary { color: #005c55; }
+.border-primary { border-color: #005c55; }
+.text-on-primary { color: #ffffff; }
+
+.bg-primary-container { background-color: #0f766e; }
+.text-on-primary-container { color: #a3faef; }
+
+.bg-secondary { background-color: #006b5f; }
+.text-secondary { color: #006b5f; }
+.text-on-secondary { color: #ffffff; }
+
+.bg-secondary-container { background-color: #6df5e1; }
+.text-on-secondary-container { color: #006f64; }
+
+.bg-tertiary { background-color: #6b4c00; }
+.text-tertiary { color: #6b4c00; }
+.text-on-tertiary { color: #ffffff; }
+
+.bg-tertiary-container { background-color: #88630b; }
+.text-on-tertiary-container { color: #ffe7c1; }
+
+.bg-primary-fixed { background-color: #9cf2e8; }
+.bg-primary-fixed-dim { background-color: #80d5cb; }
+.text-on-primary-fixed { color: #00201d; }
+
+.bg-secondary-fixed { background-color: #71f8e4; }
+.bg-secondary-fixed-dim { background-color: #4fdbc8; }
+.text-on-secondary-fixed { color: #00201c; }
+
+.bg-tertiary-fixed { background-color: #ffdea6; }
+.bg-tertiary-fixed-dim { background-color: #f0bf64; }
+.text-on-tertiary-fixed { color: #271900; }
+
+.bg-error { background-color: #ba1a1a; }
+.text-error { color: #ba1a1a; }
+.bg-error-container { background-color: #ffdad6; }
+.text-on-error-container { color: #93000a; }
+
+.border-outline-variant { border-color: #bdc9c6; }

@@ -519,4 +519,12 @@ export class FacilitiesService {
     }
     return item;
   }
+
+  public getInternalFacilities(): ParkingFacility[] {
+    return this.facilities;
+  }
+
+  public getInternalSpaces(facilityId?: string): ParkingSpace[] {
+    return facilityId ? this.spaces.filter((s) => s.facilityId === facilityId) : this.spaces;
+  }
 }
