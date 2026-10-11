@@ -23,12 +23,15 @@ export function SearchResultsListViewPage({
   const [sortBy, setSortBy] = useState<SearchSortOption>('recommended');
   const [results, setResults] = useState<SearchResultFacility[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [fetchTrigger, setFetchTrigger] = useState(0);
 
   const client = new ApiClient();
 
   useEffect(() => {
     let isMounted = true;
     setIsLoading(true);
+    setApiError(null);
 
     client.search
       .query({
@@ -43,8 +46,9 @@ export function SearchResultsListViewPage({
           setIsLoading(false);
         }
       })
-      .catch(() => {
+      .catch((err: any) => {
         if (isMounted) {
+          setApiError(err?.message || 'Unable to connect to ParkEazy search service');
           setIsLoading(false);
         }
       });
@@ -52,7 +56,7 @@ export function SearchResultsListViewPage({
     return () => {
       isMounted = false;
     };
-  }, [searchLocation, vehicle, sortBy]);
+  }, [searchLocation, vehicle, sortBy, fetchTrigger]);
 
   return (
     <div className="min-h-screen bg-surface font-body-md text-on-surface flex flex-col">
@@ -156,6 +160,36 @@ export function SearchResultsListViewPage({
             {[1, 2, 3, 4, 5, 6].map((i) => (
               <div key={i} className="h-72 rounded-2xl bg-surface-container-low animate-pulse" />
             ))}
+          </div>
+        ) : apiError ? (
+          <div className="p-10 text-center bg-surface-container-lowest rounded-2xl border border-error/30 space-y-4 max-w-lg mx-auto">
+            <div className="w-12 h-12 rounded-full bg-error-container text-on-error-container flex items-center justify-center mx-auto">
+              <span className="material-symbols-outlined text-[28px]">wifi_off</span>
+            </div>
+            <h3 className="font-bold text-lg text-on-surface">Search Query Interrupted</h3>
+            <p className="text-xs text-on-surface-variant">
+              {apiError}
+            </p>
+            <button
+              onClick={() => setFetchTrigger((prev) => prev + 1)}
+              className="px-5 py-2.5 rounded-xl bg-primary text-on-primary text-xs font-bold hover:bg-primary-container shadow-sm cursor-pointer"
+            >
+              Retry Search Query
+            </button>
+          </div>
+        ) : results.length === 0 ? (
+          <div className="p-10 text-center bg-surface-container-lowest rounded-2xl border border-outline-variant/30 space-y-4 max-w-lg mx-auto">
+            <span className="material-symbols-outlined text-[48px] text-outline">search_off</span>
+            <h3 className="font-bold text-lg text-on-surface">No spaces available in this location</h3>
+            <p className="text-xs text-on-surface-variant">
+              We couldn't find any parking facilities matching your criteria near {searchLocation}.
+            </p>
+            <button
+              onClick={() => onNavigate('/search/empty')}
+              className="px-5 py-2.5 rounded-xl bg-primary text-on-primary text-xs font-bold hover:bg-primary-container shadow-sm cursor-pointer"
+            >
+              Explore Alternative Suggestions
+            </button>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

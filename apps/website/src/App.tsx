@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useBrand, BrandProvider } from '@parkeazy/branding';
-import { UserAccount, AuthTokenPair } from '@parkeazy/shared-types';
+import { UserAccount, AuthTokenPair, VehicleType } from '@parkeazy/shared-types';
+import { ParkEazyApiClient } from '@parkeazy/api-client';
 import { CustomerLandingPage } from './pages/CustomerLandingPage';
 import { CustomerLoginPage } from './pages/CustomerLoginPage';
 import { CustomerSignupPage } from './pages/CustomerSignupPage';
@@ -27,6 +28,19 @@ interface WebsiteAppProps {
   onNavigateToHost?: () => void;
 }
 
+export function getSafeReturnUrl(url?: string | null): string {
+  if (!url) return '/auth/success';
+  // Must be an internal path starting with / and not starting with // or containing backslashes
+  if (!url.startsWith('/') || url.startsWith('//') || url.includes('\\')) {
+    return '/auth/success';
+  }
+  // Disallow scheme protocols like javascript:, https:, etc.
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(url)) {
+    return '/auth/success';
+  }
+  return url;
+}
+
 export function CustomerWebsiteContent({ onNavigateToHost }: WebsiteAppProps = {}) {
   const [currentPath, setCurrentPath] = useState<string>(() => {
     if (typeof window !== 'undefined') {
@@ -35,10 +49,18 @@ export function CustomerWebsiteContent({ onNavigateToHost }: WebsiteAppProps = {
     return '/';
   });
 
+  const [currentSearch, setCurrentSearch] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return window.location.search;
+    }
+    return '';
+  });
+
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => {
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem('parkeazy_customer_user');
-      if (stored) {
+      const token = localStorage.getItem('parkeazy_customer_token');
+      if (stored && token) {
         try {
           return JSON.parse(stored);
         } catch {
@@ -49,18 +71,45 @@ export function CustomerWebsiteContent({ onNavigateToHost }: WebsiteAppProps = {
     return null;
   });
 
-  const navigateTo = (path: string) => {
-    if (path.startsWith('/host')) {
+  // Verify stored session token against server
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const token = localStorage.getItem('parkeazy_customer_token');
+    const userStr = localStorage.getItem('parkeazy_customer_user');
+    if (!token || !userStr) return;
+
+    const client = new ParkEazyApiClient({ baseUrl: '/api/v1', initialToken: token });
+    client.auth
+      .getMe()
+      .then((validatedUser) => {
+        if (validatedUser) {
+          setCurrentUser(validatedUser);
+        }
+      })
+      .catch((err: any) => {
+        if (err?.statusCode === 401 || err?.statusCode === 403) {
+          localStorage.removeItem('parkeazy_customer_token');
+          localStorage.removeItem('parkeazy_customer_user');
+          setCurrentUser(null);
+        }
+      });
+  }, []);
+
+  const navigateTo = (target: string) => {
+    if (target.startsWith('/host')) {
       if (onNavigateToHost) {
         onNavigateToHost();
         return;
       }
     }
     if (typeof window !== 'undefined') {
-      if (window.location.pathname !== path) {
-        window.history.pushState({}, '', path);
+      const [path, search = ''] = target.split('?');
+      const searchStr = search ? `?${search}` : '';
+      if (window.location.pathname !== path || window.location.search !== searchStr) {
+        window.history.pushState({}, '', target);
       }
-      setCurrentPath(path.split('?')[0]);
+      setCurrentPath(path);
+      setCurrentSearch(searchStr);
       window.scrollTo(0, 0);
     }
   };
@@ -69,6 +118,7 @@ export function CustomerWebsiteContent({ onNavigateToHost }: WebsiteAppProps = {
     const handlePopState = () => {
       if (typeof window !== 'undefined') {
         setCurrentPath(window.location.pathname);
+        setCurrentSearch(window.location.search);
       }
     };
     window.addEventListener('popstate', handlePopState);
@@ -92,6 +142,10 @@ export function CustomerWebsiteContent({ onNavigateToHost }: WebsiteAppProps = {
     navigateTo('/login');
   };
 
+  const searchParams = new URLSearchParams(currentSearch);
+  const locationParam = searchParams.get('q') || searchParams.get('location') || undefined;
+  const vehicleParam = (searchParams.get('vehicle') as VehicleType) || undefined;
+
   // --- PH06: Availability, Search & Discovery Routes ---
 
   // 1. Explore Parking Catalog (explore_parking_pe_uw_03_01)
@@ -101,6 +155,7 @@ export function CustomerWebsiteContent({ onNavigateToHost }: WebsiteAppProps = {
         currentUser={currentUser}
         onNavigate={navigateTo}
         onLogout={handleLogout}
+        initialVehicle={vehicleParam}
       />
     );
   }
@@ -110,6 +165,7 @@ export function CustomerWebsiteContent({ onNavigateToHost }: WebsiteAppProps = {
     return (
       <LocationSearchSuggestionsPage
         onNavigate={navigateTo}
+        initialQuery={locationParam}
       />
     );
   }
@@ -119,6 +175,7 @@ export function CustomerWebsiteContent({ onNavigateToHost }: WebsiteAppProps = {
     return (
       <SearchFiltersPreferencesPage
         onNavigate={navigateTo}
+        initialVehicle={vehicleParam}
       />
     );
   }
@@ -128,6 +185,8 @@ export function CustomerWebsiteContent({ onNavigateToHost }: WebsiteAppProps = {
     return (
       <SearchResultsListMapPage
         onNavigate={navigateTo}
+        initialQuery={locationParam}
+        initialVehicle={vehicleParam}
       />
     );
   }
@@ -137,6 +196,7 @@ export function CustomerWebsiteContent({ onNavigateToHost }: WebsiteAppProps = {
     return (
       <SearchResultsListViewPage
         onNavigate={navigateTo}
+        initialQuery={locationParam}
       />
     );
   }
@@ -146,6 +206,7 @@ export function CustomerWebsiteContent({ onNavigateToHost }: WebsiteAppProps = {
     return (
       <SearchResultsMapViewPage
         onNavigate={navigateTo}
+        initialQuery={locationParam}
       />
     );
   }
@@ -155,6 +216,7 @@ export function CustomerWebsiteContent({ onNavigateToHost }: WebsiteAppProps = {
     return (
       <NoResultsAlternativeSuggestionsPage
         onNavigate={navigateTo}
+        location={locationParam}
       />
     );
   }
@@ -172,11 +234,14 @@ export function CustomerWebsiteContent({ onNavigateToHost }: WebsiteAppProps = {
 
   // 1. Customer Login (pe_uw_02_01)
   if (currentPath === '/login') {
+    const rawReturnUrl = searchParams.get('returnUrl') || searchParams.get('redirect');
+    const safeReturn = getSafeReturnUrl(rawReturnUrl);
+
     return (
       <CustomerLoginPage
         onNavigate={navigateTo}
         onSuccess={handleAuthSuccess}
-        returnUrl="/auth/success"
+        returnUrl={safeReturn}
       />
     );
   }

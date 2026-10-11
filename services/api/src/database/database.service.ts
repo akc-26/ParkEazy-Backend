@@ -1,6 +1,6 @@
-import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
+import { Injectable, OnModuleInit, OnModuleDestroy, Logger, Inject } from '@nestjs/common';
 import { Pool, PoolClient, QueryResultRow } from 'pg';
-import { DatabaseConfigService } from './database.config';
+import { DatabaseConfigService } from './database.config.js';
 
 export interface DatabaseHealthStatus {
   engine: 'PostgreSQL';
@@ -23,7 +23,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
   private isConnected = false;
   private lastError: string | null = null;
 
-  constructor(private readonly configService: DatabaseConfigService) {}
+  constructor(@Inject(DatabaseConfigService) private readonly configService: DatabaseConfigService) {}
 
   public async onModuleInit(): Promise<void> {
     const configValidation = this.configService.validate();

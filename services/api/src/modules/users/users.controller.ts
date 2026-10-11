@@ -7,6 +7,7 @@ import {
   Req,
   UseGuards,
   BadRequestException,
+  Inject,
 } from '@nestjs/common';
 import { UsersService } from './users.service.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
@@ -19,7 +20,7 @@ import { validateHostKycPayload } from '@parkeazy/validation';
 @Controller('users')
 @UseGuards(JwtAuthGuard, TenantGuard, RolesGuard)
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(@Inject(UsersService) private readonly usersService: UsersService) {}
 
   @Get('profile')
   public async getProfile(@Req() req: any) {

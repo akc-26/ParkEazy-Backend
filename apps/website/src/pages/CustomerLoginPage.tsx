@@ -56,7 +56,10 @@ export function CustomerLoginPage({ onNavigate, onSuccess, returnUrl }: Props) {
       if (response.user.status === 'pending_verification') {
         onNavigate('/verification-required');
       } else {
-        onNavigate(returnUrl || '/auth/success');
+        const target = returnUrl && returnUrl.startsWith('/') && !returnUrl.startsWith('//') && !returnUrl.includes('\\')
+          ? returnUrl
+          : '/auth/success';
+        onNavigate(target);
       }
     } catch (err: any) {
       if (err.statusCode === 429) {

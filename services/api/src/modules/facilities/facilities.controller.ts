@@ -8,6 +8,7 @@ import {
   Body,
   Headers,
   Query,
+  Inject,
 } from '@nestjs/common';
 import { FacilitiesService } from './facilities.service.js';
 import {
@@ -21,7 +22,7 @@ import {
 
 @Controller()
 export class FacilitiesController {
-  constructor(private readonly facilitiesService: FacilitiesService) {}
+  constructor(@Inject(FacilitiesService) private readonly facilitiesService: FacilitiesService) {}
 
   // Host Facilities Endpoints
   @Get('facilities')
@@ -118,8 +119,12 @@ export class FacilitiesController {
 
   // Spaces Endpoints
   @Get('spaces/:id')
-  async getSpace(@Param('id') id: string) {
-    const data = await this.facilitiesService.getSpace(id);
+  async getSpace(
+    @Param('id') id: string,
+    @Headers('x-tenant-id') tenantId: string = 'default',
+    @Headers('x-host-id') hostId?: string
+  ) {
+    const data = await this.facilitiesService.getSpace(id, tenantId, hostId);
     return { data };
   }
 

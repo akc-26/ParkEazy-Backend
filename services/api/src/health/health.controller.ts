@@ -1,15 +1,15 @@
-import { Controller, Get, Optional } from '@nestjs/common';
+import { Controller, Get, Inject } from '@nestjs/common';
 import type { HealthCheckResponse } from '@parkeazy/shared-types';
-import { HealthService } from './health.service';
-import type { ExtendedHealthCheckResponse } from './health.service';
-import type { DatabaseHealthStatus } from '../database/database.service';
+import { HealthService } from './health.service.js';
+import type { ExtendedHealthCheckResponse } from './health.service.js';
+import type { DatabaseHealthStatus } from '../database/database.service.js';
 
 @Controller()
 export class HealthController {
-  constructor(@Optional() private readonly healthService?: HealthService) {}
+  constructor(@Inject(HealthService) private readonly healthService: HealthService) {}
 
   private getService(): HealthService {
-    return this.healthService || new HealthService();
+    return this.healthService;
   }
 
   @Get('health')
@@ -17,10 +17,6 @@ export class HealthController {
     return this.getService().getHealth();
   }
 
-  @Get('api/v1/health')
-  getApiV1Health(): ExtendedHealthCheckResponse {
-    return this.getService().getHealth();
-  }
 
   @Get('health/ready')
   getReadiness(): { ready: boolean; database: DatabaseHealthStatus } {
@@ -31,7 +27,7 @@ export class HealthController {
     };
   }
 
-  @Get('api/v1/health/database')
+  @Get('health/database')
   getDatabaseHealth(): DatabaseHealthStatus {
     return this.getService().getDatabaseHealth();
   }

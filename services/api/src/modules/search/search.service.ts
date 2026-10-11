@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Inject, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { FacilitiesService } from '../facilities/facilities.service.js';
 import {
   SearchQueryPayload,
@@ -10,92 +10,11 @@ import {
   VehicleType,
 } from '@parkeazy/shared-types';
 
-interface HubAnchor {
-  id: string;
-  name: string;
-  subtitle: string;
-  keywords: string[];
-  type: 'metro_station' | 'commercial_hub' | 'landmark';
-  latitude: number;
-  longitude: number;
-  tags: string[];
-  verifiedSpaces: number;
-}
-
-const CHENNAI_HUBS: HubAnchor[] = [
-  {
-    id: 'hub-anna-nagar',
-    name: 'Anna Nagar Roundtana',
-    subtitle: 'Near Roundtana Metro & Roundtana Police Booth',
-    keywords: ['anna', 'nagar', 'roundtana', 'metro', 'tower'],
-    type: 'metro_station',
-    latitude: 13.0850,
-    longitude: 80.2100,
-    tags: ['Metro Station', 'Covered', 'EV Fast Charge'],
-    verifiedSpaces: 24,
-  },
-  {
-    id: 'hub-t-nagar',
-    name: 'T. Nagar Usman Road Hub',
-    subtitle: 'Commercial shopping arcade & Usman Road flyover',
-    keywords: ['t nagar', 't. nagar', 'usman', 'pondypazaar', 'panagal'],
-    type: 'commercial_hub',
-    latitude: 13.0400,
-    longitude: 80.2330,
-    tags: ['Commercial Hub', 'Multi-Level', 'CCTV Security'],
-    verifiedSpaces: 36,
-  },
-  {
-    id: 'hub-vadapalani',
-    name: 'Nexus Vijaya Mall, Vadapalani',
-    subtitle: 'Multi-level covered mall basement parking',
-    keywords: ['vadapalani', 'nexus', 'vijaya', 'mall', 'forum'],
-    type: 'commercial_hub',
-    latitude: 13.0520,
-    longitude: 80.2120,
-    tags: ['Mall Basement', 'Valet Available', 'ANPR Gate'],
-    verifiedSpaces: 48,
-  },
-  {
-    id: 'hub-koyambedu',
-    name: 'Koyambedu CMBT Transit Interchange',
-    subtitle: 'Inter-city bus terminal & Metro interchange station',
-    keywords: ['koyambedu', 'cmbt', 'bus', 'transit', 'market'],
-    type: 'metro_station',
-    latitude: 13.0700,
-    longitude: 80.1900,
-    tags: ['Transit Hub', '24/7 Security', 'High Clearance'],
-    verifiedSpaces: 32,
-  },
-  {
-    id: 'hub-airport',
-    name: 'Chennai International Airport (MAA)',
-    subtitle: 'Multi-level car parking (MLCP) opposite Terminal 2',
-    keywords: ['airport', 'maa', 'meenambakkam', 'flight', 'terminal'],
-    type: 'landmark',
-    latitude: 12.9800,
-    longitude: 80.1600,
-    tags: ['Airport Terminal', 'Covered MLCP', 'Fast Tag / ANPR'],
-    verifiedSpaces: 60,
-  },
-  {
-    id: 'hub-central',
-    name: 'Puratchi Thalaivar Dr. M.G.R. Central Railway',
-    subtitle: 'Park Town & Central Metro interchange concourse',
-    keywords: ['central', 'railway', 'station', 'park town', 'mgr'],
-    type: 'metro_station',
-    latitude: 13.0827,
-    longitude: 80.2757,
-    tags: ['Railway Station', '24/7 Monitored', 'Two-Wheeler'],
-    verifiedSpaces: 40,
-  },
-];
-
 @Injectable()
 export class SearchService {
   private readonly logger = new Logger(SearchService.name);
 
-  constructor(private readonly facilitiesService: FacilitiesService) {}
+  constructor(@Inject(FacilitiesService) private readonly facilitiesService: FacilitiesService) {}
 
   /**
    * Calculate Haversine distance in meters between two coordinates.
@@ -129,41 +48,38 @@ export class SearchService {
   /**
    * Resolve epicenter coordinates from query or payload.
    */
-  private resolveEpicenter(payload: SearchQueryPayload): {
+  private resolveEpicenter(payload: SearchQueryPayload, facilities: import('@parkeazy/shared-types').ParkingFacility[]): {
     latitude: number;
     longitude: number;
   } {
-    if (payload.latitude && payload.longitude) {
+    if (payload.latitude !== undefined && payload.longitude !== undefined) {
       return { latitude: payload.latitude, longitude: payload.longitude };
     }
-
-    if (payload.query) {
-      const q = payload.query.toLowerCase();
-      const matchedHub = CHENNAI_HUBS.find((h) =>
-        h.keywords.some((k) => q.includes(k)) || h.name.toLowerCase().includes(q)
-      );
-      if (matchedHub) {
-        return { latitude: matchedHub.latitude, longitude: matchedHub.longitude };
-      }
+    const q = (payload.query || '').trim().toLocaleLowerCase();
+    const matched = q ? facilities.find((f) =>
+      [f.name, f.addressLine1, f.addressLine2, f.city, f.postalCode].some((v) => v?.toLocaleLowerCase().includes(q))
+    ) : undefined;
+    const first = matched || facilities[0];
+    if (!first) {
+      throw new ServiceUnavailableException('No published inventory is available for location search.');
     }
-
-    // Default to Anna Nagar, Chennai epicenter
-    return { latitude: 13.0850, longitude: 80.2100 };
+    return { latitude: first.latitude, longitude: first.longitude };
   }
 
   /**
    * Execute high-performance Geo-Spatial Search Query (POST /api/v1/search/query).
    */
-  public async querySearch(payload: SearchQueryPayload): Promise<SearchResponse> {
-    const center = this.resolveEpicenter(payload);
+  public async querySearch(payload: SearchQueryPayload, tenantId = 'default'): Promise<SearchResponse> {
+    const inventory = await this.facilitiesService.getSearchInventory(tenantId, payload.arrivalTime, payload.durationHours || 2);
+    const center = this.resolveEpicenter(payload, inventory.facilities.filter((f) => f.status === 'published'));
     const radiusKm = payload.radiusKm || 3.0;
     const radiusMeters = radiusKm * 1000;
     const targetVehicle: VehicleType = payload.vehicleCategory || 'car';
     const durationHours = payload.durationHours || 2;
     const filters = payload.filters || {};
 
-    const facilities = this.facilitiesService.getInternalFacilities();
-    const allSpaces = this.facilitiesService.getInternalSpaces();
+    const facilities = inventory.facilities;
+    const allSpaces = inventory.spaces;
 
     // Map each facility to a SearchResultFacility with spatial calculation
     const candidates: SearchResultFacility[] = [];
@@ -266,35 +182,30 @@ export class SearchService {
       const availableSpacesCount = vehicleSpaces.filter((s) => s.status === 'available').length;
       const totalSpacesCount = vehicleSpaces.length;
 
-      // Urgency badge determination
+      // Truthful capacity determination based strictly on actual available spaces
       let urgencyBadge: 'SPOTS LEFT' | 'AVAILABLE NOW' | 'FAST FILLING' | 'SOLD OUT' = 'AVAILABLE NOW';
       let urgencyBadgeText = 'AVAILABLE NOW';
 
       if (availableSpacesCount === 0) {
         urgencyBadge = 'SOLD OUT';
-        urgencyBadgeText = 'SOLD OUT FOR YOUR TIME';
+        urgencyBadgeText = 'SOLD OUT';
       } else if (availableSpacesCount <= 3) {
         urgencyBadge = 'SPOTS LEFT';
         urgencyBadgeText = `${availableSpacesCount} SPOTS LEFT`;
-      } else if (availableSpacesCount <= 8) {
-        urgencyBadge = 'FAST FILLING';
-        urgencyBadgeText = 'FAST FILLING • HIGH DEMAND';
+      } else {
+        urgencyBadge = 'AVAILABLE NOW';
+        urgencyBadgeText = `${availableSpacesCount} SPOTS AVAILABLE`;
       }
 
-      // Realistic reviews & ratings
-      const rating = fac.facilityCode.includes('0104') ? 4.9 : fac.facilityCode.includes('0105') ? 4.8 : 4.6;
-      const reviewCount = fac.facilityCode.includes('0104') ? 142 : fac.facilityCode.includes('0105') ? 98 : 64;
+      // Ratings & reviews from facility records
+      const rating = Number((fac as any).rating ?? 0);
+      const reviewCount = Number((fac as any).reviewCount ?? 0);
 
       const supportedVehicles: VehicleType[] = Array.from(
         new Set(facSpaces.map((s) => s.vehicleCategory))
       );
 
-      const photos =
-        fac.photos && fac.photos.length > 0
-          ? fac.photos.map((p) => p.url)
-          : [
-              'https://images.unsplash.com/photo-1506521781263-d8422e82f27a?auto=format&fit=crop&w=800&q=80',
-            ];
+      const photos = fac.photos && fac.photos.length > 0 ? fac.photos.map((p) => p.url) : [];
 
       candidates.push({
         facilityId: fac.id,
@@ -316,12 +227,12 @@ export class SearchService {
         rating,
         reviewCount,
         supportedVehicles: supportedVehicles.length > 0 ? supportedVehicles : ['car'],
-        amenities: fac.amenities || ['covered_roof', 'cctv_security'],
+        amenities: fac.amenities || [],
         photos,
         operatingModel: fac.operatingModel || 'commercial_garage',
         urgencyBadge,
         urgencyBadgeText,
-        isInstantBooking: true,
+        isInstantBooking: false,
       });
     }
 
@@ -357,133 +268,68 @@ export class SearchService {
   /**
    * Fast Autocomplete Location Suggestions (GET /api/v1/search/suggestions).
    */
-  public getSuggestions(query?: string): LocationSuggestion[] {
-    const q = (query || '').toLowerCase().trim();
-
-    if (!q) {
-      // Default: Top Chennai Transit & Commercial Hubs
-      return CHENNAI_HUBS.slice(0, 4).map((h) => ({
-        id: h.id,
-        title: h.name,
-        subtitle: h.subtitle,
-        type: h.type,
-        coordinates: { latitude: h.latitude, longitude: h.longitude },
-        verifiedSpacesAvailable: h.verifiedSpaces,
-        tags: h.tags,
-        distanceKm: 0.8,
+  public async getSuggestions(query?: string, tenantId = 'default'): Promise<LocationSuggestion[]> {
+    const inventory = await this.facilitiesService.getSearchInventory(tenantId);
+    const q = (query || '').trim().toLocaleLowerCase();
+    return inventory.facilities
+      .filter((f) => f.status === 'published' && (!q || [f.name, f.addressLine1, f.addressLine2, f.city, f.postalCode].some((v) => v?.toLocaleLowerCase().includes(q))))
+      .slice(0, 8)
+      .map((f) => ({
+        id: f.id,
+        title: f.name,
+        subtitle: [f.addressLine1, f.addressLine2, f.city].filter(Boolean).join(', '),
+        type: 'commercial_hub' as const,
+        coordinates: { latitude: f.latitude, longitude: f.longitude },
+        verifiedSpacesAvailable: inventory.spaces.filter((s) => s.facilityId === f.id && s.isActive && s.status === 'available').length,
+        tags: f.amenities || [],
       }));
-    }
-
-    // Filter by title, subtitle, or keywords
-    const filtered = CHENNAI_HUBS.filter(
-      (h) =>
-        h.name.toLowerCase().includes(q) ||
-        h.subtitle.toLowerCase().includes(q) ||
-        h.keywords.some((k) => k.includes(q))
-    );
-
-    return filtered.map((h) => ({
-      id: h.id,
-      title: h.name,
-      subtitle: h.subtitle,
-      type: h.type,
-      coordinates: { latitude: h.latitude, longitude: h.longitude },
-      verifiedSpacesAvailable: h.verifiedSpaces,
-      tags: h.tags,
-      distanceKm: 1.2,
-    }));
   }
 
   /**
    * Curated Explore Parking Catalog (GET /api/v1/search/explore).
    */
-  public getExploreCatalog(): ExploreCatalogHub[] {
-    return [
-      {
-        id: 'cat-anna-nagar',
-        name: 'Anna Nagar Metro & Shopping Hub',
-        category: 'transit',
-        badge: 'Top Pick • High Clearance',
-        location: '2nd Avenue, Anna Nagar West',
-        coordinates: { latitude: 13.0850, longitude: 80.2100 },
-        startingPriceInr: 40,
-        availableBays: 24,
-        rating: 4.9,
-        photoUrl: 'https://images.unsplash.com/photo-1506521781263-d8422e82f27a?auto=format&fit=crop&w=600&q=80',
-      },
-      {
-        id: 'cat-t-nagar',
-        name: 'T. Nagar Commercial Hub',
-        category: 'commercial',
-        badge: 'Covered • Multi-Level',
-        location: 'Usman Road, T. Nagar',
-        coordinates: { latitude: 13.0400, longitude: 80.2330 },
-        startingPriceInr: 50,
-        availableBays: 36,
-        rating: 4.8,
-        photoUrl: 'https://images.unsplash.com/photo-1573348722427-f1d6819fdf98?auto=format&fit=crop&w=600&q=80',
-      },
-      {
-        id: 'cat-vadapalani',
-        name: 'Nexus Vijaya Mall Super Hub',
-        category: 'mall',
-        badge: 'EV Fast Charging • 24/7',
-        location: 'Vadapalani Concourse',
-        coordinates: { latitude: 13.0520, longitude: 80.2120 },
-        startingPriceInr: 45,
-        availableBays: 48,
-        rating: 4.7,
-        photoUrl: 'https://images.unsplash.com/photo-1590674899484-d5640e854abe?auto=format&fit=crop&w=600&q=80',
-      },
-      {
-        id: 'cat-airport',
-        name: 'Chennai Airport MLCP Terminal Hub',
-        category: 'transit',
-        badge: 'Flight Transit • ANPR Pass',
-        location: 'Meenambakkam, GST Road',
-        coordinates: { latitude: 12.9800, longitude: 80.1600 },
-        startingPriceInr: 60,
-        availableBays: 60,
-        rating: 4.9,
-        photoUrl: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=600&q=80',
-      },
-    ];
+  public async getExploreCatalog(tenantId = 'default'): Promise<ExploreCatalogHub[]> {
+    const inventory = await this.facilitiesService.getSearchInventory(tenantId);
+    return inventory.facilities.filter((f) => f.status === 'published').slice(0, 8).map((f) => {
+      const spaces = inventory.spaces.filter((s) => s.facilityId === f.id && s.isActive);
+      const rates = spaces.map((s) => s.hourlyRateInr).filter((rate) => Number.isFinite(rate) && rate > 0);
+      return {
+        id: f.id,
+        name: f.name,
+        category: 'commercial' as const,
+        badge: f.isCovered ? 'Covered parking' : 'Open-air parking',
+        location: [f.addressLine1, f.city].filter(Boolean).join(', '),
+        coordinates: { latitude: f.latitude, longitude: f.longitude },
+        startingPriceInr: rates.length ? Math.min(...rates) : 0,
+        availableBays: spaces.filter((s) => s.status === 'available').length,
+        rating: 0,
+        photoUrl: f.photos?.[0]?.url || '',
+      };
+    });
   }
 
   /**
    * Fallback Alternatives when 0 exact matches occur (GET /api/v1/search/fallback).
    */
-  public getFallback(location?: string): FallbackSuggestionsResponse {
+  public async getFallback(location?: string, tenantId = 'default'): Promise<FallbackSuggestionsResponse> {
+    const inventory = await this.facilitiesService.getSearchInventory(tenantId);
+    const alternatives = inventory.facilities.filter((f) => f.status === 'published').slice(0, 3).map((f) => {
+      const spaces = inventory.spaces.filter((s) => s.facilityId === f.id && s.isActive);
+      const rates = spaces.map((s) => s.hourlyRateInr).filter((rate) => Number.isFinite(rate) && rate > 0);
+      return {
+        id: f.id,
+        name: f.name,
+        distanceMeters: 0,
+        availableSpaces: spaces.filter((s) => s.status === 'available').length,
+        startingPriceInr: rates.length ? Math.min(...rates) : 0,
+        coordinates: { latitude: f.latitude, longitude: f.longitude },
+      };
+    });
     return {
-      searchQuery: location || 'Anna Nagar West',
-      message: 'No exact matches within current radius. Broaden radius or explore neighboring transit hubs.',
-      suggestedRadiusKm: 3.5,
-      alternativeHubs: [
-        {
-          id: 'alt-koyambedu',
-          name: 'Koyambedu CMBT Multi-Level Parking',
-          distanceMeters: 1400,
-          availableSpaces: 18,
-          startingPriceInr: 30,
-          coordinates: { latitude: 13.0700, longitude: 80.1900 },
-        },
-        {
-          id: 'alt-shenoy',
-          name: 'Shenoy Nagar Metro Station Basements',
-          distanceMeters: 1800,
-          availableSpaces: 12,
-          startingPriceInr: 35,
-          coordinates: { latitude: 13.0780, longitude: 80.2250 },
-        },
-        {
-          id: 'alt-kilpauk',
-          name: 'Kilpauk Medical College Covered Facility',
-          distanceMeters: 2200,
-          availableSpaces: 9,
-          startingPriceInr: 40,
-          coordinates: { latitude: 13.0800, longitude: 80.2400 },
-        },
-      ],
+      searchQuery: location || '',
+      message: alternatives.length ? 'Try these published parking facilities.' : 'No published parking facilities are available yet.',
+      suggestedRadiusKm: 5,
+      alternativeHubs: alternatives,
     };
   }
 }

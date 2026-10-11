@@ -31,13 +31,17 @@ export function SearchResultsListMapPage({
 
   const [results, setResults] = useState<SearchResultFacility[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [apiError, setApiError] = useState<string | null>(null);
   const [mapLayer, setMapLayer] = useState<'map' | 'satellite'>('map');
+  const [mapZoom, setMapZoom] = useState<number>(1);
+  const [fetchTrigger, setFetchTrigger] = useState(0);
 
   const client = new ApiClient();
 
   useEffect(() => {
     let isMounted = true;
     setIsLoading(true);
+    setApiError(null);
 
     const queryFilters: SearchFilters = {
       ...initialFilters,
@@ -64,9 +68,9 @@ export function SearchResultsListMapPage({
           setIsLoading(false);
         }
       })
-      .catch(() => {
+      .catch((err: any) => {
         if (isMounted) {
-          // If error or empty fallback to empty state
+          setApiError(err?.message || 'Unable to connect to ParkEazy search service. Please check connection and retry.');
           setIsLoading(false);
         }
       });
@@ -74,7 +78,7 @@ export function SearchResultsListMapPage({
     return () => {
       isMounted = false;
     };
-  }, [searchLocation, vehicle, sortBy, activeChip]);
+  }, [searchLocation, vehicle, sortBy, activeChip, fetchTrigger]);
 
   const selectedFacility = results.find((r) => r.facilityId === selectedFacilityId) || results[0];
 
@@ -292,8 +296,9 @@ export function SearchResultsListMapPage({
               <span className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">
                 Available Spaces ({results.length} found near {searchLocation})
               </span>
-              <span className="text-xs font-medium text-secondary">
-                Live Sensor Telemetry Verified
+              <span className="text-xs font-medium text-primary flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse" />
+                Verified Inventory
               </span>
             </div>
 
@@ -303,19 +308,51 @@ export function SearchResultsListMapPage({
                   <div key={i} className="h-56 bg-surface-container-low rounded-2xl animate-pulse" />
                 ))}
               </div>
+            ) : apiError ? (
+              <div className="p-8 text-center bg-surface-container-lowest rounded-2xl border border-error/30 space-y-3">
+                <div className="w-12 h-12 rounded-full bg-error-container text-on-error-container flex items-center justify-center mx-auto">
+                  <span className="material-symbols-outlined text-[26px]">wifi_off</span>
+                </div>
+                <h3 className="font-bold text-base text-on-surface">Search Query Interrupted</h3>
+                <p className="text-xs text-on-surface-variant max-w-md mx-auto">
+                  {apiError}
+                </p>
+                <div className="pt-2 flex items-center justify-center gap-3">
+                  <button
+                    onClick={() => setFetchTrigger((prev) => prev + 1)}
+                    className="px-4 py-2 rounded-lg bg-primary text-on-primary text-xs font-bold hover:bg-primary-container cursor-pointer shadow-xs"
+                  >
+                    Retry Search Query
+                  </button>
+                  <button
+                    onClick={() => onNavigate('/search/permission')}
+                    className="px-3 py-2 rounded-lg border border-outline-variant text-xs font-semibold text-on-surface-variant hover:bg-surface-container cursor-pointer"
+                  >
+                    Run Diagnostics
+                  </button>
+                </div>
+              </div>
             ) : results.length === 0 ? (
               <div className="p-8 text-center bg-surface-container-lowest rounded-2xl border border-outline-variant/30 space-y-3">
                 <span className="material-symbols-outlined text-[40px] text-outline">search_off</span>
-                <h3 className="font-bold text-base text-on-surface">No exact spots for this filter</h3>
-                <p className="text-xs text-on-surface-variant">
-                  Try broadening your distance radius or clearing strict amenity filters.
+                <h3 className="font-bold text-base text-on-surface">No spaces matching your exact filters</h3>
+                <p className="text-xs text-on-surface-variant max-w-md mx-auto">
+                  We could not find any active spaces matching your selected criteria near {searchLocation}.
                 </p>
-                <button
-                  onClick={() => onNavigate('/search/empty')}
-                  className="px-4 py-2 rounded-lg bg-primary text-on-primary text-xs font-bold"
-                >
-                  View Alternative Suggestions
-                </button>
+                <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+                  <button
+                    onClick={() => setActiveChip(null)}
+                    className="px-3 py-1.5 rounded-lg border border-primary text-primary text-xs font-bold hover:bg-primary/5 cursor-pointer"
+                  >
+                    Clear Filter Chips
+                  </button>
+                  <button
+                    onClick={() => onNavigate('/search/empty')}
+                    className="px-4 py-1.5 rounded-lg bg-primary text-on-primary text-xs font-bold hover:bg-primary-container cursor-pointer shadow-xs"
+                  >
+                    View Alternative Suggestions
+                  </button>
+                </div>
               </div>
             ) : (
               results.map((item) => (
@@ -468,66 +505,102 @@ export function SearchResultsListMapPage({
 
             {/* Stylized Vector Map Visualizer */}
             <div className="relative w-full flex-1 bg-surface-container-high overflow-hidden select-none">
-              {/* Road grid lines SVG */}
-              <svg className="absolute inset-0 w-full h-full opacity-30 pointer-events-none" xmlns="http://www.w3.org/2000/svg">
-                <defs>
-                  <pattern id="road-grid" width="100" height="100" patternUnits="userSpaceOnUse">
-                    <path d="M 100 0 L 0 0 0 100" fill="none" stroke="currentColor" strokeWidth="2" className="text-on-surface" />
-                    <path d="M 50 0 L 50 100 M 0 50 L 100 50" fill="none" stroke="currentColor" strokeDasharray="3 3" strokeWidth="1" className="text-outline-variant" />
-                  </pattern>
-                </defs>
-                <rect width="100%" height="100%" fill="url(#road-grid)" />
-                <line x1="0" y1="150" x2="600" y2="450" stroke="currentColor" strokeWidth="6" className="text-primary/20" />
-                <line x1="80" y1="0" x2="500" y2="700" stroke="currentColor" strokeWidth="6" className="text-secondary/20" />
-              </svg>
-
-              {/* Current User Epicenter Pin */}
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center pointer-events-none z-10">
-                <span className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center animate-ping" />
-                <div className="-mt-6 w-5 h-5 rounded-full bg-primary text-on-primary flex items-center justify-center shadow-md">
-                  <span className="material-symbols-outlined text-[13px]">person_pin</span>
-                </div>
-                <span className="bg-surface-container-lowest/90 px-2 py-0.5 rounded text-[10px] font-bold text-on-surface shadow-xs mt-1">
-                  You are here
-                </span>
+              {/* Map Floating Controls (Zoom & Recenter) */}
+              <div className="absolute top-4 right-4 z-20 flex flex-col gap-1.5 pointer-events-auto">
+                <button
+                  type="button"
+                  onClick={() => setMapZoom((prev) => Math.min(prev + 0.2, 2.0))}
+                  aria-label="Zoom in"
+                  className="w-8 h-8 rounded-lg bg-surface-container-lowest/90 backdrop-blur-md shadow-md border border-outline-variant/30 flex items-center justify-center text-on-surface hover:bg-surface-container transition-colors cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-[18px]">add</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMapZoom((prev) => Math.max(prev - 0.2, 0.6))}
+                  aria-label="Zoom out"
+                  className="w-8 h-8 rounded-lg bg-surface-container-lowest/90 backdrop-blur-md shadow-md border border-outline-variant/30 flex items-center justify-center text-on-surface hover:bg-surface-container transition-colors cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-[18px]">remove</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMapZoom(1);
+                    if (results.length > 0) setSelectedFacilityId(results[0].facilityId);
+                  }}
+                  aria-label="Recenter location"
+                  className="w-8 h-8 rounded-lg bg-surface-container-lowest/90 backdrop-blur-md shadow-md border border-outline-variant/30 flex items-center justify-center text-primary hover:bg-surface-container transition-colors cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-[18px]">my_location</span>
+                </button>
               </div>
 
-              {/* Interactive Facility Pins */}
-              {results.map((fac, idx) => {
-                const offsets = [
-                  { top: '35%', left: '42%' },
-                  { top: '65%', left: '62%' },
-                  { top: '28%', left: '72%' },
-                  { top: '75%', left: '30%' },
-                ];
-                const pos = offsets[idx % offsets.length];
-                const isSelected = selectedFacilityId === fac.facilityId;
+              <div
+                className="w-full h-full relative"
+                style={{ transform: `scale(${mapZoom})`, transformOrigin: 'center center', transition: 'transform 0.2s ease-out' }}
+              >
+                {/* Road grid lines SVG */}
+                <svg className="absolute inset-0 w-full h-full opacity-30 pointer-events-none" xmlns="http://www.w3.org/2000/svg">
+                  <defs>
+                    <pattern id="road-grid" width="100" height="100" patternUnits="userSpaceOnUse">
+                      <path d="M 100 0 L 0 0 0 100" fill="none" stroke="currentColor" strokeWidth="2" className="text-on-surface" />
+                      <path d="M 50 0 L 50 100 M 0 50 L 100 50" fill="none" stroke="currentColor" strokeDasharray="3 3" strokeWidth="1" className="text-outline-variant" />
+                    </pattern>
+                  </defs>
+                  <rect width="100%" height="100%" fill="url(#road-grid)" />
+                  <line x1="0" y1="150" x2="600" y2="450" stroke="currentColor" strokeWidth="6" className="text-primary/20" />
+                  <line x1="80" y1="0" x2="500" y2="700" stroke="currentColor" strokeWidth="6" className="text-secondary/20" />
+                </svg>
 
-                return (
-                  <div
-                    key={fac.facilityId}
-                    style={{ top: pos.top, left: pos.left }}
-                    onClick={() => setSelectedFacilityId(fac.facilityId)}
-                    className="absolute -translate-x-1/2 -translate-y-1/2 z-20 flex flex-col items-center cursor-pointer group"
-                  >
-                    <div
-                      className={`px-2.5 py-1 rounded-full font-bold text-xs flex items-center gap-1 shadow-md transition-all ${
-                        isSelected
-                          ? 'bg-primary text-on-primary scale-110 ring-4 ring-primary/20'
-                          : 'bg-surface-container-lowest text-on-surface hover:scale-105 border border-outline-variant/40'
-                      }`}
-                    >
-                      <span className="material-symbols-outlined text-[14px]">local_parking</span>
-                      <span>₹{fac.hourlyRateInr}</span>
-                    </div>
-                    <div
-                      className={`w-2 h-2 rotate-45 -mt-1 shadow-sm ${
-                        isSelected ? 'bg-primary' : 'bg-surface-container-lowest'
-                      }`}
-                    />
+                {/* Current User Epicenter Pin */}
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center pointer-events-none z-10">
+                  <span className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center animate-ping" />
+                  <div className="-mt-6 w-5 h-5 rounded-full bg-primary text-on-primary flex items-center justify-center shadow-md">
+                    <span className="material-symbols-outlined text-[13px]">person_pin</span>
                   </div>
-                );
-              })}
+                  <span className="bg-surface-container-lowest/90 px-2 py-0.5 rounded text-[10px] font-bold text-on-surface shadow-xs mt-1">
+                    You are here
+                  </span>
+                </div>
+
+                {/* Interactive Facility Pins */}
+                {results.map((fac, idx) => {
+                  const offsets = [
+                    { top: '35%', left: '42%' },
+                    { top: '65%', left: '62%' },
+                    { top: '28%', left: '72%' },
+                    { top: '75%', left: '30%' },
+                  ];
+                  const pos = offsets[idx % offsets.length];
+                  const isSelected = selectedFacilityId === fac.facilityId;
+
+                  return (
+                    <div
+                      key={fac.facilityId}
+                      style={{ top: pos.top, left: pos.left }}
+                      onClick={() => setSelectedFacilityId(fac.facilityId)}
+                      className="absolute -translate-x-1/2 -translate-y-1/2 z-20 flex flex-col items-center cursor-pointer group"
+                    >
+                      <div
+                        className={`px-2.5 py-1 rounded-full font-bold text-xs flex items-center gap-1 shadow-md transition-all ${
+                          isSelected
+                            ? 'bg-primary text-on-primary scale-110 ring-4 ring-primary/20'
+                            : 'bg-surface-container-lowest text-on-surface hover:scale-105 border border-outline-variant/40'
+                        }`}
+                      >
+                        <span className="material-symbols-outlined text-[14px]">local_parking</span>
+                        <span>₹{fac.hourlyRateInr}</span>
+                      </div>
+                      <div
+                        className={`w-2 h-2 rotate-45 -mt-1 shadow-sm ${
+                          isSelected ? 'bg-primary' : 'bg-surface-container-lowest'
+                        }`}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
 
               {/* Selected Facility Preview Card (Bottom Floating Drawer) */}
               {selectedFacility && (

@@ -4,6 +4,7 @@ import {
   BadRequestException,
   ServiceUnavailableException,
   Logger,
+  Inject,
 } from '@nestjs/common';
 import crypto from 'crypto';
 import { DatabaseService } from '../../database/database.service.js';
@@ -21,8 +22,8 @@ export class UsersService {
   private testHostProfiles: Map<string, HostProfile> = new Map();
 
   constructor(
-    private readonly databaseService: DatabaseService,
-    private readonly authService: AuthService
+    @Inject(DatabaseService) private readonly databaseService: DatabaseService,
+    @Inject(AuthService) private readonly authService: AuthService
   ) {
     if (process.env.NODE_ENV !== 'production') {
       this.testHostProfiles.set(

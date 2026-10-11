@@ -6,6 +6,7 @@ import {
   ForbiddenException,
   ServiceUnavailableException,
   Logger,
+  Inject,
 } from '@nestjs/common';
 import crypto from 'crypto';
 import { DatabaseService } from '../../database/database.service.js';
@@ -68,7 +69,7 @@ export class AuthService {
   private testResetTokens: Map<string, { userId: string; tenantId: string; tokenHash: string; expiresAt: number; used: boolean }> = new Map();
   private testSessions: Map<string, { userId: string; tenantId: string; refreshTokenHash: string; expiresAt: number; revoked: boolean }> = new Map();
 
-  constructor(private readonly databaseService: DatabaseService) {
+  constructor(@Inject(DatabaseService) private readonly databaseService: DatabaseService) {
     this.jwtSecret = validateJwtSecret();
     this.initializeDevFixtureAccounts();
   }

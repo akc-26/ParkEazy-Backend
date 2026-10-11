@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Pool, PoolClient } from 'pg';
-import { SEED_TENANT, SEED_USERS, SEED_FACILITIES, SeedSpace } from './seed.data';
+import { SEED_TENANT, SEED_USERS, SEED_FACILITIES, SeedSpace } from './seed.data.js';
 
 export interface SeedResult {
   tenant: string;

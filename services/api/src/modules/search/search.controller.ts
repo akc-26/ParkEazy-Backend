@@ -6,6 +6,8 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  Headers,
+  Inject,
 } from '@nestjs/common';
 import { SearchService } from './search.service.js';
 import {
@@ -18,7 +20,7 @@ import {
 
 @Controller('search')
 export class SearchController {
-  constructor(private readonly searchService: SearchService) {}
+  constructor(@Inject(SearchService) private readonly searchService: SearchService) {}
 
   /**
    * High-performance PostGIS & Geo-spatial radius search endpoint
@@ -27,9 +29,10 @@ export class SearchController {
   @Post('query')
   @HttpCode(HttpStatus.OK)
   async querySearch(
-    @Body() payload: SearchQueryPayload
+    @Body() payload: SearchQueryPayload,
+    @Headers('x-tenant-id') tenantId = 'default'
   ): Promise<{ data: SearchResponse }> {
-    const data = await this.searchService.querySearch(payload);
+    const data = await this.searchService.querySearch(payload, tenantId);
     return { data };
   }
 
@@ -38,10 +41,11 @@ export class SearchController {
    * GET /api/v1/search/suggestions
    */
   @Get('suggestions')
-  getSuggestions(
-    @Query('q') query?: string
-  ): { data: LocationSuggestion[] } {
-    const data = this.searchService.getSuggestions(query);
+  async getSuggestions(
+    @Query('q') query?: string,
+    @Headers('x-tenant-id') tenantId = 'default'
+  ): Promise<{ data: LocationSuggestion[] }> {
+    const data = await this.searchService.getSuggestions(query, tenantId);
     return { data };
   }
 
@@ -50,8 +54,8 @@ export class SearchController {
    * GET /api/v1/search/explore
    */
   @Get('explore')
-  getExploreCatalog(): { data: ExploreCatalogHub[] } {
-    const data = this.searchService.getExploreCatalog();
+  async getExploreCatalog(@Headers('x-tenant-id') tenantId = 'default'): Promise<{ data: ExploreCatalogHub[] }> {
+    const data = await this.searchService.getExploreCatalog(tenantId);
     return { data };
   }
 
@@ -60,10 +64,11 @@ export class SearchController {
    * GET /api/v1/search/fallback
    */
   @Get('fallback')
-  getFallback(
-    @Query('location') location?: string
-  ): { data: FallbackSuggestionsResponse } {
-    const data = this.searchService.getFallback(location);
+  async getFallback(
+    @Query('location') location?: string,
+    @Headers('x-tenant-id') tenantId = 'default'
+  ): Promise<{ data: FallbackSuggestionsResponse }> {
+    const data = await this.searchService.getFallback(location, tenantId);
     return { data };
   }
 }

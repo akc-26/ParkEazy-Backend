@@ -1,7 +1,7 @@
-import { Injectable, Optional } from '@nestjs/common';
+import { Injectable, Optional, Inject } from '@nestjs/common';
 import { HealthCheckResponse } from '@parkeazy/shared-types';
 import { API_CONFIG } from '@parkeazy/config';
-import { DatabaseService, DatabaseHealthStatus } from '../database/database.service';
+import { DatabaseService, DatabaseHealthStatus } from '../database/database.service.js';
 
 export interface ExtendedHealthCheckResponse extends HealthCheckResponse {
   details: {
@@ -16,7 +16,7 @@ export interface ExtendedHealthCheckResponse extends HealthCheckResponse {
 export class HealthService {
   private readonly startTime = Date.now();
 
-  constructor(@Optional() private readonly databaseService?: DatabaseService) {}
+  constructor(@Optional() @Inject(DatabaseService) private readonly databaseService?: DatabaseService) {}
 
   getHealth(): ExtendedHealthCheckResponse {
     const uptimeSeconds = Math.floor((Date.now() - this.startTime) / 1000);

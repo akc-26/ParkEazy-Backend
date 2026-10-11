@@ -3,6 +3,7 @@ import {
   CanActivate,
   ExecutionContext,
   UnauthorizedException,
+  Inject,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { IS_PUBLIC_KEY } from './roles.decorator.js';
@@ -12,7 +13,7 @@ import { verifyJwt } from '../jwt.util.js';
 export class JwtAuthGuard implements CanActivate {
   private readonly jwtSecret: string;
 
-  constructor(private readonly reflector: Reflector) {
+  constructor(@Inject(Reflector) private readonly reflector: Reflector) {
     this.jwtSecret = process.env.JWT_SECRET || 'parkeazy-development-super-secret-key-2026!';
   }
 

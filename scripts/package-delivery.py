@@ -2,7 +2,8 @@ import os
 import sys
 import zipfile
 
-OUTPUT_ZIP = "/app/applet/dist-delivery/parkeazy-ph05-monorepo.zip"
+OUTPUT_ZIP = "/app/applet/dist-delivery/parkeazy-ph06-monorepo.zip"
+OUTPUT_ZIP_ALT = "/app/applet/dist-delivery/parkeazy-ph05-monorepo.zip"
 ROOT_DIR = "/app/applet"
 
 EXCLUDE_DIRS = {
@@ -51,6 +52,8 @@ def create_monorepo_zip():
 
     zip_size_bytes = os.path.getsize(OUTPUT_ZIP)
     zip_size_mb = zip_size_bytes / (1024 * 1024)
+    import shutil
+    shutil.copyfile(OUTPUT_ZIP, OUTPUT_ZIP_ALT)
     print(f"✅ Successfully created: {OUTPUT_ZIP}")
     print(f"   Files packaged: {file_count}")
     print(f"   Uncompressed:   {total_uncompressed_bytes / (1024 * 1024):.2f} MB")

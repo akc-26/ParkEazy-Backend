@@ -170,10 +170,11 @@ export function CustomerLandingPage({ currentUser, onNavigate, onLogout }: Props
                 <div className="flex flex-col justify-end">
                   <button
                     onClick={() => {
+                      const searchDest = `/search?q=${encodeURIComponent(searchLocation)}&vehicle=${selectedVehicle}`;
                       if (!currentUser) {
-                        onNavigate('/login');
+                        onNavigate(`/login?returnUrl=${encodeURIComponent(searchDest)}`);
                       } else {
-                        onNavigate(`/search?q=${encodeURIComponent(searchLocation)}&vehicle=${selectedVehicle}`);
+                        onNavigate(searchDest);
                       }
                     }}
                     className="w-full h-11 bg-[#0F766E] hover:bg-[#005c55] text-white text-sm font-bold rounded-lg shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer"

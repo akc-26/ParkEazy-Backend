@@ -89,7 +89,7 @@ ParkEazy-Backend/
 
 ## 4. Software Requirements
 
-- **Node.js**: v20.x or v22.x LTS (Recommended: Node 22)
+- **Node.js**: v22.x LTS recommended; Node.js v24 may also work depending on installed dependency compatibility
 - **npm**: v10.x or higher
 - **Git**: v2.40 or higher
 - **OS**: Windows 10/11 (with Windows PowerShell), macOS, or Linux
@@ -107,8 +107,28 @@ Copy-Item .env.example .env
 
 ### Step 2: Install Dependencies
 ```powershell
-npm install
+npm ci
 ```
+
+### Step 3: Start the API (separate terminal)
+```powershell
+npm run dev:api
+```
+
+The API listens on port 4000 by default. Keep this terminal open while testing registration/login. The shared `@parkeazy/validation` workspace package is a direct API dependency and is exported through its package entry point.
+
+### Step 4: Database-backed inventory
+
+For persistent inventory, configure `DATABASE_URL` or `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, and `DB_NAME` in `.env`, then run:
+
+```powershell
+npm run db:migrate
+npm run db:seed
+```
+
+The seed command creates clearly identified starter/test records in the database; review `services/api/src/database/seed.data.ts` before using any seeded accounts or parking records outside local development.
+
+**Demo mode:** set `PARKEAZY_DEMO_MODE=true` only when you intentionally want in-memory demonstration inventory. Demo facilities are not persisted and must not be treated as live listings. Without a reachable database or explicit demo mode, search/listing APIs fail clearly instead of presenting fabricated inventory.
 
 ---
 

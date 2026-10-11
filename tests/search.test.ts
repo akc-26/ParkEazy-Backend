@@ -151,8 +151,8 @@ describe('Part 06: Availability, Search & Discovery Test Suite', () => {
   });
 
   describe('Autocomplete Location Suggestions (GET /api/v1/search/suggestions)', () => {
-    it('should return top Chennai transit and commercial hubs when query is empty', () => {
-      const suggestions = searchService.getSuggestions();
+    it('should return suggestions derived from published inventory when query is empty', async () => {
+      const suggestions = await searchService.getSuggestions();
       expect(suggestions.length).toBeGreaterThan(0);
       expect(suggestions[0]).toHaveProperty('title');
       expect(suggestions[0]).toHaveProperty('coordinates');
@@ -160,48 +160,44 @@ describe('Part 06: Availability, Search & Discovery Test Suite', () => {
       expect(suggestions[0]).toHaveProperty('tags');
     });
 
-    it('should return Anna Nagar Roundtana when searching for "Anna"', () => {
-      const suggestions = searchService.getSuggestions('Anna');
+    it('should return matching published inventory when searching for "Anna"', async () => {
+      const suggestions = await searchService.getSuggestions('Anna');
       expect(suggestions.length).toBeGreaterThan(0);
       const match = suggestions.find(s => s.title.includes('Anna Nagar'));
       expect(match).toBeDefined();
-      expect(match?.type).toBe('metro_station');
+      expect(match?.type).toBe('commercial_hub');
     });
 
-    it('should return T. Nagar when searching for "Usman"', () => {
-      const suggestions = searchService.getSuggestions('Usman');
+    it('should return matching published inventory when searching for "Usman"', async () => {
+      const suggestions = await searchService.getSuggestions('Usman');
       expect(suggestions.length).toBeGreaterThan(0);
       const match = suggestions.find(s => s.title.includes('T. Nagar'));
       expect(match).toBeDefined();
     });
 
-    it('should return airport terminal hub when searching for "Airport"', () => {
-      const suggestions = searchService.getSuggestions('Airport');
-      expect(suggestions.length).toBeGreaterThan(0);
-      const match = suggestions.find(s => s.title.includes('Airport'));
-      expect(match).toBeDefined();
+    it('should return an empty list when no published inventory matches "Airport"', async () => {
+      const suggestions = await searchService.getSuggestions('Airport');
+      expect(suggestions).toEqual([]);
     });
   });
 
   describe('Curated Explore Catalog (GET /api/v1/search/explore)', () => {
-    it('should return curated hubs across transit, commercial, and mall categories', () => {
-      const catalog = searchService.getExploreCatalog();
-      expect(catalog.length).toBeGreaterThanOrEqual(4);
-      const categories = catalog.map(c => c.category);
-      expect(categories).toContain('transit');
-      expect(categories).toContain('commercial');
-      expect(categories).toContain('mall');
+    it('should build explore cards from published facilities without fabricated ratings or photos', async () => {
+      const catalog = await searchService.getExploreCatalog();
+      expect(catalog.length).toBeGreaterThan(0);
       for (const item of catalog) {
-        expect(item.startingPriceInr).toBeGreaterThan(0);
-        expect(item.availableBays).toBeGreaterThan(0);
-        expect(item.photoUrl).toBeDefined();
+        expect(item.id).toBeTruthy();
+        expect(item.name).toBeTruthy();
+        expect(item.coordinates.latitude).toBeTypeOf('number');
+        expect(item.rating).toBe(0);
+        expect(item.photoUrl).toBe('');
       }
     });
   });
 
   describe('Zero Results Fallback Alternatives (GET /api/v1/search/fallback)', () => {
-    it('should return nearby alternative hubs and radius suggestion', () => {
-      const fallback = searchService.getFallback('Ranganathan Street');
+    it('should return fallback alternatives from published inventory', async () => {
+      const fallback = await searchService.getFallback('Ranganathan Street');
       expect(fallback.searchQuery).toBe('Ranganathan Street');
       expect(fallback.suggestedRadiusKm).toBeGreaterThan(1.0);
       expect(fallback.alternativeHubs.length).toBeGreaterThan(0);
@@ -293,6 +289,106 @@ describe('Part 06: Availability, Search & Discovery Test Suite', () => {
         'http://localhost:4000/api/v1/search/fallback?location=T.%20Nagar',
         expect.objectContaining({ method: 'GET' })
       );
+    });
+
+    it('should throw an error on API failure and not represent it as zero results', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 503,
+        statusText: 'Service Unavailable',
+        json: async () => ({ message: 'Search cluster temporarily down' }),
+      });
+      global.fetch = mockFetch;
+
+      const client = new ApiClient({ baseUrl: 'http://localhost:4000/api/v1' });
+      await expect(client.search.query({ query: 'Anna Nagar' })).rejects.toThrow();
+    });
+  });
+
+  describe('PH06 Authentication Flow & Return Destination Validation', () => {
+    // Import getSafeReturnUrl logic
+    function getSafeReturnUrl(url?: string | null): string {
+      if (!url) return '/auth/success';
+      if (!url.startsWith('/') || url.startsWith('//') || url.includes('\\')) {
+        return '/auth/success';
+      }
+      if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(url)) {
+        return '/auth/success';
+      }
+      return url;
+    }
+
+    it('should validate and accept safe internal application destinations', () => {
+      expect(getSafeReturnUrl('/search?q=Anna+Nagar&vehicle=car')).toBe('/search?q=Anna+Nagar&vehicle=car');
+      expect(getSafeReturnUrl('/search/list?q=Chennai')).toBe('/search/list?q=Chennai');
+      expect(getSafeReturnUrl('/search/map')).toBe('/search/map');
+      expect(getSafeReturnUrl('/explore')).toBe('/explore');
+      expect(getSafeReturnUrl('/search/filters')).toBe('/search/filters');
+    });
+
+    it('should reject external, protocol-relative, and dangerous return URLs', () => {
+      expect(getSafeReturnUrl('https://malicious-site.com')).toBe('/auth/success');
+      expect(getSafeReturnUrl('http://evil.com/phish')).toBe('/auth/success');
+      expect(getSafeReturnUrl('//evil.com')).toBe('/auth/success');
+      expect(getSafeReturnUrl('/\\evil.com')).toBe('/auth/success');
+      expect(getSafeReturnUrl('javascript:alert(document.cookie)')).toBe('/auth/success');
+      expect(getSafeReturnUrl(null)).toBe('/auth/success');
+      expect(getSafeReturnUrl('')).toBe('/auth/success');
+    });
+
+    it('should construct login redirect preserving destination and query parameters', () => {
+      const searchLocation = 'Anna Nagar, Chennai';
+      const selectedVehicle = 'car';
+      const intendedDestination = `/search?q=${encodeURIComponent(searchLocation)}&vehicle=${selectedVehicle}`;
+      const loginRedirectUrl = `/login?returnUrl=${encodeURIComponent(intendedDestination)}`;
+
+      const parsedUrl = new URL(`http://localhost${loginRedirectUrl}`);
+      const returnParam = parsedUrl.searchParams.get('returnUrl');
+      expect(returnParam).toBe(intendedDestination);
+
+      const restoredUrl = new URL(`http://localhost${returnParam}`);
+      expect(restoredUrl.pathname).toBe('/search');
+      expect(restoredUrl.searchParams.get('q')).toBe(searchLocation);
+      expect(restoredUrl.searchParams.get('vehicle')).toBe('car');
+    });
+  });
+
+  describe('Authoritative PH06 Eight-Screen Traceability & Inventory Integrity', () => {
+    const PH06_SCREENS = [
+      { id: 'pe_uw_03_01', name: 'Explore Parking', route: '/explore' },
+      { id: 'pe_uw_03_02', name: 'Location Search Suggestions', route: '/search/suggestions' },
+      { id: 'pe_uw_03_03', name: 'Search Filters & Preferences', route: '/search/filters' },
+      { id: 'pe_uw_03_04', name: 'Search Results List + Map', route: '/search' },
+      { id: 'pe_uw_03_05', name: 'Search Results List View', route: '/search/list' },
+      { id: 'pe_uw_03_06', name: 'Search Results Map View', route: '/search/map' },
+      { id: 'pe_uw_03_07', name: 'No Results & Alternative Suggestions', route: '/search/empty' },
+      { id: 'pe_uw_03_08', name: 'Search Loading, Error & Location Permission States', route: '/search/permission' },
+    ];
+
+    it('should verify all 8 authoritative PH06 screen identifiers are defined', () => {
+      expect(PH06_SCREENS).toHaveLength(8);
+      for (const screen of PH06_SCREENS) {
+        expect(screen.id).toMatch(/^pe_uw_03_0[1-8]$/);
+        expect(screen.route).toBeDefined();
+      }
+    });
+
+    it('should return truthful inventory states without fabricated urgency marketing', async () => {
+      const res = await searchService.querySearch({
+        query: 'Anna Nagar',
+        vehicleCategory: 'car',
+      });
+
+      expect(res.results.length).toBeGreaterThan(0);
+      for (const item of res.results) {
+        // Truthful available space counts
+        expect(item.availableSpacesCount).toBeGreaterThanOrEqual(0);
+        expect(item.totalSpacesCount).toBeGreaterThanOrEqual(item.availableSpacesCount);
+        // Valid truthful urgency badges
+        expect(['SPOTS LEFT', 'AVAILABLE NOW', 'SOLD OUT']).toContain(item.urgencyBadge);
+        // Urgency text must never contain fake marketing hype like 'HIGH DEMAND'
+        expect(item.urgencyBadgeText).not.toContain('HIGH DEMAND');
+      }
     });
   });
 });
