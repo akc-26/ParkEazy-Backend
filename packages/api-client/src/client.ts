@@ -27,6 +27,17 @@ import {
   LocationSuggestion,
   ExploreCatalogHub,
   FallbackSuggestionsResponse,
+  Booking,
+  BookingDetailsResponse,
+  ReservationHold,
+  PricingCalculationResult,
+  CreateBookingPayload,
+  TaxInvoiceReceipt,
+  HostEarningsSummary,
+  AdminPlatformOverview,
+  UserVehicle,
+  PaymentTransaction,
+  HostSettlement,
 } from '@parkeazy/shared-types';
 
 export interface ApiClientOptions {
@@ -332,6 +343,169 @@ export class ParkEazyApiClient {
     getFallback: async (location?: string): Promise<FallbackSuggestionsResponse> => {
       const queryParam = location ? `?location=${encodeURIComponent(location)}` : '';
       const res = await this.get<{ data: FallbackSuggestionsResponse }>(`/search/fallback${queryParam}`);
+      return res.data || (res as any);
+    },
+  };
+
+  // --- Booking Lifecycle Subsystem ---
+  public readonly bookings = {
+    calculatePricing: async (payload: { spaceId: string; startsAt: string; endsAt: string }): Promise<PricingCalculationResult> => {
+      const res = await this.post<{ data: PricingCalculationResult }>('/bookings/calculate', payload);
+      return res.data || (res as any);
+    },
+    hold: async (payload: { spaceId: string; startsAt: string; endsAt: string }): Promise<ReservationHold> => {
+      const res = await this.post<{ data: ReservationHold }>('/bookings/hold', payload);
+      return res.data || (res as any);
+    },
+    create: async (payload: CreateBookingPayload): Promise<Booking> => {
+      const res = await this.post<{ data: Booking }>('/bookings', payload);
+      return res.data || (res as any);
+    },
+    getMyBookings: async (): Promise<BookingDetailsResponse[]> => {
+      const res = await this.get<{ data: BookingDetailsResponse[] }>('/bookings/my');
+      return res.data || (res as any);
+    },
+    get: async (id: string): Promise<BookingDetailsResponse> => {
+      const res = await this.get<{ data: BookingDetailsResponse }>(`/bookings/${id}`);
+      return res.data || (res as any);
+    },
+    checkIn: async (id: string): Promise<Booking> => {
+      const res = await this.post<{ data: Booking }>(`/bookings/${id}/check-in`);
+      return res.data || (res as any);
+    },
+    checkOut: async (id: string): Promise<Booking> => {
+      const res = await this.post<{ data: Booking }>(`/bookings/${id}/check-out`);
+      return res.data || (res as any);
+    },
+    extend: async (id: string, additionalHours: number): Promise<Booking> => {
+      const res = await this.post<{ data: Booking }>(`/bookings/${id}/extend`, { additionalHours });
+      return res.data || (res as any);
+    },
+    cancel: async (id: string, reason?: string): Promise<Booking & { refundAmountInr?: number }> => {
+      const res = await this.post<{ data: Booking & { refundAmountInr?: number } }>(`/bookings/${id}/cancel`, { reason });
+      return res.data || (res as any);
+    },
+    getReceipt: async (id: string): Promise<TaxInvoiceReceipt> => {
+      const res = await this.get<{ data: TaxInvoiceReceipt }>(`/bookings/${id}/receipt`);
+      return res.data || (res as any);
+    },
+  };
+
+  // --- Payments Subsystem ---
+  public readonly payments = {
+    getMethods: async (): Promise<{ id: string; name: string; icon: string; popular?: boolean }[]> => {
+      const res = await this.get<{ data: { id: string; name: string; icon: string; popular?: boolean }[] }>('/payments/methods');
+      return res.data || (res as any);
+    },
+    initiate: async (payload: { bookingId: string; method: string; amountInr: number }): Promise<PaymentTransaction> => {
+      const res = await this.post<{ data: PaymentTransaction }>('/payments/initiate', payload);
+      return res.data || (res as any);
+    },
+    verify: async (payload: { transactionId: string; referenceId: string }): Promise<PaymentTransaction> => {
+      const res = await this.post<{ data: PaymentTransaction }>('/payments/verify', payload);
+      return res.data || (res as any);
+    },
+  };
+
+  // --- User Vehicles & Favorites ---
+  public readonly vehicles = {
+    list: async (): Promise<UserVehicle[]> => {
+      const res = await this.get<{ data: UserVehicle[] }>('/users/me/vehicles');
+      return res.data || (res as any);
+    },
+    add: async (payload: Omit<UserVehicle, 'id' | 'userId' | 'createdAt'>): Promise<UserVehicle> => {
+      const res = await this.post<{ data: UserVehicle }>('/users/me/vehicles', payload);
+      return res.data || (res as any);
+    },
+    delete: async (id: string): Promise<{ success: boolean }> => {
+      const res = await this.delete<{ data: { success: boolean } }>(`/users/me/vehicles/${id}`);
+      return res.data || (res as any);
+    },
+  };
+
+  public readonly favorites = {
+    list: async (): Promise<ParkingFacility[]> => {
+      const res = await this.get<{ data: ParkingFacility[] }>('/users/me/favorites');
+      return res.data || (res as any);
+    },
+    toggle: async (facilityId: string): Promise<{ isFavorited: boolean }> => {
+      const res = await this.post<{ data: { isFavorited: boolean } }>(`/users/me/favorites/${facilityId}/toggle`);
+      return res.data || (res as any);
+    },
+  };
+
+  // --- Host Operations Subsystem ---
+  public readonly hostOps = {
+    getBookings: async (): Promise<BookingDetailsResponse[]> => {
+      const res = await this.get<{ data: BookingDetailsResponse[] }>('/host/bookings');
+      return res.data || (res as any);
+    },
+    getOccupancy: async (): Promise<{ facilityId: string; facilityName: string; totalSpaces: number; occupiedSpaces: number; availableSpaces: number; spaces: any[] }[]> => {
+      const res = await this.get<{ data: any[] }>('/host/occupancy');
+      return res.data || (res as any);
+    },
+    getEarnings: async (): Promise<HostEarningsSummary> => {
+      const res = await this.get<{ data: HostEarningsSummary }>('/host/earnings');
+      return res.data || (res as any);
+    },
+    getLedger: async (): Promise<any[]> => {
+      const res = await this.get<{ data: any[] }>('/host/ledger');
+      return res.data || (res as any);
+    },
+    getPayouts: async (): Promise<HostSettlement[]> => {
+      const res = await this.get<{ data: HostSettlement[] }>('/host/payouts');
+      return res.data || (res as any);
+    },
+    requestPayout: async (): Promise<HostSettlement> => {
+      const res = await this.post<{ data: HostSettlement }>('/host/payouts/request');
+      return res.data || (res as any);
+    },
+  };
+
+  public readonly host = this.hostOps;
+
+  // --- Web Admin Governance Subsystem ---
+  public readonly admin = {
+    getOverview: async (): Promise<AdminPlatformOverview> => {
+      const res = await this.get<{ data: AdminPlatformOverview }>('/admin/overview');
+      return res.data || (res as any);
+    },
+    getUsers: async (role?: string): Promise<UserAccount[]> => {
+      const query = role ? `?role=${role}` : '';
+      const res = await this.get<{ data: UserAccount[] }>(`/admin/users${query}`);
+      return res.data || (res as any);
+    },
+    updateUserStatus: async (userId: string, status: string): Promise<UserAccount> => {
+      const res = await this.put<{ data: UserAccount }>(`/admin/users/${userId}/status`, { status });
+      return res.data || (res as any);
+    },
+    getHosts: async (): Promise<(HostProfile & { email?: string; fullName?: string; phone?: string })[]> => {
+      const res = await this.get<{ data: any[] }>('/admin/hosts');
+      return res.data || (res as any);
+    },
+    approveHost: async (hostId: string): Promise<HostProfile> => {
+      const res = await this.post<{ data: HostProfile }>(`/admin/hosts/${hostId}/approve`);
+      return res.data || (res as any);
+    },
+    rejectHost: async (hostId: string, reason?: string): Promise<HostProfile> => {
+      const res = await this.post<{ data: HostProfile }>(`/admin/hosts/${hostId}/reject`, { reason });
+      return res.data || (res as any);
+    },
+    getFacilities: async (): Promise<ParkingFacility[]> => {
+      const res = await this.get<{ data: ParkingFacility[] }>('/admin/facilities');
+      return res.data || (res as any);
+    },
+    moderateFacility: async (facilityId: string, status: string): Promise<ParkingFacility> => {
+      const res = await this.post<{ data: ParkingFacility }>(`/admin/facilities/${facilityId}/moderate`, { status });
+      return res.data || (res as any);
+    },
+    getBookings: async (status?: string): Promise<BookingDetailsResponse[]> => {
+      const query = status ? `?status=${status}` : '';
+      const res = await this.get<{ data: BookingDetailsResponse[] }>(`/admin/bookings${query}`);
+      return res.data || (res as any);
+    },
+    getAuditLogs: async (): Promise<any[]> => {
+      const res = await this.get<{ data: any[] }>('/admin/audit-logs');
       return res.data || (res as any);
     },
   };

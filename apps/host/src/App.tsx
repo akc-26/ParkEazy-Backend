@@ -35,6 +35,9 @@ import { PricingPreviewEarningsEstimatePage } from './pages/PricingPreviewEarnin
 import { BulkPricingScheduleUpdatesPage } from './pages/BulkPricingScheduleUpdatesPage';
 import { AvailabilityConflictChangeReviewPage } from './pages/AvailabilityConflictChangeReviewPage';
 import { PricingAvailabilityChangeHistoryPage } from './pages/PricingAvailabilityChangeHistoryPage';
+// Host Operations & Financials (pe_hw_04_01 to pe_hw_05_06)
+import { HostBookingOperationsOverviewPage } from './pages/HostBookingOperationsOverviewPage';
+import { HostEarningsFinancialOverviewPage } from './pages/HostEarningsFinancialOverviewPage';
 
 interface HostAppProps {
   onNavigateToWebsite?: () => void;
@@ -287,6 +290,16 @@ export function HostPortalContent({ onNavigateToWebsite, onNavigateToAdmin }: Ho
     return <PricingAvailabilityChangeHistoryPage currentUser={currentUser} onNavigate={navigateTo} />;
   }
 
+  // 29. Host Operations & Live Bookings (pe_hw_04_01)
+  if (currentPath === '/host/operations' || currentPath === '/host/bookings') {
+    return <HostBookingOperationsOverviewPage currentUser={currentUser} onNavigate={navigateTo} />;
+  }
+
+  // 30. Host Earnings & Financial Ledger (pe_hw_05_01)
+  if (currentPath === '/host/earnings' || currentPath === '/host/financials' || currentPath === '/host/payouts') {
+    return <HostEarningsFinancialOverviewPage currentUser={currentUser} onNavigate={navigateTo} />;
+  }
+
   // Default: Host Operations Dashboard (`/host` or `/host/`)
   return (
     <div className="min-h-screen flex flex-col bg-[#F8FAFC]">
@@ -324,6 +337,26 @@ export function HostPortalContent({ onNavigateToWebsite, onNavigateToAdmin }: Ho
                 Dashboard
               </button>
               <button
+                onClick={() => navigateTo('/host/operations')}
+                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  currentPath === '/host/operations' || currentPath === '/host/bookings'
+                    ? 'bg-white text-[#0F766E] shadow-xs font-bold'
+                    : 'text-[#64748B] hover:text-[#141B2C]'
+                }`}
+              >
+                Operations
+              </button>
+              <button
+                onClick={() => navigateTo('/host/earnings')}
+                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  currentPath === '/host/earnings' || currentPath === '/host/financials'
+                    ? 'bg-white text-[#0F766E] shadow-xs font-bold'
+                    : 'text-[#64748B] hover:text-[#141B2C]'
+                }`}
+              >
+                Financials
+              </button>
+              <button
                 onClick={() => navigateTo('/host/spaces')}
                 className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
                   currentPath.startsWith('/host/spaces') || currentPath.startsWith('/host/facilities')
@@ -354,9 +387,9 @@ export function HostPortalContent({ onNavigateToWebsite, onNavigateToAdmin }: Ho
 
           {/* RIGHT TOOLS & SCREEN SWITCHER */}
           <div className="flex items-center gap-3">
-            {/* Phase 05 Screen Quick Switcher Dropdown */}
+            {/* Phase 05 & 06 Screen Quick Switcher Dropdown */}
             <div className="hidden lg:flex items-center gap-1.5 bg-[#F0FDFA] border border-[#CCFBF1] px-2.5 py-1 rounded-xl text-xs">
-              <span className="text-[10px] font-bold text-[#0F766E] uppercase font-mono">PH05 Screens:</span>
+              <span className="text-[10px] font-bold text-[#0F766E] uppercase font-mono">Screens:</span>
               <select
                 onChange={(e) => {
                   if (e.target.value) navigateTo(e.target.value);
@@ -365,6 +398,10 @@ export function HostPortalContent({ onNavigateToWebsite, onNavigateToAdmin }: Ho
                 className="bg-transparent text-[#0F766E] font-semibold text-xs outline-none cursor-pointer"
               >
                 <option value="/host/">Dashboard (/host/)</option>
+                <optgroup label="Operations & Financials (Part 06)">
+                  <option value="/host/operations">pe_hw_04_01: Booking & Parking Operations</option>
+                  <option value="/host/earnings">pe_hw_05_01: Earnings & Settlement Ledger</option>
+                </optgroup>
                 <optgroup label="Group 3: Facility & Physical Spaces">
                   <option value="/host/spaces">pe_hw_02_01: Spaces Overview</option>
                   <option value="/host/facilities/new">pe_hw_02_02: Add Facility Wizard</option>
@@ -448,7 +485,10 @@ export function HostPortalContent({ onNavigateToWebsite, onNavigateToAdmin }: Ho
 
         {/* 4-COLUMN METRICS GRID */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
-          <div className="bg-white p-5 rounded-2xl border border-[#E2E8F0] shadow-xs">
+          <div
+            onClick={() => navigateTo('/host/earnings')}
+            className="bg-white p-5 rounded-2xl border border-[#E2E8F0] shadow-xs cursor-pointer hover:border-[#0F766E] transition-all"
+          >
             <div className="flex items-center justify-between text-xs text-[#64748B] mb-2">
               <span>Today's Earnings</span>
               <span className="text-lg">₹</span>
@@ -457,11 +497,14 @@ export function HostPortalContent({ onNavigateToWebsite, onNavigateToAdmin }: Ho
             <div className="flex items-center gap-1.5 text-xs text-[#027A48] font-semibold mt-1">
               <span>+14% vs ystd</span>
               <span className="text-[#94A3B8]">•</span>
-              <span className="text-[#64748B] font-normal">Ledger synced</span>
+              <span className="text-[#0F766E] font-semibold">View ledger →</span>
             </div>
           </div>
 
-          <div className="bg-white p-5 rounded-2xl border border-[#E2E8F0] shadow-xs">
+          <div
+            onClick={() => navigateTo('/host/operations')}
+            className="bg-white p-5 rounded-2xl border border-[#E2E8F0] shadow-xs cursor-pointer hover:border-[#0F766E] transition-all"
+          >
             <div className="flex items-center justify-between text-xs text-[#64748B] mb-2">
               <span>Active Occupancy</span>
               <span className="text-lg">🚗</span>
@@ -470,11 +513,14 @@ export function HostPortalContent({ onNavigateToWebsite, onNavigateToAdmin }: Ho
             <div className="flex items-center gap-1.5 text-xs text-[#027A48] font-semibold mt-1">
               <span>75% Capacity</span>
               <span className="text-[#94A3B8]">•</span>
-              <span className="text-[#64748B] font-normal">6 bays free</span>
+              <span className="text-[#0F766E] font-semibold">Live feed →</span>
             </div>
           </div>
 
-          <div className="bg-white p-5 rounded-2xl border border-[#E2E8F0] shadow-xs">
+          <div
+            onClick={() => navigateTo('/host/operations')}
+            className="bg-white p-5 rounded-2xl border border-[#E2E8F0] shadow-xs cursor-pointer hover:border-[#0F766E] transition-all"
+          >
             <div className="flex items-center justify-between text-xs text-[#64748B] mb-2">
               <span>Today's Check-ins</span>
               <span className="text-lg">⏱️</span>
@@ -483,11 +529,14 @@ export function HostPortalContent({ onNavigateToWebsite, onNavigateToAdmin }: Ho
             <div className="flex items-center gap-1.5 text-xs text-[#027A48] font-semibold mt-1">
               <span>+8 vs average</span>
               <span className="text-[#94A3B8]">•</span>
-              <span className="text-[#64748B] font-normal">0 overstays</span>
+              <span className="text-[#0F766E] font-semibold">Arrivals desk →</span>
             </div>
           </div>
 
-          <div className="bg-white p-5 rounded-2xl border border-[#E2E8F0] shadow-xs">
+          <div
+            onClick={() => navigateTo('/host/earnings')}
+            className="bg-white p-5 rounded-2xl border border-[#E2E8F0] shadow-xs cursor-pointer hover:border-[#0F766E] transition-all"
+          >
             <div className="flex items-center justify-between text-xs text-[#64748B] mb-2">
               <span>Pending Payout</span>
               <span className="text-lg">🏦</span>
@@ -496,7 +545,7 @@ export function HostPortalContent({ onNavigateToWebsite, onNavigateToAdmin }: Ho
             <div className="flex items-center gap-1.5 text-xs text-[#0F766E] font-semibold mt-1">
               <span>Direct NEFT</span>
               <span className="text-[#94A3B8]">•</span>
-              <span className="text-[#64748B] font-normal">Weekly cycle</span>
+              <span className="text-[#0F766E] font-semibold">Request payout →</span>
             </div>
           </div>
         </div>

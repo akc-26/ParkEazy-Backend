@@ -10,7 +10,7 @@ CREATE INDEX IF NOT EXISTS idx_parking_facilities_geo
 
 -- 3. Composite index on parking spaces for vehicle category and status filtering
 CREATE INDEX IF NOT EXISTS idx_parking_spaces_vehicle_search 
-  ON parking_spaces(facility_id, vehicle_category, is_active, status);
+  ON parking_spaces(facility_id, vehicle_category, is_active);
 
 -- 4. Index on hourly rate for price range filtering
 CREATE INDEX IF NOT EXISTS idx_parking_spaces_rate 

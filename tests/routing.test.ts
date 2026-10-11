@@ -67,6 +67,10 @@ describe('ParkEazy Same-Origin Routing & Path Resolution (Part 02)', () => {
       const rootVite = fs.readFileSync(path.resolve(__dirname, '../vite.config.ts'), 'utf8');
       expect(rootVite).toContain("'/api/v1'");
       expect(rootVite).toContain("'/health'");
+      expect(rootVite).toContain("'/host'");
+      expect(rootVite).toContain("'/admin'");
+      expect(rootVite).toContain('HOST_PORT || 3002');
+      expect(rootVite).toContain('ADMIN_PORT || 3003');
       expect(rootVite).toContain('503');
       expect(rootVite).toContain('Service Unavailable');
     });
@@ -92,6 +96,17 @@ describe('ParkEazy Same-Origin Routing & Path Resolution (Part 02)', () => {
       expect(nginx).toContain('try_files $uri $uri/ /index.html;');
       expect(nginx).toContain('try_files $uri $uri/ /host/index.html;');
       expect(nginx).toContain('try_files $uri $uri/ /admin/index.html;');
+    });
+
+    it('should start all three isolated frontends for same-origin development', () => {
+      const packageJson = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../package.json'), 'utf8'));
+      expect(packageJson.scripts['dev:same-origin']).toBe('node scripts/dev-same-origin.mjs');
+      const launcherPath = path.resolve(__dirname, '../scripts/dev-same-origin.mjs');
+      expect(fs.existsSync(launcherPath)).toBe(true);
+      const launcher = fs.readFileSync(launcherPath, 'utf8');
+      expect(launcher).toContain("'run', 'dev:root'");
+      expect(launcher).toContain("'run', 'dev:host'");
+      expect(launcher).toContain("'run', 'dev:admin'");
     });
 
     it('should verify production gateway script exists and is executable', () => {

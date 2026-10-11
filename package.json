@@ -10,7 +10,7 @@
   ],
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
-    "dev:same-origin": "vite --port=3001 --host=0.0.0.0",
+    "dev:same-origin": "node scripts/dev-same-origin.mjs",
     "dev:website": "vite apps/website --port=3001 --host=0.0.0.0",
     "dev:host": "vite apps/host --port=3002 --host=0.0.0.0",
     "dev:admin": "vite apps/admin --port=3003 --host=0.0.0.0",
@@ -30,9 +30,10 @@
     "db:seed": "node scripts/seed.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run --config vitest.config.ts",
     "test:watch": "vitest",
-    "clean": "rm -rf dist server.js"
+    "clean": "rm -rf dist server.js",
+    "dev:root": "vite --config vite.config.ts --port 3001 --host 0.0.0.0"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -40,11 +41,13 @@
     "@nestjs/core": "^12.1.2",
     "@nestjs/platform-express": "^12.1.2",
     "@tailwindcss/vite": "^4.3.3",
+    "@types/pg": "^8.23.1",
     "@vitejs/plugin-react": "^6.1.1",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
+    "pg": "^8.23.1",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "reflect-metadata": "^0.2.2",

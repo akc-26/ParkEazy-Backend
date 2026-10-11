@@ -3,6 +3,8 @@ import {
   Get,
   Put,
   Post,
+  Delete,
+  Param,
   Body,
   Req,
   UseGuards,
@@ -29,6 +31,59 @@ export class UsersController {
     return {
       success: true,
       data: profile,
+    };
+  }
+
+  @Get('me/vehicles')
+  public async getVehicles(@Req() req: any) {
+    const user = req.user as JwtPayload;
+    const data = await this.usersService.getVehicles(user.sub);
+    return {
+      success: true,
+      data,
+    };
+  }
+
+  @Post('me/vehicles')
+  public async addVehicle(@Req() req: any, @Body() body: any) {
+    const user = req.user as JwtPayload;
+    if (!body?.plateNumber) {
+      throw new BadRequestException('plateNumber is required');
+    }
+    const data = await this.usersService.addVehicle(user.sub, body);
+    return {
+      success: true,
+      data,
+    };
+  }
+
+  @Delete('me/vehicles/:id')
+  public async deleteVehicle(@Req() req: any, @Param('id') id: string) {
+    const user = req.user as JwtPayload;
+    const success = await this.usersService.deleteVehicle(user.sub, id);
+    return {
+      success,
+      data: { success },
+    };
+  }
+
+  @Get('me/favorites')
+  public async getFavorites(@Req() req: any) {
+    const user = req.user as JwtPayload;
+    const data = await this.usersService.getFavorites(user.sub);
+    return {
+      success: true,
+      data,
+    };
+  }
+
+  @Post('me/favorites/:id/toggle')
+  public async toggleFavorite(@Req() req: any, @Param('id') id: string) {
+    const user = req.user as JwtPayload;
+    const data = await this.usersService.toggleFavorite(user.sub, id);
+    return {
+      success: true,
+      data,
     };
   }
 
@@ -69,3 +124,4 @@ export class UsersController {
     };
   }
 }
+

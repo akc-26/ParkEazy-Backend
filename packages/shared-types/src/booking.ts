@@ -71,3 +71,95 @@ export interface CreateBookingRequest {
   startsAt: string;
   endsAt: string;
 }
+
+export interface PricingCalculationResult {
+  spaceId: string;
+  facilityId: string;
+  hourlyRateInr: number;
+  durationHours: number;
+  baseAmountInr: number;
+  platformFeeInr: number;
+  taxInr: number;
+  totalAmountInr: number;
+  startsAt: string;
+  endsAt: string;
+}
+
+export interface HoldSpaceRequest {
+  spaceId: string;
+  startsAt: string;
+  endsAt: string;
+}
+
+export interface CreateBookingPayload {
+  spaceId: string;
+  facilityId: string;
+  vehiclePlate: string;
+  vehicleCategory: 'car' | 'bike' | 'auto' | 'suv';
+  startsAt: string;
+  endsAt: string;
+  holdId?: string;
+  paymentMethod?: string;
+}
+
+export interface BookingDetailsResponse extends Booking {
+  facilityName?: string;
+  facilityAddress?: string;
+  facilityCity?: string;
+  bayIdentifier?: string;
+  floorLevel?: string;
+  gatePinCode?: string;
+  entranceInstructions?: string;
+  customerName?: string;
+  customerPhone?: string;
+  customerEmail?: string;
+}
+
+export interface TaxInvoiceReceipt {
+  invoiceNumber: string;
+  invoiceDate: string;
+  bookingReference: string;
+  sacCode: string;
+  customerName: string;
+  vehiclePlate: string;
+  facilityName: string;
+  facilityAddress: string;
+  startsAt: string;
+  endsAt: string;
+  durationHours: number;
+  baseAmountInr: number;
+  platformFeeInr: number;
+  cgstInr: number;
+  sgstInr: number;
+  totalAmountInr: number;
+  paymentMethod: string;
+  paymentStatus: string;
+  qrCodeToken: string;
+}
+
+export interface HostEarningsSummary {
+  grossEarningsInr: number;
+  platformCommissionInr: number;
+  netPayoutInr: number;
+  disbursedPayoutsInr: number;
+  pendingBalanceInr: number;
+  completedBookingsCount: number;
+  activeBookingsCount: number;
+}
+
+export interface AdminPlatformOverview {
+  totalUsers: number;
+  totalCustomers: number;
+  totalHosts: number;
+  totalFacilities: number;
+  publishedFacilities: number;
+  totalSpaces: number;
+  totalBookings: number;
+  activeBookings: number;
+  completedBookings: number;
+  grossVolumeInr: number;
+  platformCommissionsInr: number;
+  disbursedPayoutsInr: number;
+  databaseConnected: boolean;
+}
+

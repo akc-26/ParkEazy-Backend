@@ -23,6 +23,11 @@ import { SearchResultsListViewPage } from './pages/SearchResultsListViewPage';
 import { SearchResultsMapViewPage } from './pages/SearchResultsMapViewPage';
 import { NoResultsAlternativeSuggestionsPage } from './pages/NoResultsAlternativeSuggestionsPage';
 import { SearchLoadingPermissionStatesPage } from './pages/SearchLoadingPermissionStatesPage';
+import { ParkingFacilityDetailPage } from './pages/ParkingFacilityDetailPage';
+import { CustomerBookingCheckoutPage } from './pages/CustomerBookingCheckoutPage';
+import { CustomerMyBookingsPage } from './pages/CustomerMyBookingsPage';
+import { CustomerActiveBookingPage } from './pages/CustomerActiveBookingPage';
+import { CustomerProfileVehiclesPage } from './pages/CustomerProfileVehiclesPage';
 
 interface WebsiteAppProps {
   onNavigateToHost?: () => void;
@@ -314,6 +319,77 @@ export function CustomerWebsiteContent({ onNavigateToHost }: WebsiteAppProps = {
       <CustomerAccessSuccessPage
         currentUser={currentUser}
         onNavigate={navigateTo}
+      />
+    );
+  }
+
+  // --- Parking Details & Spaces (parking_details_booking_summary_pe_uw_04_01) ---
+  if (currentPath.startsWith('/facilities/') || currentPath.startsWith('/spaces/')) {
+    const parts = currentPath.split('/');
+    const facilityOrSpaceId = parts[2] || '10000000-0000-4000-b000-000000000104';
+    return (
+      <ParkingFacilityDetailPage
+        facilityId={facilityOrSpaceId}
+        currentUser={currentUser}
+        onNavigate={navigateTo}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
+  // --- Booking Checkout & Payment (pe_uw_04_02 to pe_uw_04_07 & pe_uw_05_01) ---
+  if (currentPath === '/checkout') {
+    return (
+      <CustomerBookingCheckoutPage
+        currentUser={currentUser}
+        onNavigate={navigateTo}
+        onLogout={handleLogout}
+        facilityIdParam={searchParams.get('facilityId') || undefined}
+        spaceIdParam={searchParams.get('spaceId') || undefined}
+        startsAtParam={searchParams.get('startsAt') || undefined}
+        endsAtParam={searchParams.get('endsAt') || undefined}
+        plateParam={searchParams.get('plate') || undefined}
+        categoryParam={searchParams.get('category') || undefined}
+      />
+    );
+  }
+
+  // --- Active Booking Session & Gate Pass (active_parking_session_pe_uw_06_03) ---
+  if (currentPath.startsWith('/bookings/') && currentPath.endsWith('/active')) {
+    const parts = currentPath.split('/');
+    const bookingId = parts[2] || 'b0000001-0000-4000-8000-000000000001';
+    return (
+      <CustomerActiveBookingPage
+        bookingId={bookingId}
+        onNavigate={navigateTo}
+      />
+    );
+  }
+
+  // --- Customer My Bookings & Receipts (my_bookings_overview_pe_uw_06_01) ---
+  if (currentPath === '/bookings' || currentPath === '/my-bookings') {
+    return (
+      <CustomerMyBookingsPage
+        currentUser={currentUser}
+        onNavigate={navigateTo}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
+  // --- Customer Profile, Vehicles & Saved Places (pe_uw_07_01 to pe_uw_07_05) ---
+  if (currentPath.startsWith('/account/') || currentPath === '/profile') {
+    const initialTab = currentPath.includes('profile')
+      ? 'profile'
+      : currentPath.includes('favorite')
+      ? 'favorites'
+      : 'vehicles';
+    return (
+      <CustomerProfileVehiclesPage
+        currentUser={currentUser}
+        onNavigate={navigateTo}
+        onLogout={handleLogout}
+        initialTab={initialTab}
       />
     );
   }
