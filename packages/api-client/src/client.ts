@@ -12,6 +12,16 @@ import {
   HostProfile,
   HostKycSubmissionPayload,
   AuthTokenPair,
+  ParkingFacility,
+  ParkingSpace,
+  CreateFacilityPayload,
+  UpdateFacilityPayload,
+  CreateSpacePayload,
+  BulkCreateSpacesPayload,
+  UpdateSpacePayload,
+  PublicationReadinessResult,
+  PublicListingSummary,
+  SpaceStatus,
 } from '@parkeazy/shared-types';
 
 export interface ApiClientOptions {
@@ -77,6 +87,7 @@ export class ParkEazyApiClient {
   public async request<T>(method: string, path: string, body?: unknown): Promise<T> {
     const normalizedPath = path.startsWith('/') ? path : `/${path}`;
     const url = `${this.baseUrl}${normalizedPath}`;
+
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
 
@@ -215,6 +226,85 @@ export class ParkEazyApiClient {
 
     submitHostKyc: async (payload: HostKycSubmissionPayload): Promise<HostProfile> => {
       const res = await this.post<{ data: HostProfile }>('/users/host-kyc/submit', payload);
+      return res.data || (res as any);
+    },
+  };
+
+  // --- Facilities Subsystem (PH05) ---
+  public readonly facilities = {
+    list: async (): Promise<ParkingFacility[]> => {
+      const res = await this.get<{ data: ParkingFacility[] }>('/facilities');
+      return res.data || (res as any);
+    },
+
+    get: async (id: string): Promise<ParkingFacility> => {
+      const res = await this.get<{ data: ParkingFacility }>(`/facilities/${id}`);
+      return res.data || (res as any);
+    },
+
+    create: async (payload: CreateFacilityPayload): Promise<ParkingFacility> => {
+      const res = await this.post<{ data: ParkingFacility }>('/facilities', payload);
+      return res.data || (res as any);
+    },
+
+    update: async (id: string, payload: UpdateFacilityPayload): Promise<ParkingFacility> => {
+      const res = await this.put<{ data: ParkingFacility }>(`/facilities/${id}`, payload);
+      return res.data || (res as any);
+    },
+
+    getSpaces: async (facilityId: string): Promise<ParkingSpace[]> => {
+      const res = await this.get<{ data: ParkingSpace[] }>(`/facilities/${facilityId}/spaces`);
+      return res.data || (res as any);
+    },
+
+    createSpace: async (facilityId: string, payload: CreateSpacePayload): Promise<ParkingSpace> => {
+      const res = await this.post<{ data: ParkingSpace }>(`/facilities/${facilityId}/spaces`, payload);
+      return res.data || (res as any);
+    },
+
+    bulkCreateSpaces: async (facilityId: string, payload: BulkCreateSpacesPayload): Promise<ParkingSpace[]> => {
+      const res = await this.post<{ data: ParkingSpace[] }>(`/facilities/${facilityId}/spaces/bulk`, payload);
+      return res.data || (res as any);
+    },
+
+    getReadiness: async (facilityId: string): Promise<PublicationReadinessResult> => {
+      const res = await this.get<{ data: PublicationReadinessResult }>(`/facilities/${facilityId}/readiness`);
+      return res.data || (res as any);
+    },
+
+    publish: async (facilityId: string): Promise<ParkingFacility> => {
+      const res = await this.post<{ data: ParkingFacility }>(`/facilities/${facilityId}/publish`);
+      return res.data || (res as any);
+    },
+  };
+
+  // --- Spaces Subsystem (PH05) ---
+  public readonly spaces = {
+    get: async (id: string): Promise<ParkingSpace> => {
+      const res = await this.get<{ data: ParkingSpace }>(`/spaces/${id}`);
+      return res.data || (res as any);
+    },
+
+    update: async (id: string, payload: UpdateSpacePayload): Promise<ParkingSpace> => {
+      const res = await this.put<{ data: ParkingSpace }>(`/spaces/${id}`, payload);
+      return res.data || (res as any);
+    },
+
+    updateStatus: async (id: string, status: SpaceStatus): Promise<ParkingSpace> => {
+      const res = await this.patch<{ data: ParkingSpace }>(`/spaces/${id}/status`, { status });
+      return res.data || (res as any);
+    },
+  };
+
+  // --- Public Customer Feed (PH05) ---
+  public readonly publicListings = {
+    list: async (): Promise<PublicListingSummary[]> => {
+      const res = await this.get<{ data: PublicListingSummary[] }>('/public/listings');
+      return res.data || (res as any);
+    },
+
+    get: async (id: string): Promise<PublicListingSummary> => {
+      const res = await this.get<{ data: PublicListingSummary }>(`/public/listings/${id}`);
       return res.data || (res as any);
     },
   };

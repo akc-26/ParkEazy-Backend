@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useBrand, BrandProvider } from '@parkeazy/branding';
 import { UserAccount, AuthTokenPair } from '@parkeazy/shared-types';
+
+// Auth & Onboarding Pages (Part 04)
 import { HostLoginPage } from './pages/HostLoginPage';
 import { HostRegisterPage } from './pages/HostRegisterPage';
 import { HostVerificationPage } from './pages/HostVerificationPage';
@@ -10,6 +12,29 @@ import { HostProfileContactDetailsPage } from './pages/HostProfileContactDetails
 import { HostEligibilityPage } from './pages/HostEligibilityPage';
 import { HostApplicationStatusPage } from './pages/HostApplicationStatusPage';
 import { HostAccessExceptionsPage } from './pages/HostAccessExceptionsPage';
+
+// Phase 05: Facility Setup & Physical Spaces (pe_hw_02_01 to pe_hw_02_09 + pe_hp_04_01)
+import { HostSpacesOverviewPage } from './pages/HostSpacesOverviewPage';
+import { AddParkingFacilityWizardPage } from './pages/AddParkingFacilityWizardPage';
+import { FacilityDetailsEntrancePage } from './pages/FacilityDetailsEntrancePage';
+import { PhysicalInventoryBayLayoutPage } from './pages/PhysicalInventoryBayLayoutPage';
+import { AddEditParkingSpacePage } from './pages/AddEditParkingSpacePage';
+import { VehicleCompatibilityRestrictionsPage } from './pages/VehicleCompatibilityRestrictionsPage';
+import { SpaceAmenitiesAccessInstructionsPage } from './pages/SpaceAmenitiesAccessInstructionsPage';
+import { PhotosListingPreviewPage } from './pages/PhotosListingPreviewPage';
+import { InventoryValidationPublicationReadinessPage } from './pages/InventoryValidationPublicationReadinessPage';
+import { HostSpacesInventoryManagementPage } from './pages/HostSpacesInventoryManagementPage';
+
+// Phase 05: Availability Schedules & Pricing (pe_hw_03_01 to pe_hw_03_09)
+import { AvailabilityPricingOverviewPage } from './pages/AvailabilityPricingOverviewPage';
+import { SpacePricingConfigurationPage } from './pages/SpacePricingConfigurationPage';
+import { OperatingHoursWeeklySchedulePage } from './pages/OperatingHoursWeeklySchedulePage';
+import { DateSpecificAvailabilityClosuresPage } from './pages/DateSpecificAvailabilityClosuresPage';
+import { BookingDurationAdvanceBookingRulesPage } from './pages/BookingDurationAdvanceBookingRulesPage';
+import { PricingPreviewEarningsEstimatePage } from './pages/PricingPreviewEarningsEstimatePage';
+import { BulkPricingScheduleUpdatesPage } from './pages/BulkPricingScheduleUpdatesPage';
+import { AvailabilityConflictChangeReviewPage } from './pages/AvailabilityConflictChangeReviewPage';
+import { PricingAvailabilityChangeHistoryPage } from './pages/PricingAvailabilityChangeHistoryPage';
 
 interface HostAppProps {
   onNavigateToWebsite?: () => void;
@@ -77,13 +102,23 @@ export function HostPortalContent({ onNavigateToWebsite, onNavigateToAdmin }: Ho
     navigateTo('/host/login');
   };
 
+  // Helper route extractors
+  const defaultFacilityId = '7bf5f8dd-95b9-426e-993f-e747271ae424'; // Anna Nagar Plaza default
+  const defaultSpaceId = 'sp-anna-04';
+
+  const extractParam = (path: string, pattern: RegExp, fallback: string): string => {
+    const match = path.match(pattern);
+    return match && match[1] && match[1] !== 'undefined' ? match[1] : fallback;
+  };
+
+  // --- ROUTING ENGINE ---
+
   // 1. Host Login
   if (currentPath === '/host/login') {
     return (
       <HostLoginPage
         onNavigate={navigateTo}
         onSuccess={handleAuthSuccess}
-        returnUrl="/host/"
       />
     );
   }
@@ -106,186 +141,307 @@ export function HostPortalContent({ onNavigateToWebsite, onNavigateToAdmin }: Ho
         onNavigate={navigateTo}
         onSuccess={() => {
           if (currentUser) {
-            const updated = { ...currentUser, isPhoneVerified: true, isEmailVerified: true };
+            const updated = { ...currentUser, phoneVerified: true };
             setCurrentUser(updated);
             localStorage.setItem('parkeazy_host_user', JSON.stringify(updated));
           }
+          navigateTo('/host/onboarding');
         }}
       />
     );
   }
 
-  // 4. Host Password Recovery
+  // 4. Password Recovery
   if (currentPath === '/host/forgot-password' || currentPath === '/host/password-recovery') {
     return <HostPasswordRecoveryPage onNavigate={navigateTo} />;
   }
 
-  // 5. Host Onboarding Overview
+  // 5. Onboarding Overview
   if (currentPath === '/host/onboarding' || currentPath === '/host/onboarding/overview') {
     return <HostOnboardingOverviewPage currentUser={currentUser} onNavigate={navigateTo} />;
   }
 
-  // 6. Host Profile & Contacts
+  // 6. Onboarding Profile
   if (currentPath === '/host/onboarding/profile' || currentPath === '/host/profile') {
     return <HostProfileContactDetailsPage currentUser={currentUser} onNavigate={navigateTo} />;
   }
 
-  // 7. Host Space Listing Eligibility
+  // 7. Onboarding Eligibility
   if (currentPath === '/host/onboarding/eligibility' || currentPath === '/host/eligibility') {
     return <HostEligibilityPage currentUser={currentUser} onNavigate={navigateTo} />;
   }
 
-  // 8. Host Application Setup Status
+  // 8. Application Status
   if (currentPath === '/host/application-status' || currentPath === '/host/onboarding/status') {
     return <HostApplicationStatusPage currentUser={currentUser} onNavigate={navigateTo} />;
   }
 
-  // 9. Host Access & Onboarding Exception States
+  // 9. Exceptions
   if (currentPath === '/host/exceptions' || currentPath === '/host/access-status') {
     return <HostAccessExceptionsPage onNavigate={navigateTo} />;
   }
 
-  // 10. Default Host Operations Dashboard (Grounding in pe_hp_02_01)
+  // --- PHASE 05: FACILITY SETUP & SPACES ROUTES ---
+
+  // 10. Spaces Overview (pe_hw_02_01)
+  if (currentPath === '/host/spaces') {
+    return <HostSpacesOverviewPage currentUser={currentUser} onNavigate={navigateTo} />;
+  }
+
+  // 11. Add Facility Wizard (pe_hw_02_02)
+  if (currentPath === '/host/facilities/new') {
+    return <AddParkingFacilityWizardPage currentUser={currentUser} onNavigate={navigateTo} />;
+  }
+
+  // 12. Facility Gate Details & Entrance (pe_hw_02_03)
+  if (currentPath.startsWith('/host/facilities/') && currentPath.endsWith('/gate')) {
+    const facId = extractParam(currentPath, /\/host\/facilities\/([^/]+)\/gate/, defaultFacilityId);
+    return <FacilityDetailsEntrancePage facilityId={facId} currentUser={currentUser} onNavigate={navigateTo} />;
+  }
+
+  // 13. Physical Inventory Bay Layout (pe_hw_02_04)
+  if (currentPath.startsWith('/host/facilities/') && currentPath.endsWith('/layout')) {
+    const facId = extractParam(currentPath, /\/host\/facilities\/([^/]+)\/layout/, defaultFacilityId);
+    return <PhysicalInventoryBayLayoutPage facilityId={facId} currentUser={currentUser} onNavigate={navigateTo} />;
+  }
+
+  // 14. Add / Edit Space (pe_hw_02_05)
+  if (currentPath.startsWith('/host/spaces/') && currentPath.endsWith('/edit')) {
+    const spId = extractParam(currentPath, /\/host\/spaces\/([^/]+)\/edit/, defaultSpaceId);
+    return <AddEditParkingSpacePage facilityId={defaultFacilityId} spaceId={spId} currentUser={currentUser} onNavigate={navigateTo} />;
+  }
+
+  // 15. Vehicle Compatibility & Restrictions (pe_hw_02_06)
+  if (currentPath.startsWith('/host/spaces/') && currentPath.endsWith('/restrictions')) {
+    const spId = extractParam(currentPath, /\/host\/spaces\/([^/]+)\/restrictions/, defaultSpaceId);
+    return <VehicleCompatibilityRestrictionsPage facilityId={defaultFacilityId} spaceId={spId} currentUser={currentUser} onNavigate={navigateTo} />;
+  }
+
+  // 16. Amenities & Access Instructions (pe_hw_02_07)
+  if (currentPath.startsWith('/host/spaces/') && currentPath.endsWith('/amenities')) {
+    const spId = extractParam(currentPath, /\/host\/spaces\/([^/]+)\/amenities/, defaultSpaceId);
+    return <SpaceAmenitiesAccessInstructionsPage facilityId={defaultFacilityId} spaceId={spId} currentUser={currentUser} onNavigate={navigateTo} />;
+  }
+
+  // 17. Photos & Listing Preview (pe_hw_02_08)
+  if (currentPath.startsWith('/host/facilities/') && currentPath.endsWith('/preview')) {
+    const facId = extractParam(currentPath, /\/host\/facilities\/([^/]+)\/preview/, defaultFacilityId);
+    return <PhotosListingPreviewPage facilityId={facId} currentUser={currentUser} onNavigate={navigateTo} />;
+  }
+
+  // 18. Publication Readiness Pre-Flight Checklist (pe_hw_02_09)
+  if (currentPath.startsWith('/host/facilities/') && currentPath.endsWith('/publish')) {
+    const facId = extractParam(currentPath, /\/host\/facilities\/([^/]+)\/publish/, defaultFacilityId);
+    return <InventoryValidationPublicationReadinessPage facilityId={facId} currentUser={currentUser} onNavigate={navigateTo} />;
+  }
+
+  // 19. Full Interactive Bay Matrix Visualizer (pe_hp_04_01)
+  if (currentPath === '/host/spaces/matrix' || currentPath === '/host/matrix') {
+    return <HostSpacesInventoryManagementPage currentUser={currentUser} onNavigate={navigateTo} />;
+  }
+
+  // --- PHASE 05: AVAILABILITY & PRICING ROUTES ---
+
+  // 20. Tariffs & Availability Overview (pe_hw_03_01)
+  if (currentPath === '/host/pricing' || currentPath === '/host/pricing/overview') {
+    return <AvailabilityPricingOverviewPage currentUser={currentUser} onNavigate={navigateTo} />;
+  }
+
+  // 21. Configure Rates & Dynamic Multipliers (pe_hw_03_02)
+  if (currentPath === '/host/pricing/rates') {
+    return <SpacePricingConfigurationPage currentUser={currentUser} onNavigate={navigateTo} />;
+  }
+
+  // 22. Weekly Operating Hours & Shifts (pe_hw_03_03)
+  if (currentPath === '/host/pricing/schedule' || currentPath === '/host/pricing/hours') {
+    return <OperatingHoursWeeklySchedulePage currentUser={currentUser} onNavigate={navigateTo} />;
+  }
+
+  // 23. Date Closures & Maintenance Holidays (pe_hw_03_04)
+  if (currentPath === '/host/pricing/closures') {
+    return <DateSpecificAvailabilityClosuresPage currentUser={currentUser} onNavigate={navigateTo} />;
+  }
+
+  // 24. Booking Duration Limits & Horizon (pe_hw_03_05)
+  if (currentPath === '/host/pricing/rules') {
+    return <BookingDurationAdvanceBookingRulesPage currentUser={currentUser} onNavigate={navigateTo} />;
+  }
+
+  // 25. Earnings Calculator & Driver Bill Preview (pe_hw_03_06)
+  if (currentPath === '/host/pricing/estimate' || currentPath === '/host/pricing/simulator') {
+    return <PricingPreviewEarningsEstimatePage currentUser={currentUser} onNavigate={navigateTo} />;
+  }
+
+  // 26. Bulk Tariff & Schedule Modifier (pe_hw_03_07)
+  if (currentPath === '/host/pricing/bulk') {
+    return <BulkPricingScheduleUpdatesPage currentUser={currentUser} onNavigate={navigateTo} />;
+  }
+
+  // 27. Schedule Conflict Resolution (pe_hw_03_08)
+  if (currentPath === '/host/pricing/conflicts') {
+    return <AvailabilityConflictChangeReviewPage currentUser={currentUser} onNavigate={navigateTo} />;
+  }
+
+  // 28. Tariff Audit Log & History (pe_hw_03_09)
+  if (currentPath === '/host/pricing/history' || currentPath === '/host/pricing/audit') {
+    return <PricingAvailabilityChangeHistoryPage currentUser={currentUser} onNavigate={navigateTo} />;
+  }
+
+  // Default: Host Operations Dashboard (`/host` or `/host/`)
   return (
-    <div className="min-h-screen flex flex-col bg-[#F9F9FF] text-[#141B2C] font-['Inter']">
-      {/* HOST WORKSPACE HEADER */}
-      <header className="sticky top-0 z-50 bg-[#F9F9FF]/95 backdrop-blur-md border-b border-[#E2E8F0] shadow-xs">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-6">
+    <div className="min-h-screen flex flex-col bg-[#F8FAFC]">
+      {/* HOST WORKSPACE TOPBAR */}
+      <header className="sticky top-0 z-40 bg-white border-b border-[#E2E8F0] shadow-xs">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
             <button
               onClick={() => navigateTo('/host/')}
-              className="flex items-center gap-3 cursor-pointer text-left"
+              className="flex items-center gap-2.5 text-left focus:outline-none cursor-pointer"
             >
-              <div className="w-9 h-9 rounded-lg bg-[#0F766E] flex items-center justify-center text-white font-bold font-['Plus_Jakarta_Sans'] shadow-xs">
+              <div className="w-8 h-8 rounded-lg bg-[#0F766E] flex items-center justify-center font-bold text-white text-sm">
                 P
               </div>
               <div className="flex flex-col">
-                <span className="font-['Plus_Jakarta_Sans'] font-bold text-lg text-[#141B2C] leading-tight tracking-tight">
-                  {tenant.displayName}
+                <span className="font-extrabold text-[#141B2C] text-sm font-['Plus_Jakarta_Sans']">
+                  {tenant.displayName} Host
                 </span>
-                <span className="text-[10px] uppercase text-[#64748B] font-semibold tracking-wider">
-                  Host Workspace
+                <span className="text-[10px] font-semibold text-[#0F766E] uppercase tracking-wider">
+                  Operations Console
                 </span>
               </div>
             </button>
 
-            <nav className="hidden md:flex items-center gap-5 text-xs font-semibold text-[#64748B]">
+            {/* MAIN HOST TABS */}
+            <nav className="hidden md:flex items-center gap-1 bg-[#F1F5F9] p-1 rounded-xl text-xs font-semibold">
               <button
                 onClick={() => navigateTo('/host/')}
-                className="text-[#0F766E] font-bold cursor-pointer"
+                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  currentPath === '/host/' || currentPath === '/host'
+                    ? 'bg-white text-[#0F766E] shadow-xs font-bold'
+                    : 'text-[#64748B] hover:text-[#141B2C]'
+                }`}
               >
-                Operations Dashboard
+                Dashboard
               </button>
               <button
-                onClick={() => navigateTo('/host/onboarding')}
-                className="hover:text-[#141B2C] transition-colors cursor-pointer"
+                onClick={() => navigateTo('/host/spaces')}
+                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  currentPath.startsWith('/host/spaces') || currentPath.startsWith('/host/facilities')
+                    ? 'bg-white text-[#0F766E] shadow-xs font-bold'
+                    : 'text-[#64748B] hover:text-[#141B2C]'
+                }`}
               >
-                Facility Launchpad
+                Spaces & Inventory
               </button>
               <button
-                onClick={() => navigateTo('/host/onboarding/profile')}
-                className="hover:text-[#141B2C] transition-colors cursor-pointer"
+                onClick={() => navigateTo('/host/pricing')}
+                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  currentPath.startsWith('/host/pricing')
+                    ? 'bg-white text-[#0F766E] shadow-xs font-bold'
+                    : 'text-[#64748B] hover:text-[#141B2C]'
+                }`}
               >
-                Profile & Contacts
+                Tariffs & Pricing
               </button>
               <button
-                onClick={() => navigateTo('/host/application-status')}
-                className="hover:text-[#141B2C] transition-colors cursor-pointer"
+                onClick={() => navigateTo('/host/spaces/matrix')}
+                className="px-3 py-1.5 rounded-lg text-[#64748B] hover:text-[#141B2C] transition-all cursor-pointer"
               >
-                Review Status
-              </button>
-              <button
-                onClick={() => navigateTo('/host/exceptions')}
-                className="hover:text-[#141B2C] transition-colors cursor-pointer"
-              >
-                Exception Guide
+                24-Bay Matrix
               </button>
             </nav>
           </div>
 
+          {/* RIGHT TOOLS & SCREEN SWITCHER */}
           <div className="flex items-center gap-3">
+            {/* Phase 05 Screen Quick Switcher Dropdown */}
+            <div className="hidden lg:flex items-center gap-1.5 bg-[#F0FDFA] border border-[#CCFBF1] px-2.5 py-1 rounded-xl text-xs">
+              <span className="text-[10px] font-bold text-[#0F766E] uppercase font-mono">PH05 Screens:</span>
+              <select
+                onChange={(e) => {
+                  if (e.target.value) navigateTo(e.target.value);
+                }}
+                value={currentPath}
+                className="bg-transparent text-[#0F766E] font-semibold text-xs outline-none cursor-pointer"
+              >
+                <option value="/host/">Dashboard (/host/)</option>
+                <optgroup label="Group 3: Facility & Physical Spaces">
+                  <option value="/host/spaces">pe_hw_02_01: Spaces Overview</option>
+                  <option value="/host/facilities/new">pe_hw_02_02: Add Facility Wizard</option>
+                  <option value={`/host/facilities/${defaultFacilityId}/gate`}>pe_hw_02_03: Gate & Entrance</option>
+                  <option value={`/host/facilities/${defaultFacilityId}/layout`}>pe_hw_02_04: Bay Layout Matrix</option>
+                  <option value={`/host/spaces/${defaultSpaceId}/edit`}>pe_hw_02_05: Edit Individual Bay</option>
+                  <option value={`/host/spaces/${defaultSpaceId}/restrictions`}>pe_hw_02_06: Vehicle Compatibility</option>
+                  <option value={`/host/spaces/${defaultSpaceId}/amenities`}>pe_hw_02_07: Amenities & Directives</option>
+                  <option value={`/host/facilities/${defaultFacilityId}/preview`}>pe_hw_02_08: Photos & Listing Preview</option>
+                  <option value={`/host/facilities/${defaultFacilityId}/publish`}>pe_hw_02_09: Publication Readiness</option>
+                  <option value="/host/spaces/matrix">pe_hp_04_01: Interactive Bay Manager</option>
+                </optgroup>
+                <optgroup label="Group 4: Tariffs, Operating Hours & Pricing">
+                  <option value="/host/pricing">pe_hw_03_01: Tariff Overview & Surge</option>
+                  <option value="/host/pricing/rates">pe_hw_03_02: Configure Rate Rules</option>
+                  <option value="/host/pricing/schedule">pe_hw_03_03: Weekly Operating Hours</option>
+                  <option value="/host/pricing/closures">pe_hw_03_04: Date Closures</option>
+                  <option value="/host/pricing/rules">pe_hw_03_05: Booking Horizons & Buffers</option>
+                  <option value="/host/pricing/estimate">pe_hw_03_06: Driver Simulator & Earnings</option>
+                  <option value="/host/pricing/bulk">pe_hw_03_07: Bulk Tariff Modifier</option>
+                  <option value="/host/pricing/conflicts">pe_hw_03_08: Conflict Resolution</option>
+                  <option value="/host/pricing/history">pe_hw_03_09: Tariff Audit Log</option>
+                </optgroup>
+              </select>
+            </div>
+
             {currentUser ? (
-              <div className="flex items-center gap-3 bg-[#E6F7F4] border border-[#0F766E]/20 px-3 py-1.5 rounded-full text-xs">
-                <span className="w-2 h-2 rounded-full bg-[#12B76A]" />
-                <span className="font-bold text-[#0F766E]">
-                  {currentUser.fullName || currentUser.email}
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-[#141B2C] hidden sm:inline">
+                  {currentUser.fullName}
                 </span>
-                <span className="text-[#64748B]">•</span>
-                <span className="capitalize font-mono text-[#0F766E]">Host Partner</span>
                 <button
                   onClick={handleLogout}
-                  className="ml-2 text-[11px] font-bold text-[#D92D20] hover:underline cursor-pointer"
+                  className="px-3 py-1.5 rounded-lg border border-[#CBD5E1] text-xs font-bold text-[#64748B] hover:bg-[#F1F5F9] cursor-pointer"
                 >
-                  Sign Out
+                  Logout
                 </button>
               </div>
             ) : (
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => navigateTo('/host/login')}
-                  className="px-3 py-1.5 bg-[#0F766E] hover:bg-[#005C55] text-white rounded-lg text-xs font-semibold cursor-pointer shadow-xs"
+                  className="px-3 py-1.5 rounded-lg bg-[#0F766E] text-white text-xs font-bold shadow-xs hover:bg-[#0D655E] cursor-pointer"
                 >
-                  Sign In
-                </button>
-                <button
-                  onClick={() => navigateTo('/host/register')}
-                  className="px-3 py-1.5 bg-white border border-[#CBD5E1] text-[#141B2C] hover:text-[#0F766E] rounded-lg text-xs font-semibold cursor-pointer"
-                >
-                  Register Space
+                  Host Login
                 </button>
               </div>
             )}
-
-            <button
-              onClick={() => {
-                if (onNavigateToWebsite) {
-                  onNavigateToWebsite();
-                } else {
-                  navigateTo('/');
-                }
-              }}
-              className="text-xs text-[#0F766E] hover:underline font-semibold cursor-pointer hidden sm:inline-block ml-2"
-            >
-              Marketplace (/) →
-            </button>
           </div>
         </div>
       </header>
 
-      {/* MAIN HOST CONTENT */}
+      {/* DASHBOARD BODY */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* HOST OPERATIONAL CONTEXT BANNER */}
-        <div className="bg-white rounded-2xl p-6 border border-[#E2E8F0] shadow-sm mb-8 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-[#0F766E] bg-[#E6F7F4] px-2.5 py-0.5 rounded-full border border-[#0F766E]/20">
-                HQ Operation Node
-              </span>
-              <span className="text-xs font-mono text-[#64748B]">FACILITY ID: #FAC-0104</span>
-              <span className="text-xs px-2.5 py-0.5 rounded-full bg-[#ECFDF3] text-[#027A48] font-bold">
-                18 of 24 Spaces Occupied (75%)
-              </span>
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#141B2C] tracking-tight font-['Plus_Jakarta_Sans'] mt-1">
-              Anna Nagar Plaza Parking — 100 Feet Rd
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#141B2C] font-['Plus_Jakarta_Sans']">
+              Host Operations Command
             </h1>
-            <p className="text-xs sm:text-sm text-[#64748B]">
-              Real-time terminal sync active • Telemetry refresh rate: 15s • Chennai Urban Sector 4
+            <p className="text-xs sm:text-sm text-[#64748B] mt-1">
+              Active Facility: <strong>Anna Nagar Plaza Covered Garage (#FAC-0104)</strong> • 24 Physical Bays
             </p>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-3">
             <button
-              onClick={() => navigateTo('/host/onboarding')}
-              className="px-4 py-2 bg-[#F1F5F9] hover:bg-[#E2E8F0] text-xs font-bold text-[#141B2C] rounded-xl border border-[#CBD5E1] cursor-pointer"
+              onClick={() => navigateTo('/host/facilities/new')}
+              className="px-4 py-2.5 rounded-xl bg-[#0F766E] hover:bg-[#0D655E] text-white text-xs font-bold shadow-sm flex items-center gap-1.5 cursor-pointer"
             >
-              🚀 Launchpad Setup
+              <span>+</span>
+              <span>Add Parking Facility</span>
             </button>
             <button
-              onClick={() => navigateTo('/host/application-status')}
-              className="px-4 py-2 bg-[#0F766E] hover:bg-[#005C55] text-white text-xs font-bold rounded-xl shadow-xs cursor-pointer"
+              onClick={() => navigateTo('/host/spaces/matrix')}
+              className="px-4 py-2.5 rounded-xl border border-[#CBD5E1] bg-white text-xs font-bold text-[#334155] hover:bg-[#F8FAFC] cursor-pointer"
             >
-              ⚙️ Technical Status
+              Visual 24-Bay Matrix
             </button>
           </div>
         </div>
@@ -345,8 +501,9 @@ export function HostPortalContent({ onNavigateToWebsite, onNavigateToAdmin }: Ho
           </div>
         </div>
 
-        {/* HOST WORKSPACE SECTIONS GRID */}
+        {/* WORKSPACE SECTIONS GRID */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+          {/* CARD 1: INVENTORY MANAGEMENT */}
           <div className="bg-white rounded-2xl p-6 border border-[#E2E8F0] shadow-xs flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between mb-3">
@@ -361,72 +518,74 @@ export function HostPortalContent({ onNavigateToWebsite, onNavigateToAdmin }: Ho
                 Parking Bay & Slot Allocations
               </h3>
               <p className="text-xs text-[#64748B] leading-relaxed">
-                Control dedicated slots, EV charging stations, 2-wheeler bays, and seasonal closure schedules.
+                Configure 24 physical bays across Basements 1 & 2, EV chargers, dimensional clearances, and equipment tags.
               </p>
             </div>
             <div className="mt-6 pt-4 border-t border-[#E2E8F0] flex items-center justify-between text-xs">
-              <span className="text-[#64748B]">Slots registered: <strong>24 Bays</strong></span>
+              <span className="text-[#64748B]">Slots: <strong>24 Registered</strong></span>
               <button
-                onClick={() => navigateTo('/host/onboarding/eligibility')}
+                onClick={() => navigateTo('/host/spaces')}
                 className="text-[#0F766E] font-semibold hover:underline cursor-pointer"
               >
-                Inspect Bays →
+                Manage Bays →
               </button>
             </div>
           </div>
 
+          {/* CARD 2: TARIFFS & OPERATING HOURS */}
           <div className="bg-white rounded-2xl p-6 border border-[#E2E8F0] shadow-xs flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between mb-3">
                 <span className="text-xs font-bold uppercase tracking-wider text-[#0F766E]">
-                  Arrivals & Departures
+                  Commercial Tariffs
                 </span>
                 <span className="text-[11px] font-mono text-[#64748B] bg-[#F1F5F9] px-2 py-0.5 rounded">
-                  pe_hw_04_04
+                  pe_hw_03_01
                 </span>
               </div>
               <h3 className="text-lg font-bold text-[#141B2C] mb-1 font-['Plus_Jakarta_Sans']">
-                Gate Check-in Operations
+                Rates, Hours & Peak Multipliers
               </h3>
               <p className="text-xs text-[#64748B] leading-relaxed">
-                Verify driver QR tokens, inspect vehicle license plates, record arrival timestamps, and resolve conflicts.
+                Base hourly rates, surge curves, 7-day weekly operating hours, holiday closures, and driver billing simulator.
               </p>
             </div>
             <div className="mt-6 pt-4 border-t border-[#E2E8F0] flex items-center justify-between text-xs">
-              <span className="text-[#64748B]">Active scanner: <strong>Simulated</strong></span>
+              <span className="text-[#64748B]">Base: <strong>₹40.00/hr</strong></span>
               <button
-                onClick={() => navigateTo('/host/application-status')}
+                onClick={() => navigateTo('/host/pricing')}
                 className="text-[#0F766E] font-semibold hover:underline cursor-pointer"
               >
-                Gate Status →
+                Pricing Hub →
               </button>
             </div>
           </div>
 
+          {/* CARD 3: PUBLICATION READINESS AUDIT */}
           <div className="bg-white rounded-2xl p-6 border border-[#E2E8F0] shadow-xs flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between mb-3">
                 <span className="text-xs font-bold uppercase tracking-wider text-[#0F766E]">
-                  Finance & Settlements
+                  Listing Status
                 </span>
                 <span className="text-[11px] font-mono text-[#64748B] bg-[#F1F5F9] px-2 py-0.5 rounded">
-                  pe_hw_05_04
+                  pe_hw_02_09
                 </span>
               </div>
               <h3 className="text-lg font-bold text-[#141B2C] mb-1 font-['Plus_Jakarta_Sans']">
-                Payout Accounts & Statements
+                Publication Readiness Audit
               </h3>
               <p className="text-xs text-[#64748B] leading-relaxed">
-                Platform commission breakdown, automated GST invoices, settlement schedules, and bank account settings.
+                Pre-flight checklist evaluating GPS precision, minimum bay quotas, safety rules, and driver marketplace status.
               </p>
             </div>
             <div className="mt-6 pt-4 border-t border-[#E2E8F0] flex items-center justify-between text-xs">
-              <span className="text-[#64748B]">Settlement cycle: <strong>T+2 Weekly</strong></span>
+              <span className="text-[#027A48] font-bold">✓ 100% Certified</span>
               <button
-                onClick={() => navigateTo('/host/onboarding/profile')}
+                onClick={() => navigateTo(`/host/facilities/${defaultFacilityId}/publish`)}
                 className="text-[#0F766E] font-semibold hover:underline cursor-pointer"
               >
-                Bank Ledgers →
+                Pre-Flight Audit →
               </button>
             </div>
           </div>
@@ -436,13 +595,25 @@ export function HostPortalContent({ onNavigateToWebsite, onNavigateToAdmin }: Ho
       {/* FOOTER */}
       <footer className="w-full bg-[#101828] text-[#94A3B8] py-6 px-4 text-xs border-t border-[#1E293B] mt-auto">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p>© 2026 {tenant.displayName} Technologies. Host Management System.</p>
+          <p>© 2026 {tenant.displayName} Technologies. Host Management System (Part 05).</p>
           <div className="flex items-center gap-4 text-[#CBD5E1]">
             <span>Monorepo App: <code>apps/host</code></span>
             <span>•</span>
-            <button onClick={() => navigateTo('/')} className="hover:underline">
-              Customer Website
+            <button onClick={() => navigateTo('/host/spaces')} className="hover:underline">
+              Host Inventory
             </button>
+            <span>•</span>
+            <button onClick={() => navigateTo('/host/pricing')} className="hover:underline">
+              Pricing Hub
+            </button>
+            {onNavigateToWebsite && (
+              <>
+                <span>•</span>
+                <button onClick={onNavigateToWebsite} className="hover:underline">
+                  Customer Website
+                </button>
+              </>
+            )}
           </div>
         </div>
       </footer>

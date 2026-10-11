@@ -1,11 +1,38 @@
-import { Controller, Get } from '@nestjs/common';
-import { DatabaseService } from '../database/database.service.js';
-@Controller('health')
+import { Controller, Get, Optional } from '@nestjs/common';
+import type { HealthCheckResponse } from '@parkeazy/shared-types';
+import { HealthService } from './health.service';
+import type { ExtendedHealthCheckResponse } from './health.service';
+import type { DatabaseHealthStatus } from '../database/database.service';
+
+@Controller()
 export class HealthController {
-  constructor(private readonly database: DatabaseService) {}
-  @Get()
-  getHealth() {
-    const db = this.database.getHealthStatus();
-    return { status: db.connected ? 'ok' : 'degraded', service: 'parkeazy-backend-api', version: '0.1.0', timestamp: new Date().toISOString(), uptimeSeconds: Math.floor(process.uptime()), environment: process.env.NODE_ENV || 'development', details: { apiPrefix: '/api/v1', plannedDatabase: db.configured ? (db.connected ? 'connected' : 'configured-but-unavailable') : 'not-configured', monorepoMode: true } };
+  constructor(@Optional() private readonly healthService?: HealthService) {}
+
+  private getService(): HealthService {
+    return this.healthService || new HealthService();
+  }
+
+  @Get('health')
+  getHealth(): ExtendedHealthCheckResponse {
+    return this.getService().getHealth();
+  }
+
+  @Get('api/v1/health')
+  getApiV1Health(): ExtendedHealthCheckResponse {
+    return this.getService().getHealth();
+  }
+
+  @Get('health/ready')
+  getReadiness(): { ready: boolean; database: DatabaseHealthStatus } {
+    const db = this.getService().getDatabaseHealth();
+    return {
+      ready: db.connected,
+      database: db,
+    };
+  }
+
+  @Get('api/v1/health/database')
+  getDatabaseHealth(): DatabaseHealthStatus {
+    return this.getService().getDatabaseHealth();
   }
 }

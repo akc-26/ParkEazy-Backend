@@ -2,10 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { CustomerWebsiteContent } from '../apps/website/src/App';
 import { HostPortalContent } from '../apps/host/src/App';
 import { AdminPanelContent } from '../apps/admin/src/App';
-import { BrandProvider, useBrand } from '@parkeazy/branding';
+import { useBrand, BrandProvider } from '@parkeazy/branding';
 import { HealthApiClient } from '@parkeazy/api-client';
 import { HealthCheckResponse } from '@parkeazy/shared-types';
-import { WORKSPACE_PORTS } from '@parkeazy/config';
 import { Badge, Button, Card } from '@parkeazy/shared-ui';
 
 type ActiveView = 'website' | 'host' | 'admin' | 'workspace' | 'diagnostics';
@@ -50,7 +49,6 @@ function RootAppContent() {
           break;
       }
     }
-
     if (typeof window !== 'undefined') {
       const fullCurrent = window.location.pathname + window.location.search;
       if (fullCurrent !== path) {
@@ -65,7 +63,6 @@ function RootAppContent() {
       const resolved = getInitialView();
       setActiveView(resolved);
     };
-
     window.addEventListener('popstate', handlePopState);
 
     // Normalize paths without trailing slash for sub-apps
@@ -97,12 +94,12 @@ function RootAppContent() {
     }
   };
 
-  // 1. Customer Website view (Pristine, no dev chrome)
+  // 1. Customer Website view
   if (activeView === 'website') {
     return <CustomerWebsiteContent onNavigateToHost={() => navigateTo('host', '/host/')} />;
   }
 
-  // 2. Host Portal view (Pristine, no dev chrome)
+  // 2. Host Portal view (PH05 workspace & 19 screens)
   if (activeView === 'host') {
     return (
       <HostPortalContent
@@ -112,7 +109,7 @@ function RootAppContent() {
     );
   }
 
-  // 3. Admin Panel view (Pristine, no dev chrome)
+  // 3. Admin Panel view
   if (activeView === 'admin') {
     return (
       <AdminPanelContent
@@ -122,7 +119,7 @@ function RootAppContent() {
     );
   }
 
-  // 4. Monorepo Overview / Diagnostics view (only when explicitly requested at /overview or /diagnostics)
+  // 4. Monorepo Overview / Diagnostics view
   return (
     <div className="min-h-screen flex flex-col bg-[#F8FAFC]">
       <nav className="sticky top-0 z-50 bg-[#101828] text-white border-b border-[#1E293B] shadow-md">
@@ -188,21 +185,24 @@ function RootAppContent() {
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="bg-white rounded-3xl p-6 sm:p-8 border border-[#E4E7EC] shadow-sm mb-8">
           <h1 className="text-3xl font-extrabold text-[#101828] font-['Plus_Jakarta_Sans']">
-            ParkEazy Monorepo Architecture Overview
+            ParkEazy Monorepo Architecture Overview (Part 05)
           </h1>
           <p className="mt-2 text-sm text-[#344054]">
-            Unified white-label parking infrastructure hosting Customer Marketplace, Host Operations Workspace, and Admin Console.
+            Unified white-label parking infrastructure hosting Customer Marketplace, Host Operations Workspace with 18 Part 05 screens, and Admin Console.
           </p>
 
           <div className="mt-6 flex flex-wrap gap-3">
-            <Button variant="primary" onClick={() => navigateTo('website', '/')}>
+            <Button variant="primary" onClick={() => navigateTo('host', '/host/spaces')}>
+              🚀 Open Host Spaces & Inventory (/host/spaces)
+            </Button>
+            <Button variant="secondary" onClick={() => navigateTo('host', '/host/pricing')}>
+              📊 Open Tariffs & Pricing Hub (/host/pricing)
+            </Button>
+            <Button variant="secondary" onClick={() => navigateTo('host', '/host/spaces/matrix')}>
+              🏁 Open 24-Bay Visual Matrix (/host/spaces/matrix)
+            </Button>
+            <Button variant="outline" onClick={() => navigateTo('website', '/')}>
               Launch Customer Marketplace (/)
-            </Button>
-            <Button variant="secondary" onClick={() => navigateTo('host', '/host/')}>
-              Launch Host Portal (/host/)
-            </Button>
-            <Button variant="secondary" onClick={() => navigateTo('admin', '/admin/')}>
-              Launch Admin Panel (/admin/)
             </Button>
             <Button variant="outline" onClick={handleFetchHealth}>
               {healthLoading ? 'Checking Health...' : 'Check NestJS API Health'}

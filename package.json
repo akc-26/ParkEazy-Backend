@@ -20,7 +20,7 @@
     "build:website": "vite build apps/website",
     "build:host": "vite build apps/host",
     "build:admin": "vite build apps/admin",
-    "build:api": "tsc -p services/api/tsconfig.json",
+    "build:api": "tsc -p services/api/tsconfig.json && node -e \"const fs = require('fs'); fs.cpSync('dist/api/services/api/src', 'services/api/dist', {recursive: true});\"",
     "build:all": "npm run build && npm run build:website && npm run build:host && npm run build:admin && npm run build:api",
     "preview": "vite preview",
     "gateway": "node scripts/production-gateway.mjs",
