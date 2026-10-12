@@ -55,14 +55,32 @@ describe('Part 06+: Bookings Lifecycle, Host Operations & Admin Panel Test Suite
     });
   });
 
+  describe('Part 07 booking window validation', () => {
+    it('rejects booking requests that start too soon', async () => {
+      const facilities = await facilitiesService.listHostFacilities('00000000-0000-4000-a000-000000000002');
+      const spaces = await facilitiesService.listSpaces(facilities[0].id);
+      const startsAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+      const endsAt = new Date(Date.now() + 65 * 60 * 1000).toISOString();
+      await expect(bookingsService.holdSpace('00000000-0000-4000-a000-000000000003', spaces[0].id, startsAt, endsAt)).rejects.toThrow(/15 minutes/);
+    });
+
+    it('rejects booking windows over 72 hours', async () => {
+      const facilities = await facilitiesService.listHostFacilities('00000000-0000-4000-a000-000000000002');
+      const spaces = await facilitiesService.listSpaces(facilities[0].id);
+      const startsAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+      const endsAt = new Date(Date.now() + 74 * 60 * 60 * 1000).toISOString();
+      await expect(bookingsService.holdSpace('00000000-0000-4000-a000-000000000003', spaces[0].id, startsAt, endsAt)).rejects.toThrow(/72 hours/);
+    });
+  });
+
   describe('2. Ephemeral Hold Lease (Concurrency Control)', () => {
     it('should create a 10-minute hold lease and prevent conflicting holds', async () => {
       const facilities = await facilitiesService.listHostFacilities('00000000-0000-4000-a000-000000000002');
       const spaces = await facilitiesService.listSpaces(facilities[0].id);
       const testSpace = spaces[0];
 
-      const startsAt = '2026-03-25T10:00:00Z';
-      const endsAt = '2026-03-25T12:00:00Z';
+      const startsAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+      const endsAt = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
 
       const hold = await bookingsService.holdSpace(
         '00000000-0000-4000-a000-000000000003',
@@ -77,6 +95,25 @@ describe('Part 06+: Bookings Lifecycle, Host Operations & Admin Panel Test Suite
       const createdAtMs = new Date(hold.createdAt).getTime();
       expect(expiresAtMs - createdAtMs).toBe(10 * 60 * 1000); // 10 minutes TTL
     });
+
+    it('does not allow another customer to renew a hold', async () => {
+      const facilities = await facilitiesService.listHostFacilities('00000000-0000-4000-a000-000000000002');
+      const spaces = await facilitiesService.listSpaces(facilities[0].id);
+      const startsAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+      const endsAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+      const hold = await bookingsService.holdSpace('00000000-0000-4000-a000-000000000003', spaces[0].id, startsAt, endsAt);
+      await expect(bookingsService.renewHold(hold.id, '00000000-0000-4000-a000-000000000004')).rejects.toThrow(/another customer/);
+    });
+
+    it('does not allow overlapping holds even for the same customer', async () => {
+      const facilities = await facilitiesService.listHostFacilities('00000000-0000-4000-a000-000000000002');
+      const spaces = await facilitiesService.listSpaces(facilities[0].id);
+      const startsAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+      const endsAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+      const userId = '00000000-0000-4000-a000-000000000003';
+      await bookingsService.holdSpace(userId, spaces[0].id, startsAt, endsAt);
+      await expect(bookingsService.holdSpace(userId, spaces[0].id, startsAt, endsAt)).rejects.toThrow(/already booked or held/);
+    });
   });
 
   describe('3. Booking Lifecycle Operations', () => {
@@ -85,8 +122,8 @@ describe('Part 06+: Bookings Lifecycle, Host Operations & Admin Panel Test Suite
       const spaces = await facilitiesService.listSpaces(facilities[0].id);
       const testSpace = spaces[0];
 
-      const startsAt = '2026-04-01T10:00:00Z';
-      const endsAt = '2026-04-01T13:00:00Z';
+      const startsAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+      const endsAt = new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString();
 
       const booking = await bookingsService.createBooking(
         '00000000-0000-4000-a000-000000000003',

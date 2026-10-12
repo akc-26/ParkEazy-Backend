@@ -1,6 +1,6 @@
 {
-  "name": "ParkEazy - Parking Space Listings & Host Inventory",
-  "description": "ParkEazy white-label parking infrastructure with customer marketplace, host inventory operations, dynamic pricing, and administrative governance.",
+  "name": "ParkEazy - Booking Lifecycle & Concurrency Safeguards",
+  "description": "ParkEazy white-label parking infrastructure with booking lifecycle management, concurrency safeguards, customer marketplace, host portal, and administrative governance.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

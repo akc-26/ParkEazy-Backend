@@ -14,7 +14,11 @@ export class JwtAuthGuard implements CanActivate {
   private readonly jwtSecret: string;
 
   constructor(@Inject(Reflector) private readonly reflector: Reflector) {
-    this.jwtSecret = process.env.JWT_SECRET || 'parkeazy-development-super-secret-key-2026!';
+    const configuredSecret = process.env.JWT_SECRET;
+    if (process.env.NODE_ENV === 'production' && (!configuredSecret || configuredSecret.length < 32)) {
+      throw new Error('JWT_SECRET must be configured with at least 32 characters in production.');
+    }
+    this.jwtSecret = configuredSecret || 'parkeazy-development-super-secret-key-2026!';
   }
 
   public canActivate(context: ExecutionContext): boolean {

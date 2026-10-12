@@ -1,10 +1,15 @@
-import { Controller, Get, Post, Body, Inject } from '@nestjs/common';
+import { Controller, Get, Post, Body, Inject, UseGuards } from '@nestjs/common';
 import { PaymentsService } from './payments.service.js';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
+import { TenantGuard } from '../auth/guards/tenant.guard.js';
+import { Public } from '../auth/guards/roles.decorator.js';
 
 @Controller('payments')
+@UseGuards(JwtAuthGuard, TenantGuard)
 export class PaymentsController {
   constructor(@Inject(PaymentsService) private readonly paymentsService: PaymentsService) {}
 
+  @Public()
   @Get('methods')
   public getMethods() {
     return {

@@ -29,6 +29,26 @@ import { CustomerMyBookingsPage } from './pages/CustomerMyBookingsPage';
 import { CustomerActiveBookingPage } from './pages/CustomerActiveBookingPage';
 import { CustomerProfileVehiclesPage } from './pages/CustomerProfileVehiclesPage';
 
+// PH07: Booking Lifecycle & Concurrency Safeguards (18 authoritative screens)
+import { ParkingDetailsBookingSummaryPage } from './pages/ParkingDetailsBookingSummaryPage';
+import { SelectParkingDateDurationPage } from './pages/SelectParkingDateDurationPage';
+import { AvailabilitySpaceSelectionPage } from './pages/AvailabilitySpaceSelectionPage';
+import { BookingDetailsVehiclePage } from './pages/BookingDetailsVehiclePage';
+import { ReviewBookingPriceBreakdownPage } from './pages/ReviewBookingPriceBreakdownPage';
+import { BookingProcessingPage } from './pages/BookingProcessingPage';
+import { BookingConfirmedPage } from './pages/BookingConfirmedPage';
+import { BookingUnavailableRecoveryPage } from './pages/BookingUnavailableRecoveryPage';
+import { BookingValidationExpiryStatesPage } from './pages/BookingValidationExpiryStatesPage';
+import { ActiveParkingSessionPage } from './pages/ActiveParkingSessionPage';
+import { ExtendParkingDurationPage } from './pages/ExtendParkingDurationPage';
+import { UpcomingBookingDetailsPage } from './pages/UpcomingBookingDetailsPage';
+import { CancelBookingReviewPage } from './pages/CancelBookingReviewPage';
+import { BookingCancelledPage } from './pages/BookingCancelledPage';
+import { BookingChangesExceptionStatesPage } from './pages/BookingChangesExceptionStatesPage';
+import { BookingIssueSupportPage } from './pages/BookingIssueSupportPage';
+import { BookingHistoryReceiptsPage } from './pages/BookingHistoryReceiptsPage';
+import { MyBookingsOverviewPage } from './pages/MyBookingsOverviewPage';
+
 interface WebsiteAppProps {
   onNavigateToHost?: () => void;
 }
@@ -337,39 +357,289 @@ export function CustomerWebsiteContent({ onNavigateToHost }: WebsiteAppProps = {
     );
   }
 
-  // --- Booking Checkout & Payment (pe_uw_04_02 to pe_uw_04_07 & pe_uw_05_01) ---
-  if (currentPath === '/checkout') {
+  // --- PH07 Flow 1: Booking Lifecycle & Concurrency Reservation (pe_uw_04_01 to 04_09) ---
+
+  // 1. Parking Details & Booking Summary (pe_uw_04_01)
+  if (currentPath === '/book/summary' || currentPath === '/book/details') {
     return (
-      <CustomerBookingCheckoutPage
+      <ParkingDetailsBookingSummaryPage
+        facilityId={searchParams.get('facilityId') || undefined}
+        spaceId={searchParams.get('spaceId') || undefined}
         currentUser={currentUser}
         onNavigate={navigateTo}
         onLogout={handleLogout}
-        facilityIdParam={searchParams.get('facilityId') || undefined}
-        spaceIdParam={searchParams.get('spaceId') || undefined}
-        startsAtParam={searchParams.get('startsAt') || undefined}
-        endsAtParam={searchParams.get('endsAt') || undefined}
-        plateParam={searchParams.get('plate') || undefined}
-        categoryParam={searchParams.get('category') || undefined}
       />
     );
   }
 
-  // --- Active Booking Session & Gate Pass (active_parking_session_pe_uw_06_03) ---
-  if (currentPath.startsWith('/bookings/') && currentPath.endsWith('/active')) {
-    const parts = currentPath.split('/');
-    const bookingId = parts[2] || 'b0000001-0000-4000-8000-000000000001';
+  // 2. Select Parking Date & Duration (pe_uw_04_02)
+  if (currentPath === '/book/schedule' || currentPath === '/book/duration' || currentPath === '/book/dates') {
     return (
-      <CustomerActiveBookingPage
+      <SelectParkingDateDurationPage
+        facilityId={searchParams.get('facilityId') || undefined}
+        spaceId={searchParams.get('spaceId') || undefined}
+        initialStartsAt={searchParams.get('startsAt') || undefined}
+        initialEndsAt={searchParams.get('endsAt') || undefined}
+        currentUser={currentUser}
+        onNavigate={navigateTo}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
+  // 3. Availability Space Selection (pe_uw_04_03)
+  if (currentPath === '/book/spaces') {
+    return (
+      <AvailabilitySpaceSelectionPage
+        facilityId={searchParams.get('facilityId') || undefined}
+        spaceId={searchParams.get('spaceId') || undefined}
+        startsAt={searchParams.get('startsAt') || undefined}
+        endsAt={searchParams.get('endsAt') || undefined}
+        currentUser={currentUser}
+        onNavigate={navigateTo}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
+  // 4. Booking Details & Vehicle Assignment (pe_uw_04_04)
+  if (currentPath === '/book/vehicle') {
+    return (
+      <BookingDetailsVehiclePage
+        facilityId={searchParams.get('facilityId') || undefined}
+        spaceId={searchParams.get('spaceId') || undefined}
+        startsAt={searchParams.get('startsAt') || undefined}
+        endsAt={searchParams.get('endsAt') || undefined}
+        currentUser={currentUser}
+        onNavigate={navigateTo}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
+  // 5. Review Booking Price Breakdown & Exclusive Hold (pe_uw_04_05)
+  if (currentPath === '/book/review' || currentPath === '/checkout') {
+    return (
+      <ReviewBookingPriceBreakdownPage
+        facilityId={searchParams.get('facilityId') || undefined}
+        spaceId={searchParams.get('spaceId') || undefined}
+        startsAt={searchParams.get('startsAt') || undefined}
+        endsAt={searchParams.get('endsAt') || undefined}
+        plate={searchParams.get('plate') || undefined}
+        category={searchParams.get('category') || undefined}
+        driverName={searchParams.get('driverName') || currentUser?.fullName || undefined}
+        driverPhone={searchParams.get('driverPhone') || currentUser?.phone || undefined}
+        currentUser={currentUser}
+        onNavigate={navigateTo}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
+  // 6. Booking Processing & Concurrency Hold State (pe_uw_04_06)
+  if (currentPath === '/book/processing') {
+    return (
+      <BookingProcessingPage
+        facilityId={searchParams.get('facilityId') || undefined}
+        spaceId={searchParams.get('spaceId') || undefined}
+        startsAt={searchParams.get('startsAt') || undefined}
+        endsAt={searchParams.get('endsAt') || undefined}
+        plate={searchParams.get('plate') || undefined}
+        category={searchParams.get('category') || undefined}
+        holdId={searchParams.get('holdId') || undefined}
+        method={searchParams.get('method') || undefined}
+        currentUser={currentUser}
+        onNavigate={navigateTo}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
+  // 7. Booking Confirmed & Gate Pass / QR (pe_uw_04_07)
+  if (
+    currentPath === '/book/confirmed' ||
+    (currentPath.startsWith('/bookings/') && currentPath.endsWith('/confirmed'))
+  ) {
+    const bookingId =
+      currentPath.startsWith('/bookings/')
+        ? currentPath.split('/')[2]
+        : searchParams.get('bookingId') || 'b0000001-0000-4000-8000-000000000001';
+    return (
+      <BookingConfirmedPage
         bookingId={bookingId}
+        currentUser={currentUser}
+        onNavigate={navigateTo}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
+  // 8. Booking Unavailable & Concurrency Recovery (pe_uw_04_08)
+  if (currentPath === '/book/unavailable' || currentPath === '/book/recovery') {
+    return (
+      <BookingUnavailableRecoveryPage
+        spaceId={searchParams.get('spaceId') || undefined}
+        facilityId={searchParams.get('facilityId') || undefined}
+        startsAt={searchParams.get('startsAt') || undefined}
+        endsAt={searchParams.get('endsAt') || undefined}
+        currentUser={currentUser}
+        onNavigate={navigateTo}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
+  // 9. Booking Validation & Expiry States (pe_uw_04_09)
+  if (currentPath === '/book/validation' || currentPath === '/book/expired') {
+    return (
+      <BookingValidationExpiryStatesPage
+        currentUser={currentUser}
+        onNavigate={navigateTo}
+        onLogout={handleLogout}
+        spaceId={searchParams.get('spaceId') || undefined}
+        facilityId={searchParams.get('facilityId') || undefined}
+      />
+    );
+  }
+
+  // --- PH07 Flow 2: Active / Post-Booking Lifecycle Management (pe_uw_06_01 to 06_09) ---
+
+  // 10. Active Parking Session & Gate Pass (pe_uw_06_01)
+  if (
+    (currentPath.startsWith('/bookings/') && currentPath.endsWith('/active')) ||
+    currentPath === '/session/active'
+  ) {
+    const parts = currentPath.split('/');
+    const bookingId = parts[2] || searchParams.get('bookingId') || 'b0000001-0000-4000-8000-000000000001';
+    return (
+      <ActiveParkingSessionPage
+        bookingId={bookingId}
+        currentUser={currentUser}
         onNavigate={navigateTo}
       />
     );
   }
 
-  // --- Customer My Bookings & Receipts (my_bookings_overview_pe_uw_06_01) ---
-  if (currentPath === '/bookings' || currentPath === '/my-bookings') {
+  // 11. Extend Parking Duration (pe_uw_06_02)
+  if (
+    (currentPath.startsWith('/bookings/') && currentPath.endsWith('/extend')) ||
+    currentPath === '/session/extend'
+  ) {
+    const parts = currentPath.split('/');
+    const bookingId = parts[2] || searchParams.get('bookingId') || 'b0000001-0000-4000-8000-000000000001';
     return (
-      <CustomerMyBookingsPage
+      <ExtendParkingDurationPage
+        bookingId={bookingId}
+        currentUser={currentUser}
+        onNavigate={navigateTo}
+      />
+    );
+  }
+
+  // 13. Cancel Booking Review (pe_uw_06_04)
+  if (currentPath.startsWith('/bookings/') && currentPath.endsWith('/cancel')) {
+    const parts = currentPath.split('/');
+    const bookingId = parts[2] || 'b0000001-0000-4000-8000-000000000001';
+    return (
+      <CancelBookingReviewPage
+        bookingId={bookingId}
+        currentUser={currentUser}
+        onNavigate={navigateTo}
+      />
+    );
+  }
+
+  // 14. Booking Cancelled Confirmation (pe_uw_06_05)
+  if (currentPath.startsWith('/bookings/') && currentPath.endsWith('/cancelled')) {
+    const parts = currentPath.split('/');
+    const bookingId = parts[2] || 'b0000001-0000-4000-8000-000000000001';
+    return (
+      <BookingCancelledPage
+        bookingId={bookingId}
+        currentUser={currentUser}
+        onNavigate={navigateTo}
+      />
+    );
+  }
+
+  // 15. Booking Overstay & Exception States (pe_uw_06_06)
+  if (
+    (currentPath.startsWith('/bookings/') && currentPath.endsWith('/exceptions')) ||
+    (currentPath.startsWith('/bookings/') && currentPath.endsWith('/overstay')) ||
+    currentPath === '/booking/exceptions'
+  ) {
+    const parts = currentPath.split('/');
+    const bookingId = parts[2] || searchParams.get('bookingId') || 'b0000001-0000-4000-8000-000000000001';
+    return (
+      <BookingChangesExceptionStatesPage
+        bookingId={bookingId}
+        currentUser={currentUser}
+        onNavigate={navigateTo}
+      />
+    );
+  }
+
+  // 16. Booking Issue & Support Dispute (pe_uw_06_07)
+  if (
+    (currentPath.startsWith('/bookings/') && currentPath.endsWith('/support')) ||
+    currentPath === '/booking/support'
+  ) {
+    const parts = currentPath.split('/');
+    const bookingId = parts[2] || searchParams.get('bookingId') || 'b0000001-0000-4000-8000-000000000001';
+    return (
+      <BookingIssueSupportPage
+        bookingId={bookingId}
+        currentUser={currentUser}
+        onNavigate={navigateTo}
+      />
+    );
+  }
+
+  // 17. Booking History & Tax Invoice Receipts (pe_uw_06_08)
+  if (
+    currentPath === '/bookings/history' ||
+    currentPath === '/bookings/receipts' ||
+    (currentPath.startsWith('/bookings/') && currentPath.endsWith('/receipt'))
+  ) {
+    const parts = currentPath.split('/');
+    const bookingIdParam = currentPath.endsWith('/receipt') ? parts[2] : searchParams.get('bookingId') || undefined;
+    return (
+      <BookingHistoryReceiptsPage
+        currentUser={currentUser}
+        onNavigate={navigateTo}
+        bookingIdParam={bookingIdParam}
+      />
+    );
+  }
+
+  // 12. Upcoming Booking Details (pe_uw_06_03)
+  if (
+    currentPath.startsWith('/bookings/') &&
+    !currentPath.includes('/active') &&
+    !currentPath.includes('/cancel') &&
+    !currentPath.includes('/extend') &&
+    !currentPath.includes('/receipt') &&
+    !currentPath.includes('/support') &&
+    !currentPath.includes('/exceptions') &&
+    !currentPath.includes('/overstay') &&
+    !currentPath.includes('/confirmed')
+  ) {
+    const parts = currentPath.split('/');
+    const bookingId = parts[2] || 'b0000001-0000-4000-8000-000000000001';
+    return (
+      <UpcomingBookingDetailsPage
+        bookingId={bookingId}
+        currentUser={currentUser}
+        onNavigate={navigateTo}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
+  // 18. Customer My Bookings Overview (pe_uw_06_09)
+  if (currentPath === '/bookings' || currentPath === '/my-bookings' || currentPath === '/bookings/overview') {
+    return (
+      <MyBookingsOverviewPage
         currentUser={currentUser}
         onNavigate={navigateTo}
         onLogout={handleLogout}

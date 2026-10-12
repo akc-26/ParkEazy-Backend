@@ -163,3 +163,62 @@ export interface AdminPlatformOverview {
   databaseConnected: boolean;
 }
 
+export interface CancelPreviewResponse {
+  bookingId: string;
+  totalPaidInr: number;
+  eligibleRefundInr: number;
+  refundPercentage: number;
+  deductionAmountInr: number;
+  policyTier: 'full_refund' | 'partial_refund' | 'no_refund';
+  hoursUntilStart: number;
+  policyNotes: string;
+}
+
+export interface BookingOverstayRecord {
+  bookingId: string;
+  scheduledEndsAt: string;
+  actualDepartureAt?: string;
+  overstayMinutes: number;
+  gracePeriodMinutes: number;
+  isInGracePeriod: boolean;
+  penaltyRatePerHourInr: number;
+  totalPenaltyInr: number;
+  status: 'grace_period' | 'violation' | 'resolved' | 'waived';
+}
+
+export interface BookingExtension {
+  id: string;
+  bookingId: string;
+  tenantId: string;
+  previousEndsAt: string;
+  newEndsAt: string;
+  additionalHours: number;
+  additionalAmountInr: number;
+  status: 'approved' | 'rejected';
+  createdAt: string;
+}
+
+export interface BookingSupportTicket {
+  id: string;
+  bookingId: string;
+  userId: string;
+  category: 'gate_closed' | 'space_blocked' | 'sensor_fault' | 'host_unreachable' | 'other';
+  description: string;
+  status: 'open' | 'investigating' | 'resolved';
+  resolutionNotes?: string;
+  createdAt: string;
+}
+
+export interface AlternativeSpaceSuggestion {
+  spaceId: string;
+  facilityId: string;
+  facilityName: string;
+  bayIdentifier: string;
+  floorLevel: string;
+  vehicleCategory: string;
+  hourlyRateInr: number;
+  distanceMeters?: number;
+  hasEvCharger: boolean;
+  score: number;
+}
+

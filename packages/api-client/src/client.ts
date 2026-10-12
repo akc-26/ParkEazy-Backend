@@ -38,6 +38,10 @@ import {
   UserVehicle,
   PaymentTransaction,
   HostSettlement,
+  CancelPreviewResponse,
+  BookingOverstayRecord,
+  BookingSupportTicket,
+  AlternativeSpaceSuggestion,
 } from '@parkeazy/shared-types';
 
 export interface ApiClientOptions {
@@ -58,7 +62,23 @@ export class ParkEazyApiClient {
     this.baseUrl = options.baseUrl || envUrl || `http://${API_CONFIG.defaultHost}:${API_CONFIG.defaultPort}${API_CONFIG.prefix}`;
     this.tenantId = options.tenantId || 'default';
     this.timeoutMs = options.timeoutMs || 8000;
-    this.accessToken = options.initialToken || null;
+    this.accessToken = options.initialToken || this.readStoredToken();
+  }
+
+  private readStoredToken(): string | null {
+    if (typeof window === 'undefined') return null;
+    try {
+      const pathname = window.location.pathname;
+      const key = pathname.startsWith('/host')
+        ? 'parkeazy_host_token'
+        : pathname.startsWith('/admin')
+          ? 'parkeazy_admin_token'
+          : 'parkeazy_customer_token';
+      return window.localStorage.getItem(key);
+    } catch {
+      // Storage may be disabled by browser privacy settings; callers can still pass initialToken.
+      return null;
+    }
   }
 
   public getBaseUrl(): string {
@@ -383,6 +403,34 @@ export class ParkEazyApiClient {
     },
     cancel: async (id: string, reason?: string): Promise<Booking & { refundAmountInr?: number }> => {
       const res = await this.post<{ data: Booking & { refundAmountInr?: number } }>(`/bookings/${id}/cancel`, { reason });
+      return res.data || (res as any);
+    },
+    renewHold: async (holdId: string): Promise<ReservationHold> => {
+      const res = await this.post<{ data: ReservationHold }>('/bookings/renew-hold', { holdId });
+      return res.data || (res as any);
+    },
+    releaseHold: async (holdId: string): Promise<{ released: boolean }> => {
+      const res = await this.post<{ data: { released: boolean } }>('/bookings/release-hold', { holdId });
+      return res.data || (res as any);
+    },
+    getPass: async (id: string): Promise<any> => {
+      const res = await this.get<{ data: any }>(`/bookings/${id}/pass`);
+      return res.data || (res as any);
+    },
+    cancelPreview: async (id: string): Promise<CancelPreviewResponse> => {
+      const res = await this.post<{ data: CancelPreviewResponse }>(`/bookings/${id}/cancel-preview`);
+      return res.data || (res as any);
+    },
+    getOverstay: async (id: string): Promise<BookingOverstayRecord> => {
+      const res = await this.get<{ data: BookingOverstayRecord }>(`/bookings/${id}/overstay`);
+      return res.data || (res as any);
+    },
+    createSupportTicket: async (id: string, payload: { category: string; description: string }): Promise<BookingSupportTicket> => {
+      const res = await this.post<{ data: BookingSupportTicket }>(`/bookings/${id}/support`, payload);
+      return res.data || (res as any);
+    },
+    getAlternatives: async (spaceId: string, startsAt: string, endsAt: string): Promise<AlternativeSpaceSuggestion[]> => {
+      const res = await this.get<{ data: AlternativeSpaceSuggestion[] }>(`/bookings/alternatives/search?spaceId=${encodeURIComponent(spaceId)}&startsAt=${encodeURIComponent(startsAt)}&endsAt=${encodeURIComponent(endsAt)}`);
       return res.data || (res as any);
     },
     getReceipt: async (id: string): Promise<TaxInvoiceReceipt> => {

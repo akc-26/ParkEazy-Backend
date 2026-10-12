@@ -76,27 +76,16 @@ export function CustomerBookingCheckoutPage({
     setStep('processing');
 
     try {
-      // 1. Create confirmed booking
-      const newBooking = await client.bookings.create({
-        spaceId: spaceIdParam,
-        facilityId: facilityIdParam,
-        vehiclePlate,
-        vehicleCategory,
-        startsAt,
-        endsAt,
-        holdId: hold?.id,
-        paymentMethod: selectedMethod,
-      });
-
-      // 2. Complete payment transaction
-      await client.payments.initiate({
-        bookingId: newBooking.id,
-        method: selectedMethod,
-        amountInr: newBooking.pricing.totalAmountInr,
-      });
-
-      setConfirmedBooking(newBooking);
-      setStep('confirmed');
+      // Payment provider integration belongs to Part 08. Do not create a
+      // confirmed booking or show a success state until the provider returns
+      // an authoritative verified payment result.
+      setStep('payment');
+      if (hold?.id) {
+        try { await client.bookings.releaseHold(hold.id); } catch { /* TTL expiry remains the final fallback. */ }
+        setHold(null);
+      }
+      setErrorMsg('Secure payment processing is not configured yet. Your reservation has not been confirmed and you have not been charged. The temporary hold was released; retry after payment integration is enabled.');
+      return;
     } catch (err: any) {
       setErrorMsg(err?.message || 'Payment authorization failed. Please retry.');
       setStep('payment');
