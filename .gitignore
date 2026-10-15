@@ -46,3 +46,6 @@ Thumbs.db
 .temp/
 .tmp/
 *.tmp
+pe-host-repo/
+pe-web-repo/
+test-repo/

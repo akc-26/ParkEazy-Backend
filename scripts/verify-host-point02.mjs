@@ -1,0 +1,65 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
+const root = process.cwd();
+const fail = [];
+const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
+const screenSource = read('apps/host/src/pages/HostWorkspaceScreens.tsx');
+const appSource = read('apps/host/src/App.tsx');
+const inventory = read('docs/POINT-02-HOST-SCREEN-INVENTORY.csv');
+const screenIds = [...screenSource.matchAll(/id:'([^']+)'/g)].map((m) => m[1]);
+const routes = [...screenSource.matchAll(/route:'([^']+)'/g)].map((m) => m[1]);
+const csvRows = inventory.trim().split(/\r?\n/).length - 1;
+const duplicate = (items) => items.filter((item, index) => items.indexOf(item) !== index);
+
+if (screenIds.length !== 26) fail.push(`Expected 26 newly implemented screen configs, found ${screenIds.length}`);
+if (new Set(screenIds).size !== screenIds.length) fail.push(`Duplicate screen IDs: ${duplicate(screenIds).join(', ')}`);
+if (new Set(routes).size !== routes.length) fail.push(`Duplicate routes: ${duplicate(routes).join(', ')}`);
+if (csvRows !== 57) fail.push(`Expected 57 design inventory rows, found ${csvRows}`);
+if (!appSource.includes('HOST_WORKSPACE_SCREENS.find((screen) => screen.route === currentPath)')) fail.push('App.tsx does not dispatch workspace routes through the screen catalog');
+if (!appSource.includes('missingResourceContext')) fail.push('Missing real-resource context guard');
+if (appSource.includes('defaultFacilityId') || appSource.includes('defaultSpaceId')) fail.push('Demo facility/space ID fallback remains in App.tsx');
+if (read('apps/host/src/pages/HostEarningsFinancialOverviewPage.tsx').includes('33,470.00')) fail.push('Hardcoded sample gross earnings remains visible');
+if (read('apps/host/src/pages/HostEarningsFinancialOverviewPage.tsx').includes('HDFC0001824')) fail.push('Hardcoded bank account identifier remains visible');
+if (read('apps/host/src/pages/HostBookingOperationsOverviewPage.tsx').includes("|| 24")) fail.push('Hardcoded 24-bay occupancy fallback remains');
+if (read('apps/host/src/pages/HostProfileContactDetailsPage.tsx').includes('918020038472910')) fail.push('Hardcoded bank account value remains in host profile form');
+if (read('apps/host/src/pages/AvailabilityPricingOverviewPage.tsx').includes('₹40.00')) fail.push('Hardcoded base tariff remains on the pricing overview');
+if (read('apps/host/src/pages/PricingAvailabilityChangeHistoryPage.tsx').includes('aud-101')) fail.push('Sample audit log entry remains in the audit history');
+if (read('apps/host/src/pages/HostProfileContactDetailsPage.tsx').includes('HDFC Bank Ltd')) fail.push('Hardcoded bank provider remains in the host profile form');
+if (!read('apps/host/src/index.css').includes('--pe-primary:#0F766E')) fail.push('Canonical emerald design token missing');
+const hostService = read('services/api/src/modules/host/host.service.ts');
+const hostController = read('services/api/src/modules/host/host.controller.ts');
+const bookingService = read('services/api/src/modules/bookings/bookings.service.ts');
+const apiClient = read('packages/api-client/src/client.ts');
+if (hostService.includes('|| true')) fail.push('Host booking ownership bypass remains in host service');
+if (!hostService.includes('getBookingsByFacilityIds(facilityIds, tenantId)')) fail.push('Host bookings are not queried through tenant-scoped facility IDs');
+if (!hostService.includes('listSpaces(f.id, hostId, tenantId)')) fail.push('Host occupancy space query is not scoped to the authenticated host and tenant');
+if (!bookingService.includes('WHERE tenant_id = $2 AND facility_id = ANY($1::uuid[])')) fail.push('Database-backed host booking query is missing tenant/facility scoping');
+if (!hostController.includes('@UseGuards(JwtAuthGuard, TenantGuard, RolesGuard)') || !hostController.includes("@Roles('host', 'superadmin')")) fail.push('Host operations controller is missing authenticated host role guards');
+if (hostController.includes("sub: '00000000-0000-4000-a000-000000000002'")) fail.push('Host controller still uses a hardcoded fallback identity');
+if (hostService.includes('grossEarningsInr: gross +') || hostService.includes('completedBookingsCount: completedBookings.length +')) fail.push('Fabricated earnings totals remain in host service');
+if (hostService.includes('HDFC') || hostService.includes('Math.random()')) fail.push('Fabricated settlement or bank reference remains in host service');
+if (!hostService.includes('persistent settlement provider has not been configured')) fail.push('Unavailable payout flow does not clearly disclose missing settlement provider');
+if (!hostController.includes("@Post('bookings/:id/check-in')") || !hostController.includes("@Post('bookings/:id/check-out')")) fail.push('Host check-in/check-out endpoints are missing');
+if (!apiClient.includes('`/host/bookings/${encodeURIComponent(id)}/check-in`')) fail.push('Host API client check-in method is missing');
+if (!apiClient.includes('`/host/bookings/${encodeURIComponent(id)}/check-out`')) fail.push('Host API client check-out method is missing');
+if (!screenSource.includes('apiClient.host.checkIn(booking.id)') || !screenSource.includes('apiClient.host.checkOut(booking.id)')) fail.push('Host check-in/check-out screens are not connected to host-safe APIs');
+if (!screenSource.includes('apiClient.host.getBookings()') || !screenSource.includes('apiClient.host.getLedger()')) fail.push('Booking and ledger screens are not connected to existing host APIs');
+if (!hostController.includes("@Get('audit')") || !hostService.includes('getLifecycleEventsByFacilityIds')) fail.push('Host-scoped lifecycle audit endpoint is missing');
+if (!screenSource.includes('apiClient.host.getAuditEvents()')) fail.push('Operational audit screen is not connected to the host audit API');
+if (!screenSource.includes('15-minute grace')) fail.push('Overstay exception view does not disclose the configured grace period');
+if (!read('services/api/src/database/migrations/010_booking_extension_requests.sql').includes('CREATE TABLE IF NOT EXISTS booking_extension_requests')) fail.push('Persistent extension request migration is missing');
+if (!hostController.includes("@Get('extension-requests')") || !hostController.includes("@Post('extension-requests/:id/decision')")) fail.push('Host extension request review endpoints are missing');
+if (!screenSource.includes('apiClient.host.getExtensionRequests()') || !screenSource.includes('apiClient.host.decideExtensionRequest(requestId,decision)')) fail.push('Extension request screen is not connected to review APIs');
+
+console.log(`Point 02 screen configs: ${screenIds.length}`);
+console.log(`Unique screen IDs: ${new Set(screenIds).size}`);
+console.log(`Unique routes: ${new Set(routes).size}`);
+console.log(`Inventory rows: ${csvRows}`);
+console.log('Preservation checks: Host-only routes; no demo ID fallback; no targeted fabricated financial/bank/occupancy fallbacks.');
+if (fail.length) {
+  console.error('\nFAILED:');
+  for (const item of fail) console.error(`- ${item}`);
+  process.exit(1);
+}
+console.log('PASS: all Point 02 static verification checks.');

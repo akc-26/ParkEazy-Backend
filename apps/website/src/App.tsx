@@ -49,6 +49,64 @@ import { BookingIssueSupportPage } from './pages/BookingIssueSupportPage';
 import { BookingHistoryReceiptsPage } from './pages/BookingHistoryReceiptsPage';
 import { MyBookingsOverviewPage } from './pages/MyBookingsOverviewPage';
 
+// Host Portal & Admin Portal Same-Origin Integration
+import { HostPortalContent } from '../../host/src/App';
+import { AdminPanelContent } from '../../admin/src/App';
+
+// UW-04: Payment & Recovery Screens (pe_uw_05_01 to pe_uw_05_08)
+import { ChoosePaymentMethodPage } from './pages/ChoosePaymentMethodPage';
+import { PaymentReviewAuthorizationPage } from './pages/PaymentReviewAuthorizationPage';
+import { PaymentProcessingPage } from './pages/PaymentProcessingPage';
+import { PaymentSuccessfulPage } from './pages/PaymentSuccessfulPage';
+import { PaymentFailedPage } from './pages/PaymentFailedPage';
+import { PaymentPendingStatusPage } from './pages/PaymentPendingStatusPage';
+import { PaymentCancelledPage } from './pages/PaymentCancelledPage';
+import { PaymentRecoveryReconciliationPage } from './pages/PaymentRecoveryReconciliationPage';
+
+export function EcosystemPortalBar({
+  active,
+  onNavigate,
+}: {
+  active: 'website' | 'host' | 'admin';
+  onNavigate: (path: string) => void;
+}) {
+  return (
+    <div className="bg-[#101828] text-white px-4 py-2 text-xs flex items-center justify-between border-b border-[#1E293B] shrink-0 sticky top-0 z-50">
+      <div className="flex items-center gap-2">
+        <span className="font-extrabold text-[#14B8A6] font-mono tracking-tight text-xs">ParkEazy Ecosystem</span>
+        <span className="text-[#475569] hidden sm:inline">•</span>
+        <span className="text-[11px] text-[#94A3B8] hidden sm:inline">Phase 1 (Parts 01–07) Monorepo</span>
+      </div>
+      <div className="flex items-center gap-1 bg-[#1E293B] p-0.5 rounded-lg">
+        <button
+          onClick={() => onNavigate('/')}
+          className={`px-3 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
+            active === 'website' ? 'bg-[#0F766E] text-white shadow-xs' : 'text-[#94A3B8] hover:text-white'
+          }`}
+        >
+          🌐 Customer Website
+        </button>
+        <button
+          onClick={() => onNavigate('/host/')}
+          className={`px-3 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
+            active === 'host' ? 'bg-[#0F766E] text-white shadow-xs' : 'text-[#94A3B8] hover:text-white'
+          }`}
+        >
+          🏢 Host Portal (57 Screens)
+        </button>
+        <button
+          onClick={() => onNavigate('/admin/')}
+          className={`px-3 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
+            active === 'admin' ? 'bg-[#0F766E] text-white shadow-xs' : 'text-[#94A3B8] hover:text-white'
+          }`}
+        >
+          ⚙️ Admin Panel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 interface WebsiteAppProps {
   onNavigateToHost?: () => void;
 }
@@ -121,12 +179,6 @@ export function CustomerWebsiteContent({ onNavigateToHost }: WebsiteAppProps = {
   }, []);
 
   const navigateTo = (target: string) => {
-    if (target.startsWith('/host')) {
-      if (onNavigateToHost) {
-        onNavigateToHost();
-        return;
-      }
-    }
     if (typeof window !== 'undefined') {
       const [path, search = ''] = target.split('?');
       const searchStr = search ? `?${search}` : '';
@@ -170,6 +222,31 @@ export function CustomerWebsiteContent({ onNavigateToHost }: WebsiteAppProps = {
   const searchParams = new URLSearchParams(currentSearch);
   const locationParam = searchParams.get('q') || searchParams.get('location') || undefined;
   const vehicleParam = (searchParams.get('vehicle') as VehicleType) || undefined;
+
+  // --- Cross-Portal Same-Origin Bridge (User Website, Host Portal, Admin Panel) ---
+  if (currentPath.startsWith('/host')) {
+    return (
+      <div className="flex flex-col min-h-screen">
+        <EcosystemPortalBar active="host" onNavigate={navigateTo} />
+        <HostPortalContent
+          onNavigateToWebsite={() => navigateTo('/')}
+          onNavigateToAdmin={() => navigateTo('/admin/')}
+        />
+      </div>
+    );
+  }
+
+  if (currentPath.startsWith('/admin')) {
+    return (
+      <div className="flex flex-col min-h-screen">
+        <EcosystemPortalBar active="admin" onNavigate={navigateTo} />
+        <AdminPanelContent
+          onNavigateToWebsite={() => navigateTo('/')}
+          onNavigateToHost={() => navigateTo('/host/')}
+        />
+      </div>
+    );
+  }
 
   // --- PH06: Availability, Search & Discovery Routes ---
 
@@ -500,6 +577,57 @@ export function CustomerWebsiteContent({ onNavigateToHost }: WebsiteAppProps = {
         facilityId={searchParams.get('facilityId') || undefined}
       />
     );
+  }
+
+  // --- UW-04: Payments, Booking Results & Recovery States (pe_uw_05_01 to pe_uw_05_08) ---
+
+  // Choose Payment Method (pe_uw_05_01)
+  if (currentPath === '/payment/methods' || currentPath === '/checkout/payment') {
+    return (
+      <ChoosePaymentMethodPage
+        currentUser={currentUser}
+        onNavigate={navigateTo}
+        spaceIdParam={searchParams.get('spaceId') || undefined}
+        startsAtParam={searchParams.get('startsAt') || undefined}
+        endsAtParam={searchParams.get('endsAt') || undefined}
+        plateParam={searchParams.get('plate') || undefined}
+      />
+    );
+  }
+
+  // Payment Review & Escrow Authorization (pe_uw_05_02)
+  if (currentPath === '/payment/review') {
+    return <PaymentReviewAuthorizationPage currentUser={currentUser} onNavigate={navigateTo} />;
+  }
+
+  // Payment Gateway Processing State (pe_uw_05_03)
+  if (currentPath === '/payment/processing') {
+    return <PaymentProcessingPage currentUser={currentUser} onNavigate={navigateTo} />;
+  }
+
+  // Payment Successful Receipt (pe_uw_05_04)
+  if (currentPath === '/payment/success') {
+    return <PaymentSuccessfulPage currentUser={currentUser} onNavigate={navigateTo} />;
+  }
+
+  // Payment Declined / Failed State (pe_uw_05_05)
+  if (currentPath === '/payment/failed') {
+    return <PaymentFailedPage currentUser={currentUser} onNavigate={navigateTo} />;
+  }
+
+  // Payment Pending Bank Confirmation (pe_uw_05_06)
+  if (currentPath === '/payment/pending') {
+    return <PaymentPendingStatusPage currentUser={currentUser} onNavigate={navigateTo} />;
+  }
+
+  // Payment User Cancelled (pe_uw_05_07)
+  if (currentPath === '/payment/cancelled') {
+    return <PaymentCancelledPage currentUser={currentUser} onNavigate={navigateTo} />;
+  }
+
+  // Payment Recovery & Reconciliation (pe_uw_05_08)
+  if (currentPath === '/payment/recovery') {
+    return <PaymentRecoveryReconciliationPage currentUser={currentUser} onNavigate={navigateTo} />;
   }
 
   // --- PH07 Flow 2: Active / Post-Booking Lifecycle Management (pe_uw_06_01 to 06_09) ---
