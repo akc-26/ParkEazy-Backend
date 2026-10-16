@@ -67,6 +67,10 @@ export class ParkEazyApiClient {
       const json: ApiResponse<T> = await response.json();
 
       if (!response.ok || !json.success) {
+        if ('data' in json && (json as any).data) {
+          // If response body contains valid data payload (e.g., /readiness probe returning 503 unavailable)
+          return (json as any).data as T;
+        }
         if ('error' in json) {
           throw new ApiError(
             json.error.message || 'API request failed',
