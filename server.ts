@@ -31,6 +31,23 @@ async function startServer() {
   // Centralized API Error Handler for /api/v1
   app.use(appConfig.apiPrefix, errorHandler);
 
+  // Guarantee any request beginning with /api returns JSON 404 and is never intercepted by frontend Vite SPA routing
+  app.all('/api/*', (_req: Request, res: Response) => {
+    res.status(404).json({
+      success: false,
+      error: {
+        code: 'API_NOT_FOUND',
+        message: `API endpoint '${_req.method} ${_req.originalUrl}' does not exist on ParkEazy backend.`,
+      },
+      timestamp: new Date().toISOString(),
+    });
+  });
+
+  // Serve static image assets directly in both dev and production
+  const imagesDir = path.resolve(process.cwd(), 'src/assets/images');
+  app.use('/src/assets/images', express.static(imagesDir));
+  app.use('/assets/images', express.static(imagesDir));
+
   // Create HTTP server early so Vite can bind WebSocket HMR in middleware mode
   const server = http.createServer(app);
 
@@ -44,18 +61,30 @@ async function startServer() {
     });
   } else {
     // Development mode with Vite middleware
+    const isHmrDisabled = process.env.DISABLE_HMR === 'true';
     const isHttps = Boolean(process.env.APP_URL?.startsWith('https://'));
     const { createServer: createViteServer } = await import('vite');
+
     const vite = await createViteServer({
       server: {
         middlewareMode: true,
-        hmr: {
-          server: server, // Binds Vite WebSocket server to Node's HTTP upgrade listener
-          ...(isHttps ? { clientPort: 443 } : {}),
-        },
+        allowedHosts: true as const, // Allow Google Cloud Run and AI Studio preview hostnames
+        cors: true,
+        hmr: isHmrDisabled
+          ? false
+          : {
+              server: server, // Binds Vite WebSocket server to Node's HTTP upgrade listener
+              ...(isHttps ? { clientPort: 443 } : {}),
+            },
       },
       appType: 'spa',
     });
+
+    server.on('upgrade', (req, _socket, _head) => {
+      const protocol = req.headers['sec-websocket-protocol'];
+      console.log(`[ParkEazy-WS] Upgrade handshake received: url=${req.url}, protocol=${protocol}, host=${req.headers.host}`);
+    });
+
     app.use(vite.middlewares);
   }
 

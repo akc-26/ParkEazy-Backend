@@ -17,9 +17,9 @@ export const UserHeader: React.FC<UserHeaderProps> = ({
 }) => {
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200">
-      <div className="max-w-[1536px] mx-auto px-6 sm:px-8 md:px-10 lg:px-12 xl:px-16 h-18 flex items-center justify-between gap-8">
+      <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
         {/* Zone 1: Brand Wordmark (Single Text Element) */}
-        <a href="/" className="flex items-center gap-3 shrink-0">
+        <a href="/" className="flex items-center gap-2.5 shrink-0">
           <div className="w-9 h-9 rounded-lg bg-[#087E8A] flex items-center justify-center text-white font-bold text-lg shadow-xs">
             P
           </div>

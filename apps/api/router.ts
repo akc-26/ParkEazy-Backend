@@ -292,3 +292,9 @@ apiV1Router.post('/admin/integrations/:id/test', authGuard([UserRole.ADMIN, User
   }
 });
 
+// Fallback for unmatched /api/v1 routes - ensures API requests are never intercepted by Vite SPA middleware
+apiV1Router.use((req: Request, _res: Response, next: NextFunction) => {
+  next(new AppError(`API endpoint '${req.method} ${req.originalUrl}' does not exist on ParkEazy backend.`, 404, 'API_NOT_FOUND'));
+});
+
+
