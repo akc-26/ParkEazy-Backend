@@ -77,3 +77,17 @@ parkeazy/
   - Test/Live mode toggles and diagnostic connection probes with real-time latency reporting.
   - Safe credential management with server-side masking (`sk_••••••••••••3a9f`) and encryption at rest.
   - Configuration audit logging without leaking secret values.
+
+---
+
+## 6. PostgreSQL & Redis Infrastructure & Readiness Probing
+- **Mandatory Production Dependencies**: In production (`NODE_ENV="production"`), both `DATABASE_URL` (PostgreSQL) and `REDIS_URL` (Redis) are strictly mandatory. Missing or invalid connection strings immediately halt application boot with a descriptive `ConfigurationError`.
+- **Live Connectivity Verification**: The readiness probe at `/api/v1/readiness` actively probes real network connectivity:
+  - **PostgreSQL**: Acquires a pool client and executes `SELECT 1` with latency timing.
+  - **Redis**: Connects and executes a `PING` command, validating the authoritative `PONG` response with latency timing.
+  - Presence of a URL string is never treated as proof of connectivity.
+- **Truthful Readiness Status (HTTP 200 vs 503)**:
+  - If either PostgreSQL or Redis is unconfigured or unreachable, `/api/v1/readiness` returns **HTTP 503 Service Unavailable** with `ready: false` and `productionReady: false`.
+  - Only when both PostgreSQL and Redis are connected and operational (`up`) and all migrations applied does `/api/v1/readiness` return **HTTP 200 OK** with `ready: true`.
+- **Preserved Development In-Memory Mode**: In local development and test environments (`NODE_ENV !== "production"`), omitting `DATABASE_URL` or `REDIS_URL` allows the application to boot in a safe in-memory baseline mode for frontend development. The readiness probe truthfully reports `mode: "in-memory-baseline"`, `status: "unconfigured"`, and is **never** labeled production-ready.
+

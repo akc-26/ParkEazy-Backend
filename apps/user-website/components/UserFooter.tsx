@@ -6,8 +6,8 @@ interface UserFooterProps {
 
 export const UserFooter: React.FC<UserFooterProps> = ({ onOpenHostPortal }) => {
   return (
-    <footer className="bg-white border-t border-slate-200 py-12">
-      <div className="max-w-[1536px] mx-auto px-6 sm:px-8 md:px-10 lg:px-12 xl:px-16">
+    <footer className="bg-white border-t border-slate-200 py-10 sm:py-12">
+      <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
           <div>
             <a href="/" className="flex items-center gap-2 mb-3">
@@ -43,7 +43,7 @@ export const UserFooter: React.FC<UserFooterProps> = ({ onOpenHostPortal }) => {
             <ul className="space-y-2 text-xs text-slate-600">
               <li>
                 <button onClick={onOpenHostPortal} className="hover:text-[#087E8A] text-left">
-                  Host Portal Workspace (/host/)
+                  Become a Host (Host Studio)
                 </button>
               </li>
               <li><a href="#how-it-works" className="hover:text-[#087E8A]">Host Requirements</a></li>

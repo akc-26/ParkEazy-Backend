@@ -27,6 +27,8 @@ export interface IntegrationConfig {
   webhookUrl?: string;
   lastTestedAtUtc?: string;
   lastTestMessage?: string;
+  testType?: 'SIMULATED' | 'REAL_PROBE';
+  isSimulation?: boolean;
   updatedAtUtc: string;
 }
 
@@ -44,6 +46,8 @@ export interface TestConnectionResult {
   latencyMs: number;
   message: string;
   testedAtUtc: string;
+  testType: 'SIMULATED' | 'REAL_PROBE';
+  isSimulation: boolean;
 }
 
 export interface ActivePaymentGatewayConfig {

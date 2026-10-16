@@ -73,11 +73,11 @@ export const UserWebsiteApp: React.FC<UserWebsiteAppProps> = ({ onNavigate }) =>
         onOpenHostPortal={() => onNavigate('/host/')}
       />
 
-      {/* Main Content Viewport (Wide-page responsive container) */}
-      <main className="flex-1 max-w-[1536px] mx-auto w-full px-6 sm:px-8 md:px-10 lg:px-12 xl:px-16 py-16 space-y-20">
+      {/* Main Content Viewport (Balanced responsive container) */}
+      <main className="flex-1 w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14 space-y-16 sm:space-y-20">
         {/* Core Capabilities Bento (Anti-Slop Numbered Sequence) */}
-        <section id="how-it-works" className="space-y-8">
-          <div className="max-w-2xl">
+        <section id="how-it-works" className="space-y-6 sm:space-y-8">
+          <div>
             <div className="text-xs font-bold text-[#075762] uppercase tracking-wider mb-2">
               Architecture & Mechanism
             </div>
@@ -177,7 +177,7 @@ export const UserWebsiteApp: React.FC<UserWebsiteAppProps> = ({ onNavigate }) =>
 
         {/* Host Portal Conversion Banner (Explicit Entry Point) */}
         <section className="bg-gradient-to-br from-[#0F766E] to-[#12211C] rounded-2xl p-8 sm:p-12 xl:p-14 text-white shadow-lg relative overflow-hidden">
-          <div className="relative z-10 max-w-2xl">
+          <div className="relative z-10 max-w-3xl">
             <div className="text-xs font-bold tracking-wider text-emerald-300 uppercase mb-2">
               Have an empty parking bay, driveway, or garage?
             </div>

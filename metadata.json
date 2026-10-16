@@ -1,6 +1,8 @@
 {
-  "name": "ParkEazy - Parking Marketplace Platform",
+  "name": "Remix ParkEazy - Parking Marketplace Platform",
   "description": "Peer-to-peer parking marketplace connecting drivers with parking hosts, featuring dedicated User Website, Host Portal, Admin Panel, and unified REST API.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }
