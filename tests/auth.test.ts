@@ -1,4 +1,5 @@
 process.env.NODE_ENV = 'test';
+process.env.ENABLE_DEMO_AUTH = 'true';
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'http';
