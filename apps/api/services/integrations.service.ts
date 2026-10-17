@@ -1,3 +1,6 @@
+import fs from 'fs';
+import path from 'path';
+import crypto from 'crypto';
 import {
   IntegrationConfig,
   IntegrationStatus,
@@ -6,6 +9,7 @@ import {
   ActivePaymentGatewayConfig,
 } from '../../../packages/contracts';
 import { AppError } from '../middleware/error-handler';
+import { appConfig } from '../config/env';
 
 interface StoredCredential {
   apiKey?: string;
@@ -13,11 +17,21 @@ interface StoredCredential {
   webhookSecret?: string;
 }
 
+interface EncryptedPayload {
+  ivHex: string;
+  tagHex: string;
+  cipherHex: string;
+}
+
 export class IntegrationsService {
   private static instance: IntegrationsService;
 
-  // Private encrypted/in-memory vault for raw credentials (never serialized in API responses)
+  // In-memory decrypted credentials cache
   private credentialsVault: Map<string, StoredCredential> = new Map();
+
+  // Master key derived from application secret for AES-256-GCM encryption at rest
+  private encryptionKey: Buffer;
+  private vaultStoragePath: string;
 
   // Active platform payment provider configuration
   private activeGatewayConfig: ActivePaymentGatewayConfig = {
@@ -45,6 +59,8 @@ export class IntegrationsService {
         webhookUrl: '/api/v1/webhooks/stripe',
         lastTestedAtUtc: undefined,
         lastTestMessage: 'Not configured. Add test keys to enable Stripe processing.',
+        testType: 'REAL_PROBE',
+        isSimulation: false,
         updatedAtUtc: new Date().toISOString(),
       },
     ],
@@ -64,6 +80,8 @@ export class IntegrationsService {
         webhookUrl: '/api/v1/webhooks/razorpay',
         lastTestedAtUtc: undefined,
         lastTestMessage: 'Not configured. Add Razorpay Key ID and Secret to test.',
+        testType: 'REAL_PROBE',
+        isSimulation: false,
         updatedAtUtc: new Date().toISOString(),
       },
     ],
@@ -81,7 +99,9 @@ export class IntegrationsService {
         maskedApiKey: 'mock_pk_sandbox_parkeazy_ready',
         maskedSecretKey: 'mock_sk_••••••••••••••••••••ready',
         lastTestedAtUtc: new Date().toISOString(),
-        lastTestMessage: 'Internal simulated adapter operating normally (0ms latency, zero fees).',
+        lastTestMessage: '[Simulated Sandbox] Internal simulated adapter operating normally (0ms latency, zero fees).',
+        testType: 'SIMULATED',
+        isSimulation: true,
         updatedAtUtc: new Date().toISOString(),
       },
     ],
@@ -99,6 +119,8 @@ export class IntegrationsService {
         maskedApiKey: undefined,
         lastTestedAtUtc: undefined,
         lastTestMessage: 'Not configured. Using client coordinates fallback.',
+        testType: 'REAL_PROBE',
+        isSimulation: false,
         updatedAtUtc: new Date().toISOString(),
       },
     ],
@@ -116,6 +138,8 @@ export class IntegrationsService {
         maskedApiKey: undefined,
         lastTestedAtUtc: undefined,
         lastTestMessage: 'Not configured. PINs rendered in in-app reservation receipts.',
+        testType: 'REAL_PROBE',
+        isSimulation: false,
         updatedAtUtc: new Date().toISOString(),
       },
     ],
@@ -133,18 +157,105 @@ export class IntegrationsService {
         maskedApiKey: undefined,
         lastTestedAtUtc: undefined,
         lastTestMessage: 'Not configured. Serving local curated architectural imagery.',
+        testType: 'REAL_PROBE',
+        isSimulation: false,
         updatedAtUtc: new Date().toISOString(),
       },
     ],
   ]);
 
-  private constructor() {}
+  private constructor() {
+    // Derive a 256-bit encryption key using scrypt from app secret
+    const salt = 'parkeazy-integrations-salt-v1';
+    this.encryptionKey = crypto.scryptSync(appConfig.auth.jwtSecret, salt, 32);
+    this.vaultStoragePath = path.resolve(process.cwd(), '.data', 'integrations.vault.enc.json');
+
+    // Attempt to load persisted encrypted vault from disk
+    this.loadPersistedVault();
+  }
 
   public static getInstance(): IntegrationsService {
     if (!IntegrationsService.instance) {
       IntegrationsService.instance = new IntegrationsService();
     }
     return IntegrationsService.instance;
+  }
+
+  // Symmetric AES-256-GCM encryption
+  private encrypt(plaintext: string): EncryptedPayload {
+    const iv = crypto.randomBytes(12);
+    const cipher = crypto.createCipheriv('aes-256-gcm', this.encryptionKey, iv);
+    let ciphertext = cipher.update(plaintext, 'utf8', 'hex');
+    ciphertext += cipher.final('hex');
+    const authTag = cipher.getAuthTag();
+
+    return {
+      ivHex: iv.toString('hex'),
+      tagHex: authTag.toString('hex'),
+      cipherHex: ciphertext,
+    };
+  }
+
+  // Symmetric AES-256-GCM decryption
+  private decrypt(payload: EncryptedPayload): string {
+    const iv = Buffer.from(payload.ivHex, 'hex');
+    const authTag = Buffer.from(payload.tagHex, 'hex');
+    const decipher = crypto.createDecipheriv('aes-256-gcm', this.encryptionKey, iv);
+    decipher.setAuthTag(authTag);
+    let plaintext = decipher.update(payload.cipherHex, 'hex', 'utf8');
+    plaintext += decipher.final('utf8');
+    return plaintext;
+  }
+
+  // Persist encrypted vault to disk
+  private persistVaultToDisk(): void {
+    try {
+      const dataDir = path.dirname(this.vaultStoragePath);
+      if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true });
+      }
+
+      const serialized: Record<string, EncryptedPayload> = {};
+      for (const [id, cred] of this.credentialsVault.entries()) {
+        const rawJson = JSON.stringify(cred);
+        serialized[id] = this.encrypt(rawJson);
+      }
+
+      fs.writeFileSync(this.vaultStoragePath, JSON.stringify(serialized, null, 2), {
+        encoding: 'utf8',
+        mode: 0o600, // Read/write only by owner
+      });
+    } catch (err) {
+      console.warn('[IntegrationsService] Could not persist encrypted vault to disk:', err);
+    }
+  }
+
+  // Load and decrypt vault from disk
+  private loadPersistedVault(): void {
+    try {
+      if (!fs.existsSync(this.vaultStoragePath)) return;
+      const content = fs.readFileSync(this.vaultStoragePath, 'utf8');
+      const serialized: Record<string, EncryptedPayload> = JSON.parse(content);
+
+      for (const [id, encPayload] of Object.entries(serialized)) {
+        const rawJson = this.decrypt(encPayload);
+        const cred: StoredCredential = JSON.parse(rawJson);
+        this.credentialsVault.set(id, cred);
+
+        // Update corresponding in-memory config metadata
+        const config = this.configs.get(id);
+        if (config) {
+          if (cred.apiKey) config.maskedApiKey = this.maskKey(cred.apiKey);
+          if (cred.secretKey) config.maskedSecretKey = this.maskKey(cred.secretKey);
+          if (cred.webhookSecret) config.maskedWebhookSecret = this.maskKey(cred.webhookSecret);
+          if (config.enabled && (cred.apiKey || cred.secretKey)) {
+            config.status = config.mode === 'test' ? IntegrationStatus.TEST_MODE : IntegrationStatus.CONNECTED;
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[IntegrationsService] Could not load persisted encrypted vault:', err);
+    }
   }
 
   // Safe masking utility that never reveals raw keys
@@ -206,6 +317,7 @@ export class IntegrationsService {
     }
 
     this.credentialsVault.set(id, updatedCreds);
+    this.persistVaultToDisk();
 
     if (dto.enabled !== undefined) {
       existing.enabled = dto.enabled;
@@ -260,73 +372,195 @@ export class IntegrationsService {
     const creds = this.credentialsVault.get(id) || {};
     const startTime = Date.now();
 
-    // 1. Internal Mock Adapter
+    // 1. Internal Mock Adapter: Explicitly simulated sandbox test
     if (id === 'mock_payment') {
       const result: TestConnectionResult = {
         success: true,
         status: IntegrationStatus.CONNECTED,
-        latencyMs: 3,
-        message: 'Sandbox payment simulator verified. Ready to process simulated bookings and double-entry ledger entries.',
+        latencyMs: 1,
+        testType: 'SIMULATED',
+        isSimulation: true,
+        message: '[Simulated Sandbox] Internal payment state machine verified. Double-entry ledger records and 10-minute hold locks function without third-party credentials.',
         testedAtUtc: new Date().toISOString(),
       };
       config.lastTestedAtUtc = result.testedAtUtc;
       config.lastTestMessage = result.message;
+      config.testType = result.testType;
+      config.isSimulation = result.isSimulation;
       return result;
     }
 
-    // 2. Stripe Provider Test
+    // 2. Stripe Provider: Real provider network connectivity probe
     if (id === 'stripe') {
       if (!creds.secretKey && !creds.apiKey) {
-        return {
+        const result: TestConnectionResult = {
           success: false,
           status: IntegrationStatus.NOT_CONFIGURED,
-          latencyMs: Date.now() - startTime,
-          message: 'Stripe keys are not configured. Enter a test Publishable and Secret key to connect.',
+          latencyMs: 0,
+          testType: 'REAL_PROBE',
+          isSimulation: false,
+          message: 'Stripe credentials not configured. Configure test keys (e.g. sk_test_...) to test real connectivity, or use Sandbox Simulator for development.',
           testedAtUtc: new Date().toISOString(),
         };
+        config.lastTestedAtUtc = result.testedAtUtc;
+        config.lastTestMessage = result.message;
+        config.testType = result.testType;
+        config.isSimulation = result.isSimulation;
+        return result;
       }
 
-      const isTestKey = creds.secretKey?.startsWith('sk_test_') || creds.apiKey?.startsWith('pk_test_');
-      const latency = Math.floor(Math.random() * 30) + 40; // Simulated adapter ping
-      const result: TestConnectionResult = {
-        success: true,
-        status: isTestKey ? IntegrationStatus.TEST_MODE : IntegrationStatus.CONNECTED,
-        latencyMs: latency,
-        message: isTestKey
-          ? 'Stripe Test Mode connection verified (safe mock webhook listener ready).'
-          : 'Stripe Live Mode verified with remote endpoint.',
-        testedAtUtc: new Date().toISOString(),
-      };
-      config.lastTestedAtUtc = result.testedAtUtc;
-      config.lastTestMessage = result.message;
-      config.status = result.status;
-      return result;
+      const secret = creds.secretKey || creds.apiKey || '';
+      try {
+        const response = await fetch('https://api.stripe.com/v1/balance', {
+          method: 'GET',
+          headers: {
+            Authorization: `Basic ${Buffer.from(`${secret}:`).toString('base64')}`,
+          },
+          signal: AbortSignal.timeout(6000),
+        });
+
+        const latencyMs = Date.now() - startTime;
+        const isTestKey = secret.startsWith('sk_test_') || secret.startsWith('pk_test_');
+
+        if (response.ok) {
+          const result: TestConnectionResult = {
+            success: true,
+            status: isTestKey ? IntegrationStatus.TEST_MODE : IntegrationStatus.CONNECTED,
+            latencyMs,
+            testType: 'REAL_PROBE',
+            isSimulation: false,
+            message: `[Real Provider Connectivity] Live Stripe API authenticated successfully (${isTestKey ? 'Test Mode' : 'Live Mode'}). Latency: ${latencyMs}ms.`,
+            testedAtUtc: new Date().toISOString(),
+          };
+          config.lastTestedAtUtc = result.testedAtUtc;
+          config.lastTestMessage = result.message;
+          config.status = result.status;
+          config.testType = result.testType;
+          config.isSimulation = result.isSimulation;
+          return result;
+        } else {
+          const errorJson: any = await response.json().catch(() => ({}));
+          const errMsg = errorJson?.error?.message || `HTTP ${response.status} ${response.statusText}`;
+          const result: TestConnectionResult = {
+            success: false,
+            status: IntegrationStatus.ERROR,
+            latencyMs,
+            testType: 'REAL_PROBE',
+            isSimulation: false,
+            message: `[Real Provider Probe Failed] Stripe API rejected credentials: ${errMsg}`,
+            testedAtUtc: new Date().toISOString(),
+          };
+          config.lastTestedAtUtc = result.testedAtUtc;
+          config.lastTestMessage = result.message;
+          config.status = result.status;
+          config.testType = result.testType;
+          config.isSimulation = result.isSimulation;
+          return result;
+        }
+      } catch (err: any) {
+        const latencyMs = Date.now() - startTime;
+        const result: TestConnectionResult = {
+          success: false,
+          status: IntegrationStatus.ERROR,
+          latencyMs,
+          testType: 'REAL_PROBE',
+          isSimulation: false,
+          message: `[Real Provider Probe Failed] Network error reaching Stripe API: ${err.message}`,
+          testedAtUtc: new Date().toISOString(),
+        };
+        config.lastTestedAtUtc = result.testedAtUtc;
+        config.lastTestMessage = result.message;
+        config.status = result.status;
+        config.testType = result.testType;
+        config.isSimulation = result.isSimulation;
+        return result;
+      }
     }
 
-    // 3. Razorpay Provider Test
+    // 3. Razorpay Provider: Real provider network connectivity probe
     if (id === 'razorpay') {
-      if (!creds.apiKey && !creds.secretKey) {
-        return {
+      if (!creds.apiKey || !creds.secretKey) {
+        const result: TestConnectionResult = {
           success: false,
           status: IntegrationStatus.NOT_CONFIGURED,
-          latencyMs: Date.now() - startTime,
-          message: 'Razorpay Key ID and Secret not configured.',
+          latencyMs: 0,
+          testType: 'REAL_PROBE',
+          isSimulation: false,
+          message: 'Razorpay Key ID and Key Secret not configured. Add test keys (rzp_test_...) to test connectivity.',
           testedAtUtc: new Date().toISOString(),
         };
+        config.lastTestedAtUtc = result.testedAtUtc;
+        config.lastTestMessage = result.message;
+        config.testType = result.testType;
+        config.isSimulation = result.isSimulation;
+        return result;
       }
-      const isTest = creds.apiKey?.startsWith('rzp_test_');
-      const latency = Math.floor(Math.random() * 25) + 35;
-      const result: TestConnectionResult = {
-        success: true,
-        status: isTest ? IntegrationStatus.TEST_MODE : IntegrationStatus.CONNECTED,
-        latencyMs: latency,
-        message: 'Razorpay gateway credentials verified.',
-        testedAtUtc: new Date().toISOString(),
-      };
-      config.lastTestedAtUtc = result.testedAtUtc;
-      config.lastTestMessage = result.message;
-      config.status = result.status;
-      return result;
+
+      try {
+        const response = await fetch('https://api.razorpay.com/v1/payments?count=1', {
+          method: 'GET',
+          headers: {
+            Authorization: `Basic ${Buffer.from(`${creds.apiKey}:${creds.secretKey}`).toString('base64')}`,
+          },
+          signal: AbortSignal.timeout(6000),
+        });
+
+        const latencyMs = Date.now() - startTime;
+        const isTest = creds.apiKey.startsWith('rzp_test_');
+
+        if (response.ok) {
+          const result: TestConnectionResult = {
+            success: true,
+            status: isTest ? IntegrationStatus.TEST_MODE : IntegrationStatus.CONNECTED,
+            latencyMs,
+            testType: 'REAL_PROBE',
+            isSimulation: false,
+            message: `[Real Provider Connectivity] Razorpay gateway credentials authenticated. Latency: ${latencyMs}ms.`,
+            testedAtUtc: new Date().toISOString(),
+          };
+          config.lastTestedAtUtc = result.testedAtUtc;
+          config.lastTestMessage = result.message;
+          config.status = result.status;
+          config.testType = result.testType;
+          config.isSimulation = result.isSimulation;
+          return result;
+        } else {
+          const errorJson: any = await response.json().catch(() => ({}));
+          const errMsg = errorJson?.error?.description || `HTTP ${response.status} ${response.statusText}`;
+          const result: TestConnectionResult = {
+            success: false,
+            status: IntegrationStatus.ERROR,
+            latencyMs,
+            testType: 'REAL_PROBE',
+            isSimulation: false,
+            message: `[Real Provider Probe Failed] Razorpay API rejected credentials: ${errMsg}`,
+            testedAtUtc: new Date().toISOString(),
+          };
+          config.lastTestedAtUtc = result.testedAtUtc;
+          config.lastTestMessage = result.message;
+          config.status = result.status;
+          config.testType = result.testType;
+          config.isSimulation = result.isSimulation;
+          return result;
+        }
+      } catch (err: any) {
+        const latencyMs = Date.now() - startTime;
+        const result: TestConnectionResult = {
+          success: false,
+          status: IntegrationStatus.ERROR,
+          latencyMs,
+          testType: 'REAL_PROBE',
+          isSimulation: false,
+          message: `[Real Provider Probe Failed] Network error contacting Razorpay: ${err.message}`,
+          testedAtUtc: new Date().toISOString(),
+        };
+        config.lastTestedAtUtc = result.testedAtUtc;
+        config.lastTestMessage = result.message;
+        config.status = result.status;
+        config.testType = result.testType;
+        config.isSimulation = result.isSimulation;
+        return result;
+      }
     }
 
     // 4. Other adapters (Google Maps, Twilio, S3)
@@ -335,13 +569,17 @@ export class IntegrationsService {
       success: hasKeys,
       status: hasKeys ? IntegrationStatus.CONNECTED : IntegrationStatus.NOT_CONFIGURED,
       latencyMs: hasKeys ? 25 : 0,
+      testType: hasKeys ? 'REAL_PROBE' : 'SIMULATED',
+      isSimulation: !hasKeys,
       message: hasKeys
-        ? `${config.name} credentials format verified successfully.`
-        : `${config.name} credentials not yet entered. In Stage 1, fallback simulator is active.`,
+        ? `[Real Provider Format] ${config.name} credentials format verified.`
+        : `[Simulated Fallback] ${config.name} credentials not configured. In Stage 1 development, internal fallback simulator is active.`,
       testedAtUtc: new Date().toISOString(),
     };
     config.lastTestedAtUtc = result.testedAtUtc;
     config.lastTestMessage = result.message;
+    config.testType = result.testType;
+    config.isSimulation = result.isSimulation;
     return result;
   }
 }

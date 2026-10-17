@@ -34,10 +34,35 @@ export class ParkEazyApiClient {
 
   constructor(baseUrl = '/api/v1') {
     this.baseUrl = baseUrl;
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        const stored = window.localStorage.getItem('parkeazy_auth_token');
+        if (stored) {
+          this.authToken = stored;
+        }
+      } catch {
+        // Ignore localStorage access errors (e.g., in strict security environments)
+      }
+    }
+  }
+
+  public getAuthToken(): string | null {
+    return this.authToken;
   }
 
   public setAuthToken(token: string | null) {
     this.authToken = token;
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        if (token) {
+          window.localStorage.setItem('parkeazy_auth_token', token);
+        } else {
+          window.localStorage.removeItem('parkeazy_auth_token');
+        }
+      } catch {
+        // Ignore localStorage access errors
+      }
+    }
   }
 
   private generateCorrelationId(): string {
@@ -67,6 +92,13 @@ export class ParkEazyApiClient {
       const json: ApiResponse<T> = await response.json();
 
       if (!response.ok || !json.success) {
+        if (response.status === 401) {
+          this.setAuthToken(null);
+        }
+        if ('data' in json && (json as any).data) {
+          // If response body contains valid data payload (e.g., /readiness probe returning 503 unavailable)
+          return (json as any).data as T;
+        }
         if ('error' in json) {
           throw new ApiError(
             json.error.message || 'API request failed',
@@ -128,6 +160,10 @@ export class ParkEazyApiClient {
   // Inventory Endpoints
   public async getLocations(): Promise<ParkingLocation[]> {
     return this.request<ParkingLocation[]>('/inventory/locations');
+  }
+
+  public async getLocation(locationId: string): Promise<ParkingLocation> {
+    return this.request<ParkingLocation>(`/inventory/locations/${locationId}`);
   }
 
   public async getBays(locationId: string): Promise<ParkingBay[]> {

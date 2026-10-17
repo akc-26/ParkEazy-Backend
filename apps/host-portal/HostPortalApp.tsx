@@ -231,7 +231,7 @@ export const HostPortalApp: React.FC<HostPortalAppProps> = ({
         </header>
 
         {/* 3. Page Content Container */}
-        <main className="flex-1 p-6 lg:p-8 max-w-7xl mx-auto w-full space-y-6">
+        <main className="flex-1 p-6 lg:p-8 max-w-[1440px] mx-auto w-full space-y-6">
           {/* Host KPI Metrics Banner */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <Card padding="md">
