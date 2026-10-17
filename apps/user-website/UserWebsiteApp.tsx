@@ -29,10 +29,9 @@ import { AuthPageView } from './views/AuthPageView';
 import { BookingReviewPageView } from './views/BookingReviewPageView';
 import { CheckoutPageView } from './views/CheckoutPageView';
 import { BookingConfirmationPageView } from './views/BookingConfirmationPageView';
-import {
-  BookingsPendingView,
-  ProfilePendingView,
-} from './views/RoutePendingView';
+import { MyBookingsPageView } from './views/MyBookingsPageView';
+import { BookingDetailPageView } from './views/BookingDetailPageView';
+import { MyProfilePageView } from './views/MyProfilePageView';
 
 interface UserWebsiteAppProps {
   currentPath?: string;
@@ -143,7 +142,7 @@ export const UserWebsiteApp: React.FC<UserWebsiteAppProps> = ({
   };
 
   // Parse path and query parameters
-  const { pathname, searchParams, spaceId, bookingId } = useMemo(() => {
+  const { pathname, searchParams, spaceId, bookingId, bookingDetailId } = useMemo(() => {
     let rawPath = currentPath;
     let rawSearch = '';
     const qIndex = rawPath.indexOf('?');
@@ -165,11 +164,16 @@ export const UserWebsiteApp: React.FC<UserWebsiteAppProps> = ({
     const confirmMatch = cleanPath.match(/^\/booking\/confirmation\/([^/]+)$/);
     const matchedBookingId = confirmMatch ? confirmMatch[1] : null;
 
+    // Match /bookings/:id (Booking details)
+    const bookingDetailMatch = cleanPath.match(/^\/bookings\/([^/]+)$/);
+    const matchedBookingDetailId = bookingDetailMatch ? bookingDetailMatch[1] : null;
+
     return {
       pathname: cleanPath,
       searchParams: params,
       spaceId: matchedSpaceId,
       bookingId: matchedBookingId,
+      bookingDetailId: matchedBookingDetailId,
     };
   }, [currentPath]);
 
@@ -236,23 +240,38 @@ export const UserWebsiteApp: React.FC<UserWebsiteAppProps> = ({
       );
     }
 
-    if (pathname === '/bookings') {
+    if (bookingDetailId) {
       return (
-        <BookingsPendingView
+        <BookingDetailPageView
+          bookingId={bookingDetailId}
           onNavigate={onNavigate}
           onOpenAuthModal={() => setIsAuthModalOpen(true)}
           currentUser={currentUser}
+          showToast={showToast}
+        />
+      );
+    }
+
+    if (pathname === '/bookings') {
+      return (
+        <MyBookingsPageView
+          onNavigate={onNavigate}
+          onOpenAuthModal={() => setIsAuthModalOpen(true)}
+          currentUser={currentUser}
+          showToast={showToast}
         />
       );
     }
 
     if (pathname === '/profile') {
       return (
-        <ProfilePendingView
+        <MyProfilePageView
           onNavigate={onNavigate}
           onOpenAuthModal={() => setIsAuthModalOpen(true)}
           currentUser={currentUser}
           onSignOut={handleSignOut}
+          onProfileUpdated={(updated) => setCurrentUser(updated)}
+          showToast={showToast}
         />
       );
     }

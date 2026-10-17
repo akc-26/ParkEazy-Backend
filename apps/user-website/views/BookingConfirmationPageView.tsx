@@ -275,22 +275,31 @@ export const BookingConfirmationPageView: React.FC<BookingConfirmationPageViewPr
               </div>
 
               {/* Gate PIN Callout */}
-              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/15 flex items-center justify-between">
-                <div>
-                  <div className="text-[10px] uppercase tracking-wider font-bold text-emerald-200">
-                    Automated Gate Entry Code
+              {booking.gateCode ? (
+                <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/15 flex items-center justify-between">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wider font-bold text-emerald-200">
+                      Automated Gate Entry Code
+                    </div>
+                    <div className="text-3xl font-extrabold font-mono text-white tracking-widest mt-0.5">
+                      {booking.gateCode}
+                    </div>
+                    <div className="text-[11px] text-emerald-100 mt-1">
+                      {booking.accessInstructions || 'Enter code on facility keypad or barrier scanner.'}
+                    </div>
                   </div>
-                  <div className="text-3xl font-extrabold font-mono text-white tracking-widest mt-0.5">
-                    {booking.gateCode || 'PIN-4892'}
-                  </div>
-                  <div className="text-[11px] text-emerald-100 mt-1">
-                    Enter code on facility keypad or barrier scanner.
+                  <div className="w-16 h-16 rounded-xl bg-white p-1.5 flex items-center justify-center shrink-0 shadow-md">
+                    <QrCode className="w-12 h-12 text-[#162A2D]" />
                   </div>
                 </div>
-                <div className="w-16 h-16 rounded-xl bg-white p-1.5 flex items-center justify-center shrink-0 shadow-md">
-                  <QrCode className="w-12 h-12 text-[#162A2D]" />
+              ) : (
+                <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/15">
+                  <div className="text-xs font-semibold text-emerald-100 flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-amber-300" />
+                    <span>Access pass is unavailable or revoked for this reservation.</span>
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Assigned Physical Bay Details */}
               <div className="grid grid-cols-2 gap-3 text-xs">

@@ -126,6 +126,7 @@ export default function App({ initialPath }: AppProps = {}) {
   // - /register
   const isSpacesRoute = /^\/spaces\/[^/]+$/.test(normalized);
   const isBookingConfirmRoute = /^\/booking\/confirmation\/[^/]+$/.test(normalized);
+  const isBookingDetailRoute = /^\/bookings\/[^/]+$/.test(normalized);
 
   const isKnownUserRoute =
     normalized === '/' ||
@@ -137,7 +138,8 @@ export default function App({ initialPath }: AppProps = {}) {
     normalized === '/login' ||
     normalized === '/register' ||
     isSpacesRoute ||
-    isBookingConfirmRoute;
+    isBookingConfirmRoute ||
+    isBookingDetailRoute;
 
   if (isKnownHostRoute) {
     return (

@@ -11,6 +11,11 @@ import {
   ConfirmBookingRequest,
   LedgerEntry,
   HostEarningsSummary,
+  CustomerVehicle,
+  CreateVehicleRequest,
+  UpdateVehicleRequest,
+  ChangePasswordRequest,
+  NotificationPreferences,
 } from '../contracts';
 
 export class ApiError extends Error {
@@ -157,6 +162,60 @@ export class ParkEazyApiClient {
     return this.request<{ user: SessionUser | null }>('/auth/session');
   }
 
+  public async getProfile(): Promise<SessionUser> {
+    return this.request<SessionUser>('/users/profile');
+  }
+
+  public async updateProfile(data: { firstName?: string; lastName?: string; phoneNumber?: string }): Promise<SessionUser> {
+    return this.request<SessionUser>('/users/profile', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  // Customer Account Features
+  public async getVehicles(): Promise<CustomerVehicle[]> {
+    return this.request<CustomerVehicle[]>('/users/vehicles');
+  }
+
+  public async addVehicle(data: CreateVehicleRequest): Promise<CustomerVehicle> {
+    return this.request<CustomerVehicle>('/users/vehicles', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async updateVehicle(vehicleId: string, data: UpdateVehicleRequest): Promise<CustomerVehicle> {
+    return this.request<CustomerVehicle>(`/users/vehicles/${vehicleId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async deleteVehicle(vehicleId: string): Promise<{ message: string }> {
+    return this.request<{ message: string }>(`/users/vehicles/${vehicleId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  public async changePassword(data: ChangePasswordRequest): Promise<{ message: string }> {
+    return this.request<{ message: string }>('/users/change-password', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async getNotificationPreferences(): Promise<NotificationPreferences> {
+    return this.request<NotificationPreferences>('/users/notifications/preferences');
+  }
+
+  public async updateNotificationPreferences(data: Partial<NotificationPreferences>): Promise<NotificationPreferences> {
+    return this.request<NotificationPreferences>('/users/notifications/preferences', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
   // Inventory Endpoints
   public async getLocations(): Promise<ParkingLocation[]> {
     return this.request<ParkingLocation[]>('/inventory/locations');
@@ -181,6 +240,36 @@ export class ParkEazyApiClient {
 
   public async getBooking(bookingId: string): Promise<BookingSummary> {
     return this.request<BookingSummary>(`/bookings/${bookingId}`);
+  }
+
+  public async cancelBooking(bookingId: string, idempotencyKey?: string): Promise<BookingSummary> {
+    return this.request<BookingSummary>(`/bookings/${bookingId}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ idempotencyKey }),
+    });
+  }
+
+  public async checkInBooking(bookingId: string): Promise<BookingSummary> {
+    return this.request<BookingSummary>(`/bookings/${bookingId}/check-in`, {
+      method: 'POST',
+    });
+  }
+
+  public async checkOutBooking(bookingId: string): Promise<BookingSummary> {
+    return this.request<BookingSummary>(`/bookings/${bookingId}/check-out`, {
+      method: 'POST',
+    });
+  }
+
+  public async extendBooking(
+    bookingId: string,
+    additionalMinutes: number,
+    paymentIntentId?: string
+  ): Promise<BookingSummary> {
+    return this.request<BookingSummary>(`/bookings/${bookingId}/extend`, {
+      method: 'POST',
+      body: JSON.stringify({ additionalMinutes, paymentIntentId }),
+    });
   }
 
   public async createHold(params: { bayId: string; locationId: string; durationMinutes: number }): Promise<BookingHold> {

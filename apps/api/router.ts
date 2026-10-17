@@ -9,6 +9,7 @@ import { integrationsService } from './services/integrations.service';
 import { authService } from './services/auth.service';
 import { PaymentAdapterFactory } from './services/payment-adapter';
 import { NotificationAdapterFactory } from './services/notification-adapter';
+import { vehicleService } from './services/vehicle.service';
 import { authGuard, requireResourceOwnership } from './middleware/auth-guard';
 import { openApiSpec } from './docs/openapi';
 import { UserRole, ApiSuccessResponse, BookingStatus } from '../../packages/contracts';
@@ -201,15 +202,18 @@ apiV1Router.get('/auth/session', (req: Request, res: Response) => {
     const token = authHeader.substring(7).trim();
     try {
       const payload = authService.verifyToken(token);
-      user = {
-        id: payload.sub,
-        email: payload.email,
-        firstName: payload.firstName,
-        lastName: payload.lastName,
-        roles: payload.roles,
-        isHostVerified: payload.roles.includes(UserRole.HOST) || payload.roles.includes(UserRole.ADMIN),
-        createdAt: new Date(payload.iat * 1000).toISOString(),
-      };
+      const userFromStore = authService.getUserById(payload.sub);
+      user = userFromStore
+        ? { ...userFromStore }
+        : {
+            id: payload.sub,
+            email: payload.email,
+            firstName: payload.firstName,
+            lastName: payload.lastName,
+            roles: payload.roles,
+            isHostVerified: payload.roles.includes(UserRole.HOST) || payload.roles.includes(UserRole.ADMIN),
+            createdAt: new Date(payload.iat * 1000).toISOString(),
+          };
     } catch {
       user = null;
     }
@@ -217,6 +221,253 @@ apiV1Router.get('/auth/session', (req: Request, res: Response) => {
 
   sendSuccess(res, { user }, req.correlationId);
 });
+
+apiV1Router.get(
+  '/users/profile',
+  authGuard([UserRole.CUSTOMER, UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  (req: Request, res: Response) => {
+    const user = authService.getUserById(req.user!.id) || req.user!;
+    sendSuccess(res, user, req.correlationId);
+  }
+);
+
+apiV1Router.put(
+  '/users/profile',
+  authGuard([UserRole.CUSTOMER, UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { firstName, lastName, phoneNumber, email, roles, id, isHostVerified, createdAt } = req.body;
+
+      if (email !== undefined && email !== req.user!.email) {
+        return next(
+          new AppError(
+            'Email address cannot be modified. Email serves as your verified login identifier.',
+            400,
+            'EMAIL_IMMUTABLE'
+          )
+        );
+      }
+
+      if (roles !== undefined || id !== undefined || isHostVerified !== undefined || createdAt !== undefined) {
+        return next(
+          new AppError(
+            'Protected account fields (id, roles, verification status) cannot be modified.',
+            400,
+            'PROTECTED_FIELD_MODIFICATION'
+          )
+        );
+      }
+
+      if (firstName !== undefined && (typeof firstName !== 'string' || firstName.trim().length === 0 || firstName.trim().length > 100)) {
+        return next(new AppError('First name must be between 1 and 100 characters.', 400, 'VALIDATION_ERROR'));
+      }
+
+      if (lastName !== undefined && (typeof lastName !== 'string' || lastName.trim().length === 0 || lastName.trim().length > 100)) {
+        return next(new AppError('Last name must be between 1 and 100 characters.', 400, 'VALIDATION_ERROR'));
+      }
+
+      if (phoneNumber !== undefined && typeof phoneNumber !== 'string') {
+        return next(new AppError('Phone number must be a valid string.', 400, 'VALIDATION_ERROR'));
+      }
+
+      const updated = authService.updateUserProfile(req.user!.id, {
+        firstName,
+        lastName,
+        phoneNumber,
+      });
+
+      sendSuccess(res, updated, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.get(
+  '/users/:userId/profile',
+  authGuard([UserRole.CUSTOMER, UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('userId'),
+  validate([
+    { field: 'userId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    const user = authService.getUserById(req.params.userId);
+    if (!user) {
+      return next(new AppError(`User '${req.params.userId}' not found.`, 404, 'NOT_FOUND'));
+    }
+    sendSuccess(res, user, req.correlationId);
+  }
+);
+
+apiV1Router.put(
+  '/users/:userId/profile',
+  authGuard([UserRole.CUSTOMER, UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('userId'),
+  validate([
+    { field: 'userId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { firstName, lastName, phoneNumber, email, roles, id, isHostVerified, createdAt } = req.body;
+      const targetUser = authService.getUserById(req.params.userId);
+      if (!targetUser) {
+        return next(new AppError(`User '${req.params.userId}' not found.`, 404, 'NOT_FOUND'));
+      }
+
+      if (email !== undefined && email !== targetUser.email) {
+        return next(
+          new AppError(
+            'Email address cannot be modified. Email serves as your verified login identifier.',
+            400,
+            'EMAIL_IMMUTABLE'
+          )
+        );
+      }
+
+      if (roles !== undefined || id !== undefined || isHostVerified !== undefined || createdAt !== undefined) {
+        return next(
+          new AppError(
+            'Protected account fields (id, roles, verification status) cannot be modified.',
+            400,
+            'PROTECTED_FIELD_MODIFICATION'
+          )
+        );
+      }
+
+      if (firstName !== undefined && (typeof firstName !== 'string' || firstName.trim().length === 0 || firstName.trim().length > 100)) {
+        return next(new AppError('First name must be between 1 and 100 characters.', 400, 'VALIDATION_ERROR'));
+      }
+
+      if (lastName !== undefined && (typeof lastName !== 'string' || lastName.trim().length === 0 || lastName.trim().length > 100)) {
+        return next(new AppError('Last name must be between 1 and 100 characters.', 400, 'VALIDATION_ERROR'));
+      }
+
+      if (phoneNumber !== undefined && typeof phoneNumber !== 'string') {
+        return next(new AppError('Phone number must be a valid string.', 400, 'VALIDATION_ERROR'));
+      }
+
+      const updated = authService.updateUserProfile(req.params.userId, {
+        firstName,
+        lastName,
+        phoneNumber,
+      });
+
+      sendSuccess(res, updated, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ----------------------------------------------------------------------
+// 2b. Customer Account & Security Extensions (Vehicles, Password & Alerts)
+// ----------------------------------------------------------------------
+apiV1Router.post(
+  '/users/change-password',
+  authGuard([UserRole.CUSTOMER, UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  validate([
+    { field: 'currentPassword', required: true, type: 'string', minLength: 1 },
+    { field: 'newPassword', required: true, type: 'string', minLength: 8 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      authService.changePassword(req.user!.id, req.body);
+      sendSuccess(res, { message: 'Password updated successfully.' }, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.get(
+  '/users/notifications/preferences',
+  authGuard([UserRole.CUSTOMER, UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  (req: Request, res: Response) => {
+    const prefs = authService.getNotificationPreferences(req.user!.id);
+    sendSuccess(res, prefs, req.correlationId);
+  }
+);
+
+apiV1Router.put(
+  '/users/notifications/preferences',
+  authGuard([UserRole.CUSTOMER, UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  (req: Request, res: Response) => {
+    const updated = authService.updateNotificationPreferences(req.user!.id, req.body);
+    sendSuccess(res, updated, req.correlationId);
+  }
+);
+
+apiV1Router.get(
+  '/users/vehicles',
+  authGuard([UserRole.CUSTOMER, UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  (req: Request, res: Response) => {
+    const vehicles = vehicleService.getVehiclesForUser(req.user!.id);
+    sendSuccess(res, vehicles, req.correlationId);
+  }
+);
+
+apiV1Router.get(
+  '/users/:userId/vehicles',
+  authGuard([UserRole.CUSTOMER, UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('userId'),
+  validate([
+    { field: 'userId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+  ]),
+  (req: Request, res: Response) => {
+    const vehicles = vehicleService.getVehiclesForUser(req.params.userId);
+    sendSuccess(res, vehicles, req.correlationId);
+  }
+);
+
+apiV1Router.post(
+  '/users/vehicles',
+  authGuard([UserRole.CUSTOMER, UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  validate([
+    { field: 'licensePlate', required: true, type: 'string', minLength: 2, maxLength: 16 },
+    { field: 'make', required: true, type: 'string', minLength: 1, maxLength: 50 },
+    { field: 'model', required: true, type: 'string', minLength: 1, maxLength: 50 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const created = vehicleService.addVehicle(req.user!.id, req.body);
+      sendSuccess(res, created, req.correlationId, 201);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.put(
+  '/users/vehicles/:vehicleId',
+  authGuard([UserRole.CUSTOMER, UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  validate([
+    { field: 'vehicleId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const updated = vehicleService.updateVehicle(req.params.vehicleId, req.user!.id, req.body);
+      sendSuccess(res, updated, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.delete(
+  '/users/vehicles/:vehicleId',
+  authGuard([UserRole.CUSTOMER, UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  validate([
+    { field: 'vehicleId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      vehicleService.deleteVehicle(req.params.vehicleId, req.user!.id);
+      sendSuccess(res, { message: 'Vehicle removed successfully.' }, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
 
 // ----------------------------------------------------------------------
 // 3. Inventory Endpoints (Locations & Bays)
@@ -410,6 +661,87 @@ apiV1Router.get(
     }
 
     sendSuccess(res, responseData, req.correlationId);
+  }
+);
+
+apiV1Router.post(
+  '/bookings/:id/cancel',
+  authGuard([UserRole.CUSTOMER, UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  validate([
+    { field: 'id', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const user = req.user!;
+      const isAdmin = user.roles.includes(UserRole.ADMIN) || user.roles.includes(UserRole.SUPER_ADMIN);
+      const idempotencyKey = req.body?.idempotencyKey || (req.headers['x-idempotency-key'] as string);
+      const updated = bookingService.cancelBooking(req.params.id, user.id, isAdmin, idempotencyKey);
+      sendSuccess(res, updated, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.post(
+  '/bookings/:id/check-in',
+  authGuard([UserRole.CUSTOMER, UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  validate([
+    { field: 'id', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const user = req.user!;
+      const isAdmin = user.roles.includes(UserRole.ADMIN) || user.roles.includes(UserRole.SUPER_ADMIN);
+      const updated = bookingService.checkInBooking(req.params.id, user.id, isAdmin);
+      sendSuccess(res, updated, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.post(
+  '/bookings/:id/check-out',
+  authGuard([UserRole.CUSTOMER, UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  validate([
+    { field: 'id', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const user = req.user!;
+      const isAdmin = user.roles.includes(UserRole.ADMIN) || user.roles.includes(UserRole.SUPER_ADMIN);
+      const updated = bookingService.checkOutBooking(req.params.id, user.id, isAdmin);
+      sendSuccess(res, updated, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.post(
+  '/bookings/:id/extend',
+  authGuard([UserRole.CUSTOMER, UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  validate([
+    { field: 'id', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'additionalMinutes', required: true, type: 'number', min: 30, max: 1440 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const user = req.user!;
+      const isAdmin = user.roles.includes(UserRole.ADMIN) || user.roles.includes(UserRole.SUPER_ADMIN);
+      const { additionalMinutes, paymentIntentId } = req.body;
+      const updated = bookingService.extendBooking(
+        req.params.id,
+        user.id,
+        Number(additionalMinutes),
+        paymentIntentId,
+        isAdmin
+      );
+      sendSuccess(res, updated, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
   }
 );
 

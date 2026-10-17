@@ -37,3 +37,52 @@ export interface RolePermissionMatrix {
   role: UserRole;
   permissions: string[];
 }
+
+export interface UpdateProfileRequest {
+  firstName?: string;
+  lastName?: string;
+  phoneNumber?: string;
+}
+
+export interface CustomerVehicle {
+  id: string;
+  userId: string;
+  licensePlate: string;
+  make: string;
+  model: string;
+  color?: string;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateVehicleRequest {
+  licensePlate: string;
+  make: string;
+  model: string;
+  color?: string;
+  isDefault?: boolean;
+}
+
+export interface UpdateVehicleRequest {
+  make?: string;
+  model?: string;
+  color?: string;
+  isDefault?: boolean;
+}
+
+export interface ChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword?: string;
+}
+
+export interface NotificationPreferences {
+  userId: string;
+  emailBookingConfirmations: boolean;
+  emailReminders: boolean;
+  smsGateAccess: boolean;
+  smsExpiryAlerts: boolean;
+  pushStatusUpdates: boolean;
+  updatedAt: string;
+}

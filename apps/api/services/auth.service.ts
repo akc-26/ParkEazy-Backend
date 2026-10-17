@@ -1,7 +1,13 @@
 import crypto from 'crypto';
-import { UserRole, SessionUser, LoginResponse } from '../../../packages/contracts';
+import {
+  UserRole,
+  SessionUser,
+  LoginResponse,
+  NotificationPreferences,
+  ChangePasswordRequest,
+} from '../../../packages/contracts';
 import { appConfig } from '../config/env';
-import { UnauthorizedError, ForbiddenError } from '../middleware/error-handler';
+import { UnauthorizedError, ForbiddenError, AppError } from '../middleware/error-handler';
 import { DEMO_USERS } from '../middleware/auth-guard';
 
 export interface JwtHeader {
@@ -31,14 +37,87 @@ function base64UrlDecode(str: string): string {
 
 export class AuthService {
   private static instance: AuthService;
+  private userStore: Map<string, SessionUser> = new Map([
+    [DEMO_USERS.customer.id, { ...DEMO_USERS.customer }],
+    [DEMO_USERS.host.id, { ...DEMO_USERS.host }],
+    [DEMO_USERS.admin.id, { ...DEMO_USERS.admin }],
+  ]);
 
-  private constructor() {}
+  private credentialsStore: Map<string, { hash: string; salt: string }> = new Map();
+
+  private notificationPreferencesStore: Map<string, NotificationPreferences> = new Map([
+    [
+      DEMO_USERS.customer.id,
+      {
+        userId: DEMO_USERS.customer.id,
+        emailBookingConfirmations: true,
+        emailReminders: true,
+        smsGateAccess: true,
+        smsExpiryAlerts: true,
+        pushStatusUpdates: true,
+        updatedAt: '2026-10-16T08:00:00Z',
+      },
+    ],
+  ]);
+
+  private constructor() {
+    const salt = 'parkeazy_salt_2026';
+    const hash = crypto.scryptSync('DriverPass123!', salt, 32).toString('hex');
+    this.credentialsStore.set(DEMO_USERS.customer.id, { hash, salt });
+    this.credentialsStore.set(DEMO_USERS.host.id, { hash, salt });
+    this.credentialsStore.set(DEMO_USERS.admin.id, { hash, salt });
+  }
 
   public static getInstance(): AuthService {
     if (!AuthService.instance) {
       AuthService.instance = new AuthService();
     }
     return AuthService.instance;
+  }
+
+  public getUserById(id: string): SessionUser | undefined {
+    return this.userStore.get(id);
+  }
+
+  public updateUserProfile(
+    userId: string,
+    updates: { firstName?: string; lastName?: string; phoneNumber?: string }
+  ): SessionUser {
+    const existing = this.userStore.get(userId);
+    if (!existing) {
+      throw new UnauthorizedError(`User '${userId}' not found.`);
+    }
+
+    if (updates.firstName !== undefined) {
+      const trimmed = updates.firstName.trim();
+      if (!trimmed || trimmed.length > 100) {
+        throw new Error('First name must be between 1 and 100 characters.');
+      }
+      existing.firstName = trimmed;
+    }
+
+    if (updates.lastName !== undefined) {
+      const trimmed = updates.lastName.trim();
+      if (!trimmed || trimmed.length > 100) {
+        throw new Error('Last name must be between 1 and 100 characters.');
+      }
+      existing.lastName = trimmed;
+    }
+
+    if (updates.phoneNumber !== undefined) {
+      const trimmedPhone = updates.phoneNumber.trim();
+      if (trimmedPhone.length > 50) {
+        throw new Error('Phone number cannot exceed 50 characters.');
+      }
+      existing.phoneNumber = trimmedPhone;
+    }
+
+    // Keep DEMO_USERS in sync if it is a demo user
+    if (userId === DEMO_USERS.customer.id) Object.assign(DEMO_USERS.customer, existing);
+    if (userId === DEMO_USERS.host.id) Object.assign(DEMO_USERS.host, existing);
+    if (userId === DEMO_USERS.admin.id) Object.assign(DEMO_USERS.admin, existing);
+
+    return { ...existing };
   }
 
   /**
@@ -189,13 +268,14 @@ export class AuthService {
         );
       }
 
-      let user: SessionUser = DEMO_USERS.customer;
+      let baseUser: SessionUser = DEMO_USERS.customer;
       if (requestedPortal === 'admin' || email.includes('admin')) {
-        user = DEMO_USERS.admin;
+        baseUser = DEMO_USERS.admin;
       } else if (requestedPortal === 'host' || email.includes('host')) {
-        user = DEMO_USERS.host;
+        baseUser = DEMO_USERS.host;
       }
 
+      const user = this.getUserById(baseUser.id) || baseUser;
       const token = this.signToken(user, appConfig.auth.tokenExpirySeconds, true);
 
       return {
@@ -208,6 +288,114 @@ export class AuthService {
     // For non-demo production users when database is connected:
     // In Stage 2 baseline, if not a recognized demo user and DB is not seeded, throw invalid credentials.
     throw new UnauthorizedError('Invalid email or password.');
+  }
+
+  /**
+   * Updates user password after verifying current credentials and password complexity.
+   */
+  public changePassword(userId: string, data: ChangePasswordRequest): void {
+    const user = this.getUserById(userId);
+    if (!user) {
+      throw new UnauthorizedError(`User '${userId}' not found.`);
+    }
+
+    if (!data.currentPassword || typeof data.currentPassword !== 'string') {
+      throw new AppError('Current password is required.', 400, 'VALIDATION_ERROR');
+    }
+
+    if (!data.newPassword || typeof data.newPassword !== 'string') {
+      throw new AppError('New password is required.', 400, 'VALIDATION_ERROR');
+    }
+
+    if (data.newPassword.length < 8) {
+      throw new AppError('New password must be at least 8 characters long.', 400, 'WEAK_PASSWORD');
+    }
+
+    // Must contain at least one letter and one number
+    const hasLetter = /[a-zA-Z]/.test(data.newPassword);
+    const hasNumber = /[0-9]/.test(data.newPassword);
+    if (!hasLetter || !hasNumber) {
+      throw new AppError('New password must contain at least one letter and one number.', 400, 'WEAK_PASSWORD');
+    }
+
+    if (data.confirmPassword && data.newPassword !== data.confirmPassword) {
+      throw new AppError('New password and confirmation password do not match.', 400, 'PASSWORD_MISMATCH');
+    }
+
+    // Verify current password
+    const creds = this.credentialsStore.get(userId);
+    // Never allow a shared demo password to bypass credential verification.
+    // Accounts without a stored credential must complete the normal credential
+    // setup/recovery flow before changing a password.
+    if (!creds) {
+      throw new AppError('Password change is unavailable until credentials are configured for this account.', 409, 'CREDENTIALS_NOT_CONFIGURED');
+    }
+    const hashedCurrent = crypto.scryptSync(data.currentPassword, creds.salt, 32).toString('hex');
+    const currentHash = Buffer.from(hashedCurrent, 'hex');
+    const storedHash = Buffer.from(creds.hash, 'hex');
+    if (currentHash.length !== storedHash.length || !crypto.timingSafeEqual(currentHash, storedHash)) {
+      throw new AppError('Current password is incorrect.', 400, 'INVALID_CURRENT_PASSWORD');
+    }
+
+    if (data.currentPassword === data.newPassword) {
+      throw new AppError('New password must be different from current password.', 400, 'PASSWORD_UNCHANGED');
+    }
+
+    // Save new password hash with fresh salt
+    const newSalt = crypto.randomBytes(16).toString('hex');
+    const newHash = crypto.scryptSync(data.newPassword, newSalt, 32).toString('hex');
+    this.credentialsStore.set(userId, { hash: newHash, salt: newSalt });
+  }
+
+  /**
+   * Retrieves notification preferences for a user.
+   */
+  public getNotificationPreferences(userId: string): NotificationPreferences {
+    const existing = this.notificationPreferencesStore.get(userId);
+    if (existing) {
+      return { ...existing };
+    }
+    const defaultPrefs: NotificationPreferences = {
+      userId,
+      emailBookingConfirmations: true,
+      emailReminders: true,
+      smsGateAccess: true,
+      smsExpiryAlerts: true,
+      pushStatusUpdates: false,
+      updatedAt: new Date().toISOString(),
+    };
+    this.notificationPreferencesStore.set(userId, defaultPrefs);
+    return { ...defaultPrefs };
+  }
+
+  /**
+   * Updates notification preferences for a user.
+   */
+  public updateNotificationPreferences(
+    userId: string,
+    updates: Partial<NotificationPreferences>
+  ): NotificationPreferences {
+    const current = this.getNotificationPreferences(userId);
+    const updated: NotificationPreferences = {
+      ...current,
+      emailBookingConfirmations:
+        updates.emailBookingConfirmations !== undefined
+          ? !!updates.emailBookingConfirmations
+          : current.emailBookingConfirmations,
+      emailReminders:
+        updates.emailReminders !== undefined ? !!updates.emailReminders : current.emailReminders,
+      smsGateAccess:
+        updates.smsGateAccess !== undefined ? !!updates.smsGateAccess : current.smsGateAccess,
+      smsExpiryAlerts:
+        updates.smsExpiryAlerts !== undefined ? !!updates.smsExpiryAlerts : current.smsExpiryAlerts,
+      pushStatusUpdates:
+        updates.pushStatusUpdates !== undefined
+          ? !!updates.pushStatusUpdates
+          : current.pushStatusUpdates,
+      updatedAt: new Date().toISOString(),
+    };
+    this.notificationPreferencesStore.set(userId, updated);
+    return { ...updated };
   }
 }
 

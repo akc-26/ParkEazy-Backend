@@ -80,9 +80,32 @@ export interface BookingSummary {
     currency: string;
     paidAtUtc: string;
   };
+  refundDetails?: RefundRecord;
+  extensionHistory?: {
+    extendedAtUtc: string;
+    additionalMinutes: number;
+    additionalAmountCents: number;
+    newEndTimeUtc: string;
+  }[];
+  overstayDetails?: {
+    overstayMinutes: number;
+    overstayFeeCents: number;
+    status: 'NONE' | 'GRACE_PERIOD' | 'CHARGED' | 'DISPUTED';
+  };
   checkedInAtUtc?: string;
   checkedOutAtUtc?: string;
   createdAtUtc: string;
+}
+
+export interface RefundRecord {
+  refundId: string;
+  bookingId: string;
+  amountCents: number;
+  currency: string;
+  refundedAtUtc: string;
+  reason: string;
+  status: 'PENDING' | 'SUCCEEDED' | 'FAILED';
+  transactionId?: string;
 }
 
 export const BOOKING_CONSTRAINTS = {

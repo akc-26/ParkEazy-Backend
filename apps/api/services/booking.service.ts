@@ -35,7 +35,6 @@ class BookingService {
       status: BookingStatus.CONFIRMED,
       licensePlate: '7XYZ890',
       accessInstructions: 'Enter 4-digit PIN at entry keypad. Drive down to B2 level.',
-      gateCode: 'PIN-4892',
       paymentDetails: {
         transactionId: 'ch_3N88xyz_parkeazy',
         provider: 'STRIPE',
@@ -73,7 +72,6 @@ class BookingService {
       status: BookingStatus.ACTIVE,
       licensePlate: 'EV-8821',
       accessInstructions: 'Park on the left side of driveway designated by EV Reserved marking.',
-      gateCode: 'PASS-7721',
       checkedInAtUtc: '2026-10-16T16:02:00Z',
       quote: {
         quoteId: 'qt-9811',
@@ -117,6 +115,260 @@ class BookingService {
 
   public getBookingsForHost(hostId: string): BookingSummary[] {
     return this.bookings.filter((b) => b.hostId === hostId);
+  }
+
+  public cancelBooking(
+    bookingId: string,
+    actorId: string,
+    isAdmin = false,
+    idempotencyKey?: string
+  ): BookingSummary {
+    const booking = this.bookings.find((b) => b.id === bookingId);
+    if (!booking) {
+      throw new AppError(`Booking '${bookingId}' not found.`, 404, 'NOT_FOUND');
+    }
+
+    if (!isAdmin && booking.userId !== actorId && booking.hostId !== actorId) {
+      throw new AppError('Access denied. You do not have permission to cancel this reservation.', 403, 'FORBIDDEN');
+    }
+
+    if (booking.status === BookingStatus.CANCELLED) {
+      return booking;
+    }
+
+    if (booking.status === BookingStatus.COMPLETED) {
+      throw new AppError('Cannot cancel a completed reservation.', 400, 'INVALID_STATE');
+    }
+
+    if (booking.status === BookingStatus.ACTIVE) {
+      throw new AppError('Cannot cancel an active parking session. Please check out instead.', 400, 'INVALID_STATE');
+    }
+
+    const now = new Date();
+    const startTime = new Date(booking.startTimeUtc);
+    const hoursUntilStart = (startTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+
+    const totalPaid = booking.paymentDetails?.amountCents || booking.quote?.totalPayableCents || 0;
+    const policyTier = booking.quote?.cancellationPolicyTier || 'STANDARD_48H';
+    let refundRatio = 0;
+
+    if (policyTier === 'FLEXIBLE_24H') {
+      if (hoursUntilStart >= 24) {
+        refundRatio = 1.0;
+      } else if (hoursUntilStart >= 0) {
+        refundRatio = 0.5;
+      } else {
+        refundRatio = 0;
+      }
+    } else if (policyTier === 'STRICT_7D') {
+      if (hoursUntilStart >= 168) {
+        refundRatio = 1.0;
+      } else if (hoursUntilStart >= 48) {
+        refundRatio = 0.5;
+      } else {
+        refundRatio = 0;
+      }
+    } else {
+      // STANDARD_48H
+      if (hoursUntilStart >= 48) {
+        refundRatio = 1.0;
+      } else if (hoursUntilStart >= 24) {
+        refundRatio = 0.5;
+      } else {
+        refundRatio = 0;
+      }
+    }
+
+    const refundAmountCents = Math.round(totalPaid * refundRatio);
+
+    if (refundAmountCents > 0) {
+      // Cancellation policy determines the refund amount, but this service has no
+      // provider-confirmed refund operation. Never fabricate a provider transaction
+      // ID or book a REFUND_PROCESSED ledger entry before the provider confirms it.
+      // Persist/dispatch a refund request through a configured provider adapter before
+      // transitioning this record to SUCCEEDED in a future provider-backed workflow.
+      const refundId = `ref-${booking.id}-${(idempotencyKey || 'cancel').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32)}`;
+      booking.refundDetails = {
+        refundId,
+        bookingId: booking.id,
+        amountCents: refundAmountCents,
+        currency: booking.paymentDetails?.currency || booking.quote?.currency || 'USD',
+        refundedAtUtc: now.toISOString(),
+        reason: `Cancellation refund calculated under ${policyTier} policy (${Math.round(refundRatio * 100)}%)`,
+        status: 'PENDING',
+      };
+    }
+
+    booking.status = BookingStatus.CANCELLED;
+    delete booking.gateCode;
+    delete booking.accessInstructions;
+    return booking;
+  }
+
+  public checkInBooking(bookingId: string, actorId: string, isAdmin = false): BookingSummary {
+    const booking = this.bookings.find((b) => b.id === bookingId);
+    if (!booking) {
+      throw new AppError(`Booking '${bookingId}' not found.`, 404, 'NOT_FOUND');
+    }
+
+    if (!isAdmin && booking.userId !== actorId && booking.hostId !== actorId) {
+      throw new AppError('Access denied. You do not have permission to check in for this reservation.', 403, 'FORBIDDEN');
+    }
+
+    if (booking.status === BookingStatus.ACTIVE) {
+      return booking;
+    }
+
+    if (booking.status === BookingStatus.CANCELLED) {
+      throw new AppError('Cannot check in to a cancelled reservation.', 400, 'INVALID_STATE');
+    }
+
+    if (booking.status === BookingStatus.COMPLETED) {
+      throw new AppError('Cannot check in to a completed reservation.', 400, 'INVALID_STATE');
+    }
+
+    booking.status = BookingStatus.ACTIVE;
+    booking.checkedInAtUtc = new Date().toISOString();
+    return booking;
+  }
+
+  public checkOutBooking(bookingId: string, actorId: string, isAdmin = false): BookingSummary {
+    const booking = this.bookings.find((b) => b.id === bookingId);
+    if (!booking) {
+      throw new AppError(`Booking '${bookingId}' not found.`, 404, 'NOT_FOUND');
+    }
+
+    if (!isAdmin && booking.userId !== actorId && booking.hostId !== actorId) {
+      throw new AppError('Access denied. You do not have permission to check out this reservation.', 403, 'FORBIDDEN');
+    }
+
+    if (booking.status === BookingStatus.COMPLETED) {
+      return booking;
+    }
+
+    if (booking.status === BookingStatus.CANCELLED) {
+      throw new AppError('Cannot check out a cancelled reservation.', 400, 'INVALID_STATE');
+    }
+    if (booking.status !== BookingStatus.ACTIVE) {
+      throw new AppError('Check-out is only allowed for an active parking session.', 400, 'INVALID_STATE');
+    }
+
+    const now = new Date();
+    booking.checkedOutAtUtc = now.toISOString();
+
+    // Check for overstay
+    const scheduledEnd = new Date(booking.endTimeUtc);
+    const diffMinutes = Math.floor((now.getTime() - scheduledEnd.getTime()) / (1000 * 60));
+
+    if (diffMinutes > 15) {
+      // Beyond 15-min grace period -> overstay fee charged
+      const durationHours = booking.quote?.durationMinutes ? booking.quote.durationMinutes / 60 : 2;
+      const hourlyRateCents = Math.round((booking.quote?.baseAmountCents || 2000) / durationHours);
+      const overstayFeeCents = Math.round((diffMinutes / 60) * (hourlyRateCents * 1.5));
+
+      booking.overstayDetails = {
+        overstayMinutes: diffMinutes,
+        overstayFeeCents,
+        status: 'CHARGED',
+      };
+      booking.status = BookingStatus.COMPLETED;
+    } else if (diffMinutes > 0) {
+      // Within 15-minute grace period
+      booking.overstayDetails = {
+        overstayMinutes: diffMinutes,
+        overstayFeeCents: 0,
+        status: 'GRACE_PERIOD',
+      };
+      booking.status = BookingStatus.COMPLETED;
+    } else {
+      booking.overstayDetails = {
+        overstayMinutes: 0,
+        overstayFeeCents: 0,
+        status: 'NONE',
+      };
+      booking.status = BookingStatus.COMPLETED;
+    }
+
+    return booking;
+  }
+
+  public extendBooking(
+    bookingId: string,
+    actorId: string,
+    additionalMinutes: number,
+    paymentIntentId?: string,
+    isAdmin = false
+  ): BookingSummary {
+    const booking = this.bookings.find((b) => b.id === bookingId);
+    if (!booking) {
+      throw new AppError(`Booking '${bookingId}' not found.`, 404, 'NOT_FOUND');
+    }
+
+    if (!isAdmin && booking.userId !== actorId && booking.hostId !== actorId) {
+      throw new AppError('Access denied. You do not have permission to extend this reservation.', 403, 'FORBIDDEN');
+    }
+
+    if (booking.status !== BookingStatus.CONFIRMED && booking.status !== BookingStatus.ACTIVE) {
+      throw new AppError(`Cannot extend reservation in status '${booking.status}'.`, 400, 'INVALID_STATE');
+    }
+
+    if (additionalMinutes < 30 || additionalMinutes > 1440) {
+      throw new AppError('Extension duration must be between 30 minutes and 24 hours.', 400, 'INVALID_DURATION');
+    }
+
+    if (additionalMinutes % 30 !== 0) {
+      throw new AppError('Extension must be in 30-minute increments.', 400, 'INVALID_INCREMENT');
+    }
+
+    const currentEnd = new Date(booking.endTimeUtc);
+    const newEnd = new Date(currentEnd.getTime() + additionalMinutes * 60000);
+
+    // Conflict check on the same bay
+    for (const b of this.bookings) {
+      if (b.bayId === booking.bayId && b.id !== booking.id && (b.status === BookingStatus.CONFIRMED || b.status === BookingStatus.ACTIVE)) {
+        const bStart = new Date(b.startTimeUtc).getTime();
+        const bEnd = new Date(b.endTimeUtc).getTime();
+        if (currentEnd.getTime() < bEnd && newEnd.getTime() > bStart) {
+          throw new AppError(
+            'Cannot extend reservation: this bay is reserved by another customer immediately following your current booking.',
+            409,
+            'EXTENSION_CONFLICT'
+          );
+        }
+      }
+    }
+
+    // Calculate extension pricing
+    const durationHours = booking.quote?.durationMinutes ? booking.quote.durationMinutes / 60 : 2;
+    const hourlyRateCents = Math.round((booking.quote?.baseAmountCents || 2000) / durationHours);
+    const additionalBaseCents = Math.round((additionalMinutes / 60) * hourlyRateCents);
+    const platformFeeCents = Math.round(additionalBaseCents * BOOKING_CONSTRAINTS.PLATFORM_FEE_RATE);
+    const taxesCents = Math.round(additionalBaseCents * BOOKING_CONSTRAINTS.TAX_RATE);
+    const totalAdditionalCents = additionalBaseCents + platformFeeCents + taxesCents;
+
+    // Apply updates
+    booking.endTimeUtc = newEnd.toISOString();
+    if (booking.quote) {
+      booking.quote.durationMinutes += additionalMinutes;
+      booking.quote.baseAmountCents += additionalBaseCents;
+      booking.quote.platformFeeCents += platformFeeCents;
+      booking.quote.taxesCents += taxesCents;
+      booking.quote.totalPayableCents += totalAdditionalCents;
+    }
+
+    if (booking.paymentDetails) {
+      booking.paymentDetails.amountCents += totalAdditionalCents;
+    }
+
+    booking.extensionHistory = booking.extensionHistory || [];
+    booking.extensionHistory.push({
+      extendedAtUtc: new Date().toISOString(),
+      additionalMinutes,
+      additionalAmountCents: totalAdditionalCents,
+      newEndTimeUtc: newEnd.toISOString(),
+    });
+
+    return booking;
   }
 
   public createHold(bayId: string, locationId: string, userId: string, durationMinutes: number): BookingHold {

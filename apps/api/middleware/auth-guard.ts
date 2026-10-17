@@ -63,16 +63,18 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction): v
   try {
     const payload = authService.verifyToken(token);
 
-    // Attach principal
-    req.user = {
-      id: payload.sub,
-      email: payload.email,
-      firstName: payload.firstName,
-      lastName: payload.lastName,
-      roles: payload.roles,
-      isHostVerified: payload.roles.includes(UserRole.HOST) || payload.roles.includes(UserRole.ADMIN),
-      createdAt: new Date(payload.iat * 1000).toISOString(),
-    };
+    const userFromStore = authService.getUserById(payload.sub);
+    req.user = userFromStore
+      ? { ...userFromStore }
+      : {
+          id: payload.sub,
+          email: payload.email,
+          firstName: payload.firstName,
+          lastName: payload.lastName,
+          roles: payload.roles,
+          isHostVerified: payload.roles.includes(UserRole.HOST) || payload.roles.includes(UserRole.ADMIN),
+          createdAt: new Date(payload.iat * 1000).toISOString(),
+        };
 
     next();
   } catch (err) {
