@@ -27,7 +27,7 @@ export const IntegrationsManager: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [isLoading, setIsLoading] = useState(true);
   const [testingId, setTestingId] = useState<string | null>(null);
-  const [testResults, setTestResults] = useState<Record<string, { message: string; success: boolean; latencyMs?: number }>>({});
+  const [testResults, setTestResults] = useState<Record<string, { message: string; success: boolean; latencyMs?: number; testType?: 'SIMULATED' | 'REAL_PROBE'; isSimulation?: boolean }>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
   const [copiedWebhook, setCopiedWebhook] = useState<string | null>(null);
 
@@ -76,7 +76,13 @@ export const IntegrationsManager: React.FC = () => {
       const res = await apiClient.testIntegration(id);
       setTestResults((prev) => ({
         ...prev,
-        [id]: { message: res.message, success: res.success, latencyMs: res.latencyMs },
+        [id]: {
+          message: res.message,
+          success: res.success,
+          latencyMs: res.latencyMs,
+          testType: res.testType,
+          isSimulation: res.isSimulation,
+        },
       }));
       // Refresh integration status
       const configs = await apiClient.getIntegrations();
@@ -393,23 +399,34 @@ export const IntegrationsManager: React.FC = () => {
                 {/* Test Connection Result Box */}
                 {testRes && (
                   <div
-                    className={`p-3 rounded-lg text-xs mb-4 flex items-start gap-2 ${
+                    className={`p-3.5 rounded-xl text-xs mb-4 space-y-2 ${
                       testRes.success
-                        ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
-                        : 'bg-amber-50 border border-amber-200 text-amber-800'
+                        ? 'bg-emerald-50/90 border border-emerald-200 text-emerald-900'
+                        : 'bg-amber-50/90 border border-amber-200 text-amber-900'
                     }`}
                   >
-                    {testRes.success ? (
-                      <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                    ) : (
-                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                    )}
-                    <div>
-                      <div>{testRes.message}</div>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 font-semibold text-[11px]">
+                        {testRes.success ? (
+                          <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                        ) : (
+                          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                        )}
+                        <span>{testRes.success ? 'Verification Passed' : 'Verification Alert'}</span>
+                      </div>
+                      <Badge variant={testRes.isSimulation ? 'neutral' : testRes.success ? 'success' : 'danger'}>
+                        {testRes.isSimulation ? 'SIMULATED TEST' : 'REAL PROVIDER PROBE'}
+                      </Badge>
+                    </div>
+
+                    <div className="text-xs leading-relaxed text-slate-800">
+                      {testRes.message}
+                    </div>
+
+                    <div className="flex items-center justify-between text-[11px] pt-1.5 border-t border-slate-200/60 text-slate-500 font-mono">
+                      <span>Type: {testRes.isSimulation ? 'Internal Sandbox Mock' : 'Live HTTPS Network Probe'}</span>
                       {testRes.latencyMs !== undefined && (
-                        <div className="font-mono text-[11px] opacity-80 mt-0.5">
-                          Probe latency: {testRes.latencyMs}ms
-                        </div>
+                        <span>Round-trip: {testRes.latencyMs}ms</span>
                       )}
                     </div>
                   </div>

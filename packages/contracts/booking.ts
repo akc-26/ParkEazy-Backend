@@ -45,6 +45,15 @@ export interface BookingQuoteSnapshot {
   quotedAtUtc: string;
 }
 
+export interface ConfirmBookingRequest {
+  holdId: string;
+  paymentIntentId: string;
+  idempotencyKey: string;
+  licensePlate: string;
+  paymentMethod?: string;
+  provider?: string;
+}
+
 export interface BookingSummary {
   id: string;
   holdId?: string;
@@ -52,6 +61,7 @@ export interface BookingSummary {
   bayNumber: string;
   locationId: string;
   locationName: string;
+  locationAddress?: string;
   locationTimezone: string;
   userId: string;
   userName: string;
@@ -61,6 +71,15 @@ export interface BookingSummary {
   status: BookingStatus;
   quote: BookingQuoteSnapshot;
   licensePlate?: string;
+  accessInstructions?: string;
+  gateCode?: string;
+  paymentDetails?: {
+    transactionId: string;
+    provider: string;
+    amountCents: number;
+    currency: string;
+    paidAtUtc: string;
+  };
   checkedInAtUtc?: string;
   checkedOutAtUtc?: string;
   createdAtUtc: string;
@@ -74,4 +93,7 @@ export const BOOKING_CONSTRAINTS = {
   MIN_LEAD_TIME_MINUTES: 15,
   MAX_BOOKING_HORIZON_DAYS: 30,
   TRANSITION_BUFFER_MINUTES: 15,
+  PLATFORM_FEE_RATE: 0.15, // 15% platform service fee
+  TAX_RATE: 0.10, // 10% municipal parking taxes
+  HOST_REVENUE_SHARE_RATE: 0.85, // 85% host net revenue share
 } as const;

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Clock, Car, ShieldCheck } from 'lucide-react';
+import { Search, Clock, Car, ShieldCheck, MapPin, AlertCircle } from 'lucide-react';
 import { Button } from '../../../packages/ui';
 
 interface UserHeroProps {
@@ -11,6 +11,8 @@ export const UserHero: React.FC<UserHeroProps> = ({ onSearch, onOpenHostPortal }
   const [locationQuery, setLocationQuery] = useState('San Francisco, CA');
   const [durationHours, setDurationHours] = useState(2);
   const [bayType, setBayType] = useState('ALL');
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [imageError, setImageError] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -18,22 +20,22 @@ export const UserHero: React.FC<UserHeroProps> = ({ onSearch, onOpenHostPortal }
   };
 
   return (
-    <section className="relative bg-[#F4F8F7] pt-8 pb-14 lg:pt-14 lg:pb-20 border-b border-slate-200">
-      <div className="max-w-[1536px] mx-auto px-6 sm:px-8 md:px-10 lg:px-12 xl:px-16">
+    <section className="relative bg-[#F4F8F7] pt-6 pb-10 sm:pt-8 sm:pb-14 lg:pt-12 lg:pb-16 border-b border-slate-200">
+      <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8">
         {/* Two-Column Balanced Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 xl:gap-12 items-stretch">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-stretch">
           {/* Left Column: Headline, Value Proposition & Search Card */}
-          <div className="lg:col-span-7 xl:col-span-6 flex flex-col justify-between space-y-6">
+          <div className="lg:col-span-7 flex flex-col justify-between space-y-6">
             <div>
-              <div className="text-xs font-bold tracking-wider text-[#075762] uppercase mb-3">
+              <div className="text-xs font-bold tracking-wider text-[#075762] uppercase mb-2 sm:mb-3">
                 Peer-to-Peer Parking Marketplace
               </div>
 
-              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-[#162A2D] tracking-tight leading-tight text-balance mb-4">
+              <h1 className="text-2xl sm:text-4xl lg:text-5xl font-extrabold text-[#162A2D] tracking-tight leading-tight text-balance mb-3 sm:mb-4">
                 Guaranteed parking, reserved before you arrive.
               </h1>
 
-              <p className="text-sm sm:text-base text-slate-600 max-w-xl leading-relaxed">
+              <p className="text-sm sm:text-base text-slate-600 leading-relaxed">
                 Book private covered garages, residential EV driveways, and secured transit bays with verified 10-minute hold protection and contactless gate access.
               </p>
             </div>
@@ -125,20 +127,41 @@ export const UserHero: React.FC<UserHeroProps> = ({ onSearch, onOpenHostPortal }
           </div>
 
           {/* Right Column: Architectural Photography Focal Anchor */}
-          <div className="lg:col-span-5 xl:col-span-6 flex flex-col">
-            <div className="relative h-full min-h-[420px] rounded-2xl overflow-hidden border border-slate-200 shadow-md bg-slate-200">
-              <img
-                src="/src/assets/images/hero_parking_bay_1792157347279.jpg"
-                alt="Secured covered parking bay in San Francisco Financial District"
-                className="w-full h-full object-cover"
-                referrerPolicy="no-referrer"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-transparent flex flex-col justify-end p-6 sm:p-8 text-white">
+          <div className="lg:col-span-5 flex flex-col">
+            <div className="relative w-full h-full min-h-[340px] sm:min-h-[420px] rounded-2xl overflow-hidden border border-slate-200 shadow-md bg-slate-900">
+              {!imageError ? (
+                <img
+                  src="/assets/images/hero_parking_bay_1792157347279.jpg"
+                  alt="Secured covered parking bay in San Francisco Financial District"
+                  className={`w-full h-full object-cover transition-opacity duration-300 ${
+                    imageLoaded ? 'opacity-100' : 'opacity-90'
+                  }`}
+                  loading="eager"
+                  onLoad={() => setImageLoaded(true)}
+                  onError={(e) => {
+                    const target = e.currentTarget;
+                    if (target.src !== window.location.origin + '/assets/images/hero_parking_bay_1792157347279.jpg') {
+                      target.src = '/assets/images/hero_parking_bay_1792157347279.jpg';
+                    } else {
+                      setImageError(true);
+                    }
+                  }}
+                />
+              ) : (
+                <div className="w-full h-full flex flex-col items-center justify-center p-8 bg-slate-800 text-white text-center">
+                  <MapPin className="w-10 h-10 text-teal-400 mb-3" />
+                  <div className="font-bold text-sm mb-1">Financial District Covered Facility</div>
+                  <div className="text-xs text-slate-400">Bay B2-30 · Reserved automated gate access</div>
+                </div>
+              )}
+
+              {/* Verified Badge and Info Overlay */}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent flex flex-col justify-end p-5 sm:p-7 text-white pointer-events-none">
                 <div className="flex items-center gap-2 text-xs font-semibold text-emerald-300 mb-1.5">
-                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                  <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
                   <span>Verified Financial Tower Facility · Bay B2-30</span>
                 </div>
-                <p className="text-sm font-medium text-slate-200 leading-snug">
+                <p className="text-xs sm:text-sm font-medium text-slate-200 leading-snug">
                   Automated gate code entry, 24/7 CCTV surveillance, and reserved space assurance.
                 </p>
               </div>
@@ -147,7 +170,7 @@ export const UserHero: React.FC<UserHeroProps> = ({ onSearch, onOpenHostPortal }
         </div>
 
         {/* 4-Column Proof & Invariants Strip Below Hero Split */}
-        <div className="mt-10 grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 p-6 sm:p-7 bg-white rounded-2xl border border-slate-200 shadow-xs">
+        <div className="mt-8 sm:mt-10 grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 p-5 sm:p-6 bg-white rounded-2xl border border-slate-200 shadow-xs">
           <div>
             <div className="text-xs text-slate-500 font-medium">Hold Invariant</div>
             <div className="text-xl font-bold text-[#162A2D] font-mono tabular-nums">

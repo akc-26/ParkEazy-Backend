@@ -8,12 +8,14 @@ interface HoldReservationModalProps {
   location: ParkingLocation | null;
   isOpen: boolean;
   onClose: () => void;
+  onNavigate?: (path: string) => void;
 }
 
 export const HoldReservationModal: React.FC<HoldReservationModalProps> = ({
   location,
   isOpen,
   onClose,
+  onNavigate,
 }) => {
   const [bays, setBays] = useState<ParkingBay[]>([]);
   const [selectedBayId, setSelectedBayId] = useState<string>('');
@@ -168,9 +170,16 @@ export const HoldReservationModal: React.FC<HoldReservationModalProps> = ({
               variant="primary"
               size="sm"
               themeContext="user"
-              onClick={() => alert('Proceeding to checkout in Stage 2 (Payment Integration)')}
+              onClick={() => {
+                onClose();
+                if (onNavigate) {
+                  onNavigate(
+                    `/booking/review?holdId=${activeHold.holdId}&bayId=${activeHold.bayId}&locationId=${activeHold.locationId}`
+                  );
+                }
+              }}
             >
-              Continue to Payment ($ {total})
+              Continue to Review (${total})
             </Button>
           </div>
         </div>
@@ -182,25 +191,38 @@ export const HoldReservationModal: React.FC<HoldReservationModalProps> = ({
               Select Specific Physical Bay
             </label>
             <div className="grid grid-cols-2 gap-2">
-              {bays.map((bay) => (
-                <button
-                  key={bay.id}
-                  type="button"
-                  onClick={() => setSelectedBayId(bay.id)}
-                  className={`p-3 text-left border rounded-lg transition-all ${
-                    selectedBayId === bay.id
-                      ? 'border-[#087E8A] bg-teal-50/40 ring-1 ring-[#087E8A]'
-                      : 'border-slate-200 hover:border-slate-300 bg-white'
-                  }`}
-                >
-                  <div className="font-semibold text-xs text-slate-900">
-                    Bay {bay.bayNumber}
-                  </div>
-                  <div className="text-[11px] text-slate-500">
-                    {bay.bayType} {bay.levelOrFloor ? `· ${bay.levelOrFloor}` : ''}
-                  </div>
-                </button>
-              ))}
+              {bays.map((bay) => {
+                const isAvail = bay.status === 'AVAILABLE';
+                return (
+                  <button
+                    key={bay.id}
+                    type="button"
+                    disabled={!isAvail}
+                    onClick={() => setSelectedBayId(bay.id)}
+                    className={`p-3 text-left border rounded-lg transition-all flex flex-col justify-between ${
+                      selectedBayId === bay.id && isAvail
+                        ? 'border-[#087E8A] bg-teal-50/40 ring-1 ring-[#087E8A]'
+                        : isAvail
+                        ? 'border-slate-200 hover:border-slate-300 bg-white'
+                        : 'border-slate-200 bg-slate-50 opacity-60 cursor-not-allowed'
+                    }`}
+                  >
+                    <div>
+                      <div className="font-semibold text-xs text-slate-900 flex items-center justify-between">
+                        <span>Bay {bay.bayNumber}</span>
+                        {!isAvail && (
+                          <span className="text-[10px] text-amber-700 bg-amber-100 px-1.5 py-0.2 rounded font-normal">
+                            {bay.status}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-slate-500 mt-0.5">
+                        {bay.bayType} {bay.levelOrFloor ? `· ${bay.levelOrFloor}` : ''}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
 

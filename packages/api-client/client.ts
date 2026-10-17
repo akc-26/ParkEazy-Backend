@@ -8,6 +8,7 @@ import {
   ParkingBay,
   BookingSummary,
   BookingHold,
+  ConfirmBookingRequest,
   LedgerEntry,
   HostEarningsSummary,
 } from '../contracts';
@@ -34,10 +35,35 @@ export class ParkEazyApiClient {
 
   constructor(baseUrl = '/api/v1') {
     this.baseUrl = baseUrl;
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        const stored = window.localStorage.getItem('parkeazy_auth_token');
+        if (stored) {
+          this.authToken = stored;
+        }
+      } catch {
+        // Ignore localStorage access errors (e.g., in strict security environments)
+      }
+    }
+  }
+
+  public getAuthToken(): string | null {
+    return this.authToken;
   }
 
   public setAuthToken(token: string | null) {
     this.authToken = token;
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        if (token) {
+          window.localStorage.setItem('parkeazy_auth_token', token);
+        } else {
+          window.localStorage.removeItem('parkeazy_auth_token');
+        }
+      } catch {
+        // Ignore localStorage access errors
+      }
+    }
   }
 
   private generateCorrelationId(): string {
@@ -67,6 +93,12 @@ export class ParkEazyApiClient {
       const json: ApiResponse<T> = await response.json();
 
       if (!response.ok || !json.success) {
+        if (response.status === 401) {
+          this.setAuthToken(null);
+        }
+        if ('data' in json && (json as any).data) {
+          return (json as any).data as T;
+        }
         if ('error' in json) {
           throw new ApiError(
             json.error.message || 'API request failed',
@@ -130,6 +162,10 @@ export class ParkEazyApiClient {
     return this.request<ParkingLocation[]>('/inventory/locations');
   }
 
+  public async getLocation(locationId: string): Promise<ParkingLocation> {
+    return this.request<ParkingLocation>(`/inventory/locations/${locationId}`);
+  }
+
   public async getBays(locationId: string): Promise<ParkingBay[]> {
     return this.request<ParkingBay[]>(`/inventory/locations/${locationId}/bays`);
   }
@@ -143,11 +179,44 @@ export class ParkEazyApiClient {
     return this.request<BookingSummary[]>('/bookings');
   }
 
+  public async getBooking(bookingId: string): Promise<BookingSummary> {
+    return this.request<BookingSummary>(`/bookings/${bookingId}`);
+  }
+
   public async createHold(params: { bayId: string; locationId: string; durationMinutes: number }): Promise<BookingHold> {
     return this.request<BookingHold>('/bookings/hold', {
       method: 'POST',
       body: JSON.stringify(params),
     });
+  }
+
+  public async getHold(holdId: string): Promise<BookingHold> {
+    return this.request<BookingHold>(`/bookings/hold/${holdId}`);
+  }
+
+  public async confirmBooking(params: ConfirmBookingRequest): Promise<BookingSummary> {
+    return this.request<BookingSummary>('/bookings', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    });
+  }
+
+  // Payment Endpoints
+  public async createPaymentIntent(params: {
+    amountCents: number;
+    currency: string;
+    bookingId: string;
+    idempotencyKey: string;
+    provider?: string;
+  }): Promise<any> {
+    return this.request<any>('/payments/intent', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    });
+  }
+
+  public async getPaymentStatus(transactionId: string): Promise<any> {
+    return this.request<any>(`/payments/intent/${transactionId}`);
   }
 
   // Host & Admin Endpoints
