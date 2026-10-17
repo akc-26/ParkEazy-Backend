@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { MapPin, Zap, Shield, Key } from 'lucide-react';
 import { ParkingLocation } from '../../../packages/contracts';
 import { Button } from '../../../packages/ui';
@@ -9,6 +9,7 @@ interface LocationCardProps {
 }
 
 export const LocationCard: React.FC<LocationCardProps> = ({ location, onSelect }) => {
+  const [imageError, setImageError] = useState(false);
   const formattedHourlyRate = (location.hourlyRateCents / 100).toFixed(2);
   const formattedDailyRate = (location.dailyRateCents / 100).toFixed(2);
 
@@ -16,16 +17,25 @@ export const LocationCard: React.FC<LocationCardProps> = ({ location, onSelect }
     <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs hover:border-slate-300 transition-all flex flex-col">
       {/* Location Image with Clean Overlay */}
       <div className="relative aspect-16/9 bg-slate-100 overflow-hidden">
-        {location.imageUrl ? (
+        {location.imageUrl && !imageError ? (
           <img
             src={location.imageUrl}
             alt={location.name}
             className="w-full h-full object-cover"
             referrerPolicy="no-referrer"
+            onError={(e) => {
+              const target = e.currentTarget;
+              if (target.src.includes('/src/assets/images/')) {
+                target.src = target.src.replace('/src/assets/images/', '/assets/images/');
+              } else {
+                setImageError(true);
+              }
+            }}
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-slate-400">
-            No image available
+          <div className="w-full h-full flex flex-col items-center justify-center bg-slate-100 text-slate-400 p-4 text-center">
+            <MapPin className="w-6 h-6 text-slate-400 mb-1" />
+            <span className="text-[11px] font-medium text-slate-500">{location.name}</span>
           </div>
         )}
         <div className="absolute top-3 left-3 bg-white/95 backdrop-blur-xs text-[11px] font-semibold text-slate-800 px-2.5 py-1 rounded-md border border-slate-200">

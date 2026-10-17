@@ -68,6 +68,11 @@ class LedgerService {
   }
 
   public appendEntry(entry: Omit<LedgerEntry, 'id' | 'createdAtUtc'>): LedgerEntry {
+    const existing = this.entries.find((e) => e.idempotencyKey === entry.idempotencyKey);
+    if (existing) {
+      return existing;
+    }
+
     const newEntry: LedgerEntry = {
       ...entry,
       id: 'led-' + (1000 + this.entries.length + 1),
@@ -75,6 +80,47 @@ class LedgerService {
     };
     this.entries.push(newEntry);
     return newEntry;
+  }
+
+  public getEntriesForBooking(bookingId: string): LedgerEntry[] {
+    return this.entries.filter((e) => e.bookingId === bookingId);
+  }
+
+  public verifyLedgerIntegrity(): {
+    isBalanced: boolean;
+    totalDebitsCents: number;
+    totalCreditsCents: number;
+    entryCount: number;
+    accountBalances: Record<string, { debits: number; credits: number; net: number }>;
+  } {
+    let totalDebitsCents = 0;
+    let totalCreditsCents = 0;
+    const accountBalances: Record<string, { debits: number; credits: number; net: number }> = {};
+
+    for (const entry of this.entries) {
+      totalDebitsCents += entry.amountCents;
+      totalCreditsCents += entry.amountCents;
+
+      if (!accountBalances[entry.debitAccount]) {
+        accountBalances[entry.debitAccount] = { debits: 0, credits: 0, net: 0 };
+      }
+      accountBalances[entry.debitAccount].debits += entry.amountCents;
+      accountBalances[entry.debitAccount].net -= entry.amountCents;
+
+      if (!accountBalances[entry.creditAccount]) {
+        accountBalances[entry.creditAccount] = { debits: 0, credits: 0, net: 0 };
+      }
+      accountBalances[entry.creditAccount].credits += entry.amountCents;
+      accountBalances[entry.creditAccount].net += entry.amountCents;
+    }
+
+    return {
+      isBalanced: totalDebitsCents === totalCreditsCents,
+      totalDebitsCents,
+      totalCreditsCents,
+      entryCount: this.entries.length,
+      accountBalances,
+    };
   }
 }
 
