@@ -278,6 +278,10 @@ export class IntegrationsService {
     return this.configs.get(id);
   }
 
+  public getCredentials(id: string): StoredCredential | undefined {
+    return this.credentialsVault.get(id);
+  }
+
   public getActiveGatewayConfig(): ActivePaymentGatewayConfig {
     return this.activeGatewayConfig;
   }

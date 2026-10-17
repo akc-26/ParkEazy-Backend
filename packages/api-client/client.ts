@@ -8,6 +8,7 @@ import {
   ParkingBay,
   BookingSummary,
   BookingHold,
+  ConfirmBookingRequest,
   LedgerEntry,
   HostEarningsSummary,
 } from '../contracts';
@@ -96,7 +97,6 @@ export class ParkEazyApiClient {
           this.setAuthToken(null);
         }
         if ('data' in json && (json as any).data) {
-          // If response body contains valid data payload (e.g., /readiness probe returning 503 unavailable)
           return (json as any).data as T;
         }
         if ('error' in json) {
@@ -179,11 +179,44 @@ export class ParkEazyApiClient {
     return this.request<BookingSummary[]>('/bookings');
   }
 
+  public async getBooking(bookingId: string): Promise<BookingSummary> {
+    return this.request<BookingSummary>(`/bookings/${bookingId}`);
+  }
+
   public async createHold(params: { bayId: string; locationId: string; durationMinutes: number }): Promise<BookingHold> {
     return this.request<BookingHold>('/bookings/hold', {
       method: 'POST',
       body: JSON.stringify(params),
     });
+  }
+
+  public async getHold(holdId: string): Promise<BookingHold> {
+    return this.request<BookingHold>(`/bookings/hold/${holdId}`);
+  }
+
+  public async confirmBooking(params: ConfirmBookingRequest): Promise<BookingSummary> {
+    return this.request<BookingSummary>('/bookings', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    });
+  }
+
+  // Payment Endpoints
+  public async createPaymentIntent(params: {
+    amountCents: number;
+    currency: string;
+    bookingId: string;
+    idempotencyKey: string;
+    provider?: string;
+  }): Promise<any> {
+    return this.request<any>('/payments/intent', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    });
+  }
+
+  public async getPaymentStatus(transactionId: string): Promise<any> {
+    return this.request<any>(`/payments/intent/${transactionId}`);
   }
 
   // Host & Admin Endpoints

@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { integrationsService } from './integrations.service';
 
 export type PaymentStatus =
   | 'PENDING'
@@ -32,6 +33,8 @@ export interface PaymentIntentResult {
   status: PaymentStatus;
   amountCents: number;
   currency: string;
+  bookingId?: string;
+  customerId?: string;
   clientSecret?: string;
   errorCode?: PaymentErrorCode;
   errorMessage?: string;
@@ -114,6 +117,8 @@ export class MockPaymentAdapter implements PaymentGatewayAdapter {
       status: 'SUCCEEDED',
       amountCents,
       currency,
+      bookingId,
+      customerId: params.customerId,
       clientSecret: `cs_mock_${crypto.randomBytes(12).toString('hex')}`,
       isSimulated: true,
       createdAtUtc: new Date().toISOString(),
@@ -237,16 +242,67 @@ export class StripePaymentAdapter implements PaymentGatewayAdapter {
   }
 
   public async getPaymentStatus(transactionId: string): Promise<PaymentIntentResult> {
-    return {
-      success: true,
-      provider: this.provider,
-      transactionId,
-      status: 'SUCCEEDED',
-      amountCents: 0,
-      currency: 'USD',
-      isSimulated: this.isSimulated,
-      createdAtUtc: new Date().toISOString(),
-    };
+    if (!this.apiKey) {
+      return {
+        success: false,
+        provider: this.provider,
+        transactionId,
+        status: 'FAILED',
+        amountCents: 0,
+        currency: 'USD',
+        errorCode: 'CONFIGURATION_ERROR',
+        errorMessage: 'Stripe API key is not configured. Live payment verification unavailable.',
+        isSimulated: this.isSimulated,
+        createdAtUtc: new Date().toISOString(),
+      };
+    }
+
+    try {
+      const response = await fetch(`https://api.stripe.com/v1/payment_intents/${transactionId}`, {
+        headers: { Authorization: `Bearer ${this.apiKey}` },
+        signal: AbortSignal.timeout(5000),
+      });
+      const json: any = await response.json();
+      if (!response.ok) {
+        return {
+          success: false,
+          provider: this.provider,
+          transactionId,
+          status: 'FAILED',
+          amountCents: 0,
+          currency: 'USD',
+          errorCode: 'CONFIGURATION_ERROR',
+          errorMessage: json?.error?.message || 'Stripe payment lookup failed.',
+          isSimulated: false,
+          createdAtUtc: new Date().toISOString(),
+        };
+      }
+      const isSucceeded = json.status === 'succeeded';
+      return {
+        success: isSucceeded,
+        provider: this.provider,
+        transactionId: json.id,
+        status: isSucceeded ? 'SUCCEEDED' : 'FAILED',
+        amountCents: json.amount || 0,
+        currency: (json.currency || 'usd').toUpperCase(),
+        clientSecret: json.client_secret,
+        isSimulated: false,
+        createdAtUtc: new Date(json.created * 1000).toISOString(),
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        provider: this.provider,
+        transactionId,
+        status: 'FAILED',
+        amountCents: 0,
+        currency: 'USD',
+        errorCode: 'NETWORK_ERROR',
+        errorMessage: `Failed to contact Stripe API: ${err.message}`,
+        isSimulated: false,
+        createdAtUtc: new Date().toISOString(),
+      };
+    }
   }
 
   public async verifyWebhook(
@@ -313,16 +369,68 @@ export class RazorpayPaymentAdapter implements PaymentGatewayAdapter {
   }
 
   public async getPaymentStatus(transactionId: string): Promise<PaymentIntentResult> {
-    return {
-      success: true,
-      provider: this.provider,
-      transactionId,
-      status: 'SUCCEEDED',
-      amountCents: 0,
-      currency: 'INR',
-      isSimulated: this.isSimulated,
-      createdAtUtc: new Date().toISOString(),
-    };
+    if (!this.keyId || !this.keySecret) {
+      return {
+        success: false,
+        provider: this.provider,
+        transactionId,
+        status: 'FAILED',
+        amountCents: 0,
+        currency: 'INR',
+        errorCode: 'CONFIGURATION_ERROR',
+        errorMessage: 'Razorpay API credentials are not configured. Live payment verification unavailable.',
+        isSimulated: this.isSimulated,
+        createdAtUtc: new Date().toISOString(),
+      };
+    }
+
+    try {
+      const response = await fetch(`https://api.razorpay.com/v1/payments/${transactionId}`, {
+        headers: {
+          Authorization: `Basic ${Buffer.from(`${this.keyId}:${this.keySecret}`).toString('base64')}`,
+        },
+        signal: AbortSignal.timeout(5000),
+      });
+      const json: any = await response.json();
+      if (!response.ok) {
+        return {
+          success: false,
+          provider: this.provider,
+          transactionId,
+          status: 'FAILED',
+          amountCents: 0,
+          currency: 'INR',
+          errorCode: 'CONFIGURATION_ERROR',
+          errorMessage: json?.error?.description || 'Razorpay payment lookup failed.',
+          isSimulated: false,
+          createdAtUtc: new Date().toISOString(),
+        };
+      }
+      const isCaptured = json.status === 'captured';
+      return {
+        success: isCaptured,
+        provider: this.provider,
+        transactionId: json.id,
+        status: isCaptured ? 'SUCCEEDED' : 'FAILED',
+        amountCents: json.amount || 0,
+        currency: (json.currency || 'inr').toUpperCase(),
+        isSimulated: false,
+        createdAtUtc: new Date(json.created_at * 1000).toISOString(),
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        provider: this.provider,
+        transactionId,
+        status: 'FAILED',
+        amountCents: 0,
+        currency: 'INR',
+        errorCode: 'NETWORK_ERROR',
+        errorMessage: `Failed to contact Razorpay API: ${err.message}`,
+        isSimulated: false,
+        createdAtUtc: new Date().toISOString(),
+      };
+    }
   }
 
   public async verifyWebhook(
@@ -357,10 +465,14 @@ export class PaymentAdapterFactory {
 
   public static getAdapter(provider = 'MOCK_PAYMENT'): PaymentGatewayAdapter {
     switch (provider.toUpperCase()) {
-      case 'STRIPE':
-        return new StripePaymentAdapter(undefined, undefined, true);
-      case 'RAZORPAY':
-        return new RazorpayPaymentAdapter(undefined, undefined, true);
+      case 'STRIPE': {
+        const creds = integrationsService.getCredentials('stripe');
+        return new StripePaymentAdapter(creds?.secretKey || creds?.apiKey, creds?.webhookSecret, false);
+      }
+      case 'RAZORPAY': {
+        const creds = integrationsService.getCredentials('razorpay');
+        return new RazorpayPaymentAdapter(creds?.apiKey, creds?.secretKey, false);
+      }
       case 'MOCK_PAYMENT':
       default:
         return PaymentAdapterFactory.mockAdapter;

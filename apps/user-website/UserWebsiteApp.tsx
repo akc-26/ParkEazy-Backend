@@ -26,10 +26,10 @@ import {
 import { SearchPageView } from './views/SearchPageView';
 import { SpaceDetailsPageView } from './views/SpaceDetailsPageView';
 import { AuthPageView } from './views/AuthPageView';
+import { BookingReviewPageView } from './views/BookingReviewPageView';
+import { CheckoutPageView } from './views/CheckoutPageView';
+import { BookingConfirmationPageView } from './views/BookingConfirmationPageView';
 import {
-  BookingReviewPendingView,
-  CheckoutPendingView,
-  BookingConfirmationPendingView,
   BookingsPendingView,
   ProfilePendingView,
 } from './views/RoutePendingView';
@@ -202,31 +202,36 @@ export const UserWebsiteApp: React.FC<UserWebsiteAppProps> = ({
 
     if (pathname === '/booking/review') {
       return (
-        <BookingReviewPendingView
+        <BookingReviewPageView
+          searchParams={searchParams}
           onNavigate={onNavigate}
           onOpenAuthModal={() => setIsAuthModalOpen(true)}
           currentUser={currentUser}
+          showToast={showToast}
         />
       );
     }
 
     if (pathname === '/checkout') {
       return (
-        <CheckoutPendingView
+        <CheckoutPageView
+          searchParams={searchParams}
           onNavigate={onNavigate}
           onOpenAuthModal={() => setIsAuthModalOpen(true)}
           currentUser={currentUser}
+          showToast={showToast}
         />
       );
     }
 
     if (bookingId) {
       return (
-        <BookingConfirmationPendingView
+        <BookingConfirmationPageView
+          bookingId={bookingId}
           onNavigate={onNavigate}
           onOpenAuthModal={() => setIsAuthModalOpen(true)}
           currentUser={currentUser}
-          bookingId={bookingId}
+          showToast={showToast}
         />
       );
     }

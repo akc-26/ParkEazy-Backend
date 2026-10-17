@@ -11,7 +11,7 @@ import { PaymentAdapterFactory } from './services/payment-adapter';
 import { NotificationAdapterFactory } from './services/notification-adapter';
 import { authGuard, requireResourceOwnership } from './middleware/auth-guard';
 import { openApiSpec } from './docs/openapi';
-import { UserRole, ApiSuccessResponse } from '../../packages/contracts';
+import { UserRole, ApiSuccessResponse, BookingStatus } from '../../packages/contracts';
 import { AppError } from './middleware/error-handler';
 import { validate, CommonValidators } from './middleware/validation';
 import { appConfig } from './config/env';
@@ -260,9 +260,49 @@ apiV1Router.get('/bookings/rules', (req: Request, res: Response) => {
 });
 
 apiV1Router.get('/bookings', (req: Request, res: Response) => {
-  const bookings = bookingService.getAllBookings();
-  sendSuccess(res, bookings, req.correlationId);
+  const authHeader = req.headers['authorization'];
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    try {
+      const payload = authService.verifyToken(authHeader.substring(7).trim());
+      if (payload && payload.roles && (payload.roles.includes(UserRole.ADMIN) || payload.roles.includes(UserRole.SUPER_ADMIN))) {
+        return sendSuccess(res, bookingService.getAllBookings(), req.correlationId);
+      }
+      if (payload && payload.roles && payload.roles.includes(UserRole.HOST)) {
+        return sendSuccess(res, bookingService.getBookingsForHost(payload.sub), req.correlationId);
+      }
+      if (payload && payload.sub) {
+        return sendSuccess(res, bookingService.getBookingsForUser(payload.sub), req.correlationId);
+      }
+    } catch {
+      // Fall through on invalid token
+    }
+  }
+  // Data privacy invariant: unauthenticated callers cannot enumerate customer reservations or entry codes
+  sendSuccess(res, [], req.correlationId);
 });
+
+apiV1Router.get(
+  '/bookings/hold/:id',
+  validate([
+    { field: 'id', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    const { hold, isExpired } = bookingService.inspectHold(req.params.id);
+    if (!hold && !isExpired) {
+      return next(new AppError(`Booking hold '${req.params.id}' was not found.`, 404, 'NOT_FOUND'));
+    }
+    if (isExpired) {
+      return next(
+        new AppError(
+          'The 10-minute hold reservation for this parking bay has expired. Please return to Space Details to re-select your preferred time slot.',
+          410,
+          'HOLD_EXPIRED'
+        )
+      );
+    }
+    sendSuccess(res, hold, req.correlationId);
+  }
+);
 
 apiV1Router.post(
   '/bookings/hold',
@@ -280,13 +320,96 @@ apiV1Router.post(
   ]),
   (req: Request, res: Response, next: NextFunction) => {
     const { bayId, locationId, durationMinutes } = req.body;
+    let userId = 'usr-customer-001';
+
+    const authHeader = req.headers['authorization'];
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      try {
+        const payload = authService.verifyToken(authHeader.substring(7).trim());
+        if (payload && payload.sub) {
+          userId = payload.sub;
+        }
+      } catch {
+        // Fall back to default user
+      }
+    }
 
     try {
-      const hold = bookingService.createHold(bayId, locationId, 'usr-customer-001', Number(durationMinutes));
+      const hold = bookingService.createHold(bayId, locationId, userId, Number(durationMinutes));
       sendSuccess(res, hold, req.correlationId, 201);
     } catch (err) {
       next(err);
     }
+  }
+);
+
+apiV1Router.post(
+  '/bookings',
+  authGuard([UserRole.CUSTOMER, UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  validate([
+    { field: 'holdId', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'paymentIntentId', required: true, type: 'string', minLength: 1, maxLength: 128 },
+    { field: 'idempotencyKey', required: true, type: 'string', minLength: 1, maxLength: 128 },
+    { field: 'licensePlate', required: true, type: 'string', minLength: 2, maxLength: 16 },
+  ]),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { holdId, paymentIntentId, idempotencyKey, licensePlate, provider } = req.body;
+      const user = req.user!;
+      const userName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Driver';
+
+      const booking = await bookingService.confirmBookingFromHold({
+        holdId,
+        paymentIntentId,
+        idempotencyKey,
+        licensePlate,
+        userId: user.id,
+        userName,
+        paymentProvider: provider,
+      });
+
+      sendSuccess(res, booking, req.correlationId, 201);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.get(
+  '/bookings/:id',
+  authGuard([UserRole.CUSTOMER, UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  validate([
+    { field: 'id', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    const booking = bookingService.getBookingById(req.params.id);
+    if (!booking) {
+      return next(new AppError(`Booking '${req.params.id}' not found.`, 404, 'NOT_FOUND'));
+    }
+
+    const user = req.user!;
+    const isAdmin = user.roles.includes(UserRole.ADMIN) || user.roles.includes(UserRole.SUPER_ADMIN);
+    const isHost = user.roles.includes(UserRole.HOST) && booking.hostId === user.id;
+    const isOwner = booking.userId === user.id;
+
+    if (!isAdmin && !isHost && !isOwner) {
+      return next(
+        new AppError('Access denied. You do not have permission to view this reservation.', 403, 'FORBIDDEN')
+      );
+    }
+
+    // Security Invariant: Access instructions and gate codes are strictly suppressed
+    // unless the reservation is authoritatively confirmed or active.
+    let responseData = { ...booking };
+    const isEligibleForAccess =
+      booking.status === BookingStatus.CONFIRMED || booking.status === BookingStatus.ACTIVE;
+
+    if (!isEligibleForAccess) {
+      delete responseData.accessInstructions;
+      delete responseData.gateCode;
+    }
+
+    sendSuccess(res, responseData, req.correlationId);
   }
 );
 
@@ -333,7 +456,7 @@ apiV1Router.post(
   ]),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const activeProvider = integrationsService.getActiveGatewayConfig().activeProvider;
+      const activeProvider = req.body.provider || integrationsService.getActiveGatewayConfig().activeProvider;
       const adapter = PaymentAdapterFactory.getAdapter(activeProvider);
 
       const result = await adapter.createPaymentIntent({
@@ -343,6 +466,24 @@ apiV1Router.post(
 
       const statusCode = result.success ? 201 : 400;
       sendSuccess(res, result, req.correlationId, statusCode);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.get(
+  '/payments/intent/:id',
+  authGuard([UserRole.CUSTOMER, UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  validate([
+    { field: 'id', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 128 },
+  ]),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const activeProvider = integrationsService.getActiveGatewayConfig().activeProvider;
+      const adapter = PaymentAdapterFactory.getAdapter(activeProvider);
+      const result = await adapter.getPaymentStatus(req.params.id);
+      sendSuccess(res, result, req.correlationId);
     } catch (err) {
       next(err);
     }
