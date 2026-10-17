@@ -113,7 +113,25 @@ export function loadAndValidateConfig(env: NodeJS.ProcessEnv = process.env): App
       : 'development';
 
   // Port Validation
-  const rawPort = env.PORT || '3000';
+  let argPort: string | undefined;
+  if (typeof process !== 'undefined' && Array.isArray(process.argv)) {
+    for (let i = 0; i < process.argv.length; i++) {
+      if (process.argv[i] === '--port' && process.argv[i + 1]) {
+        argPort = process.argv[i + 1];
+      } else if (process.argv[i].startsWith('--port=')) {
+        argPort = process.argv[i].split('=')[1];
+      }
+    }
+  }
+
+  const rawPort =
+    argPort ||
+    (env.DEFAULT_APP_PORT && (env.PORT === env.NGINX_PORT || env.PORT === '8080')
+      ? env.DEFAULT_APP_PORT
+      : undefined) ||
+    env.APP_PORT ||
+    env.PORT ||
+    '3000';
   const port = parseInt(rawPort, 10);
   if (isNaN(port) || port < 1 || port > 65535) {
     throw new ConfigurationError(
