@@ -46,11 +46,22 @@ export interface ReadinessDependencyStatus {
 
 export interface SystemReadinessResponse {
   ready: boolean;
+  productionReady?: boolean;
+  environment?: string;
+  mode?: 'production-ready' | 'in-memory-baseline' | 'unavailable' | string;
   timestamp: string;
   checks: {
     database: ReadinessDependencyStatus;
     cache: ReadinessDependencyStatus;
+    migrations?: {
+      status: 'up' | 'down' | 'unconfigured';
+      appliedCount?: number;
+      pendingCount?: number;
+      pending?: string[];
+      message?: string;
+    };
     storage: ReadinessDependencyStatus;
     paymentGateways: ReadinessDependencyStatus;
+    notifications?: ReadinessDependencyStatus;
   };
 }
