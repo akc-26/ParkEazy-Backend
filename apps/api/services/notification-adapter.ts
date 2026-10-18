@@ -133,15 +133,26 @@ export class EmailProviderAdapter implements NotificationProviderAdapter {
       };
     }
 
-    // In live production, dispatches via SendGrid / SES REST API
-    return {
-      success: true,
-      notificationId: `msg_${crypto.randomBytes(8).toString('hex')}`,
-      channel: 'EMAIL',
-      provider: this.providerName,
-      isSimulated: this.isSimulated,
-      sentAtUtc: new Date().toISOString(),
-    };
+    const endpoint = process.env.SENDGRID_API_URL || 'https://api.sendgrid.com/v3/mail/send';
+    const fromEmail = process.env.SENDGRID_FROM_EMAIL || process.env.EMAIL_FROM;
+    if (!fromEmail) {
+      return { success: false, notificationId: `email_unconfigured_${Date.now()}`, channel: 'EMAIL', provider: this.providerName, isSimulated: false, sentAtUtc: new Date().toISOString(), errorCode: 'CONFIGURATION_ERROR', errorMessage: 'SENDGRID_FROM_EMAIL (or EMAIL_FROM) is not configured.' };
+    }
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${this.apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ personalizations: [{ to: [{ email: payload.recipient }] }], from: { email: fromEmail }, subject: payload.subject || 'ParkEazy notification', content: [{ type: 'text/plain', value: payload.content }] }),
+        signal: AbortSignal.timeout(payload.timeoutMs || 8000),
+      });
+      if (!response.ok) {
+        const providerBody = (await response.text()).slice(0, 500);
+        return { success: false, notificationId: `email_rejected_${Date.now()}`, channel: 'EMAIL', provider: this.providerName, isSimulated: false, sentAtUtc: new Date().toISOString(), errorCode: `PROVIDER_HTTP_${response.status}`, errorMessage: `Email provider rejected the request (HTTP ${response.status}): ${providerBody}` };
+      }
+      return { success: true, notificationId: response.headers.get('x-message-id') || `sendgrid_accepted_${Date.now()}`, channel: 'EMAIL', provider: this.providerName, isSimulated: false, sentAtUtc: new Date().toISOString() };
+    } catch (error: any) {
+      return { success: false, notificationId: `email_error_${Date.now()}`, channel: 'EMAIL', provider: this.providerName, isSimulated: false, sentAtUtc: new Date().toISOString(), errorCode: 'PROVIDER_REQUEST_FAILED', errorMessage: error?.name === 'TimeoutError' ? 'Email provider request timed out.' : 'Email provider request failed.' };
+    }
   }
 }
 
@@ -175,21 +186,61 @@ export class SmsProviderAdapter implements NotificationProviderAdapter {
       };
     }
 
-    return {
-      success: true,
-      notificationId: `sms_${crypto.randomBytes(8).toString('hex')}`,
-      channel: 'SMS',
-      provider: this.providerName,
-      isSimulated: this.isSimulated,
-      sentAtUtc: new Date().toISOString(),
-    };
+    const fromNumber = process.env.TWILIO_FROM_NUMBER;
+    if (!fromNumber) {
+      return { success: false, notificationId: `sms_unconfigured_${Date.now()}`, channel: 'SMS', provider: this.providerName, isSimulated: false, sentAtUtc: new Date().toISOString(), errorCode: 'CONFIGURATION_ERROR', errorMessage: 'TWILIO_FROM_NUMBER is not configured.' };
+    }
+    try {
+      const credentials = Buffer.from(`${this.accountSid}:${this.authToken}`).toString('base64');
+      const body = new URLSearchParams({ To: payload.recipient, From: fromNumber, Body: payload.content });
+      const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(this.accountSid)}/Messages.json`, {
+        method: 'POST', headers: { Authorization: `Basic ${credentials}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body, signal: AbortSignal.timeout(payload.timeoutMs || 8000),
+      });
+      const result: any = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        return { success: false, notificationId: `sms_rejected_${Date.now()}`, channel: 'SMS', provider: this.providerName, isSimulated: false, sentAtUtc: new Date().toISOString(), errorCode: `PROVIDER_HTTP_${response.status}`, errorMessage: `SMS provider rejected the request (HTTP ${response.status}).` };
+      }
+      return { success: true, notificationId: String(result.sid || `twilio_accepted_${Date.now()}`), channel: 'SMS', provider: this.providerName, isSimulated: false, sentAtUtc: new Date().toISOString() };
+    } catch (error: any) {
+      return { success: false, notificationId: `sms_error_${Date.now()}`, channel: 'SMS', provider: this.providerName, isSimulated: false, sentAtUtc: new Date().toISOString(), errorCode: 'PROVIDER_REQUEST_FAILED', errorMessage: error?.name === 'TimeoutError' ? 'SMS provider request timed out.' : 'SMS provider request failed.' };
+    }
   }
 }
 
 export class NotificationAdapterFactory {
+  private static customAdapter: NotificationProviderAdapter | null = null;
   private static mockAdapter = new MockNotificationAdapter();
 
+  public static setAdapter(adapter: NotificationProviderAdapter | null): void {
+    NotificationAdapterFactory.customAdapter = adapter;
+  }
+
   public static getAdapter(channel: NotificationChannel = 'EMAIL'): NotificationProviderAdapter {
+    if (NotificationAdapterFactory.customAdapter) {
+      return NotificationAdapterFactory.customAdapter;
+    }
+
+    const emailApiKey = process.env.SENDGRID_API_KEY || process.env.EMAIL_API_KEY;
+    const twilioSid = process.env.TWILIO_ACCOUNT_SID;
+    const twilioAuth = process.env.TWILIO_AUTH_TOKEN;
+
+    if (channel === 'EMAIL' && emailApiKey) {
+      return new EmailProviderAdapter(emailApiKey, false);
+    }
+
+    if (channel === 'SMS' && twilioSid && twilioAuth) {
+      return new SmsProviderAdapter(twilioSid, twilioAuth, false);
+    }
+
+    // In production without credentials, return unconfigured adapter
+    if (process.env.NODE_ENV === 'production') {
+      if (channel === 'EMAIL') {
+        return new EmailProviderAdapter(undefined, false);
+      }
+      return new SmsProviderAdapter(undefined, undefined, false);
+    }
+
     return NotificationAdapterFactory.mockAdapter;
   }
 
@@ -197,3 +248,4 @@ export class NotificationAdapterFactory {
     return NotificationAdapterFactory.mockAdapter;
   }
 }
+

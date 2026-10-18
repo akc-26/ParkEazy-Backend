@@ -167,8 +167,107 @@ apiV1Router.get('/docs', (req: Request, res: Response) => {
 });
 
 // ----------------------------------------------------------------------
-// 2. Authentication Endpoints (Workstream 2.4)
+// 2. Authentication Endpoints (Workstream 2.4 & Host Account Phase 1)
 // ----------------------------------------------------------------------
+apiV1Router.post(
+  '/auth/register',
+  validate([
+    {
+      field: 'email',
+      required: true,
+      custom: (val) => (!CommonValidators.isValidEmail(val) ? 'A valid email address is required.' : null),
+    },
+    { field: 'firstName', required: true, type: 'string', minLength: 1, maxLength: 100 },
+    { field: 'lastName', required: true, type: 'string', minLength: 1, maxLength: 100 },
+    { field: 'password', required: true, type: 'string', minLength: 8 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const result = authService.registerUser(req.body);
+      sendSuccess(res, result, req.correlationId, 201);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.get(
+  '/auth/verification-status',
+  authGuard([UserRole.CUSTOMER, UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const status = authService.getVerificationStatus(req.user!.id);
+      sendSuccess(res, status, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.post(
+  '/auth/verify-code',
+  authGuard([UserRole.CUSTOMER, UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  validate([
+    { field: 'code', required: true, type: 'string', minLength: 1, maxLength: 20 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const result = authService.verifyCode(req.user!.id, req.body.code, req.body.type);
+      sendSuccess(res, result, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.post(
+  '/auth/resend-code',
+  authGuard([UserRole.CUSTOMER, UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const result = authService.resendVerificationCode(req.user!.id, req.body?.type);
+      sendSuccess(res, result, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.post(
+  '/auth/forgot-password',
+  validate([
+    {
+      field: 'email',
+      required: true,
+      custom: (val) => (!CommonValidators.isValidEmail(val) ? 'A valid email address is required.' : null),
+    },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const result = authService.requestPasswordReset(req.body.email);
+      sendSuccess(res, result, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.post(
+  '/auth/reset-password',
+  validate([
+    { field: 'token', required: true, type: 'string', minLength: 1 },
+    { field: 'newPassword', required: true, type: 'string', minLength: 8 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const result = authService.resetPasswordWithToken(req.body);
+      sendSuccess(res, result, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
 apiV1Router.post(
   '/auth/login',
   validate([
@@ -771,6 +870,57 @@ apiV1Router.get(
   (req: Request, res: Response) => {
     const bookings = bookingService.getBookingsForHost(req.params.hostId);
     sendSuccess(res, bookings, req.correlationId);
+  }
+);
+
+apiV1Router.get(
+  '/hosts/:hostId/onboarding',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const profile = authService.getHostOnboarding(req.params.hostId);
+      sendSuccess(res, profile, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.put(
+  '/hosts/:hostId/onboarding',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const updated = authService.updateHostOnboarding(req.params.hostId, req.body);
+      sendSuccess(res, updated, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.post(
+  '/hosts/:hostId/onboarding/submit',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const submitted = authService.submitHostOnboarding(req.params.hostId);
+      sendSuccess(res, submitted, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
   }
 );
 

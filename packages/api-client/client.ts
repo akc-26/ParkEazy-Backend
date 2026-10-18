@@ -16,6 +16,13 @@ import {
   UpdateVehicleRequest,
   ChangePasswordRequest,
   NotificationPreferences,
+  HostRegisterRequest,
+  HostRegisterResponse,
+  VerificationStatusResponse,
+  ForgotPasswordResponse,
+  ResetPasswordRequest,
+  HostOnboardingProfile,
+  UpdateHostOnboardingRequest,
 } from '../contracts';
 
 export class ApiError extends Error {
@@ -170,6 +177,78 @@ export class ParkEazyApiClient {
     return this.request<SessionUser>('/users/profile', {
       method: 'PUT',
       body: JSON.stringify(data),
+    });
+  }
+
+  // Host & Unified Registration & Verification Endpoints
+  public async register(data: HostRegisterRequest): Promise<HostRegisterResponse> {
+    const response = await this.request<HostRegisterResponse>('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (response.token) {
+      this.setAuthToken(response.token);
+    }
+    return response;
+  }
+
+  public async getVerificationStatus(): Promise<VerificationStatusResponse> {
+    return this.request<VerificationStatusResponse>('/auth/verification-status');
+  }
+
+  public async verifyCode(
+    code: string,
+    type: 'EMAIL' | 'SMS' = 'EMAIL'
+  ): Promise<{ success: boolean; message: string; user: SessionUser }> {
+    return this.request<{ success: boolean; message: string; user: SessionUser }>('/auth/verify-code', {
+      method: 'POST',
+      body: JSON.stringify({ code, type }),
+    });
+  }
+
+  public async resendVerificationCode(
+    type: 'EMAIL' | 'SMS' = 'EMAIL'
+  ): Promise<{ success: boolean; message: string; target: string; code?: string }> {
+    return this.request<{ success: boolean; message: string; target: string; code?: string }>(
+      '/auth/resend-code',
+      {
+        method: 'POST',
+        body: JSON.stringify({ type }),
+      }
+    );
+  }
+
+  public async forgotPassword(email: string): Promise<ForgotPasswordResponse> {
+    return this.request<ForgotPasswordResponse>('/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  }
+
+  public async resetPassword(data: ResetPasswordRequest): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async getHostOnboarding(hostId: string): Promise<HostOnboardingProfile> {
+    return this.request<HostOnboardingProfile>(`/hosts/${hostId}/onboarding`);
+  }
+
+  public async updateHostOnboarding(
+    hostId: string,
+    data: UpdateHostOnboardingRequest
+  ): Promise<HostOnboardingProfile> {
+    return this.request<HostOnboardingProfile>(`/hosts/${hostId}/onboarding`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async submitHostOnboarding(hostId: string): Promise<HostOnboardingProfile> {
+    return this.request<HostOnboardingProfile>(`/hosts/${hostId}/onboarding/submit`, {
+      method: 'POST',
     });
   }
 
