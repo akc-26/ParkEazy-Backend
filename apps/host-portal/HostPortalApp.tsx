@@ -17,6 +17,7 @@ import {
   UserCheck,
   FileText,
   AlertTriangle,
+  Building2,
 } from 'lucide-react';
 import { Button, Card, Badge, Table, Tabs } from '../../packages/ui';
 import { apiClient } from '../../packages/api-client';
@@ -39,6 +40,15 @@ import { HostOnboardingProfileView } from './views/HostOnboardingProfileView';
 import { HostOnboardingEligibilityView } from './views/HostOnboardingEligibilityView';
 import { HostApplicationStatusView } from './views/HostApplicationStatusView';
 import { HostExceptionsView } from './views/HostExceptionsView';
+import { HostSpacesOverviewView } from './views/HostSpacesOverviewView';
+import { HostFacilityCreateView } from './views/HostFacilityCreateView';
+import { HostFacilityDetailView } from './views/HostFacilityDetailView';
+import { HostFacilityLayoutView } from './views/HostFacilityLayoutView';
+import { HostSpaceEditView } from './views/HostSpaceEditView';
+import { HostSpaceRestrictionsView } from './views/HostSpaceRestrictionsView';
+import { HostSpaceAmenitiesView } from './views/HostSpaceAmenitiesView';
+import { HostFacilityPreviewView } from './views/HostFacilityPreviewView';
+import { HostFacilityPublishView } from './views/HostFacilityPublishView';
 
 interface HostPortalAppProps {
   currentPath?: string;
@@ -209,6 +219,202 @@ export const HostPortalApp: React.FC<HostPortalAppProps> = ({
     return (
       <HostExceptionsView
         currentUser={currentUser}
+        onNavigate={onNavigate}
+      />
+    );
+  }
+
+  // --------------------------------------------------------------------------
+  // Phase 2: Host Facility & Parking-Space Inventory Management
+  // --------------------------------------------------------------------------
+
+  // Screen pe_hw_02_01: Facility/Space Overview
+  if (cleanPath === '/host/spaces') {
+    if (!isAuthChecking && !currentUser) {
+      return (
+        <HostLoginView
+          onNavigate={onNavigate}
+          onLoginSuccess={handleLoginSuccess}
+          returnUrl={currentPath}
+        />
+      );
+    }
+    return (
+      <HostSpacesOverviewView
+        currentUser={currentUser}
+        onNavigate={onNavigate}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
+  // Screen pe_hw_02_02: Facility Creation Wizard
+  if (cleanPath === '/host/facilities/new') {
+    if (!isAuthChecking && !currentUser) {
+      return (
+        <HostLoginView
+          onNavigate={onNavigate}
+          onLoginSuccess={handleLoginSuccess}
+          returnUrl={currentPath}
+        />
+      );
+    }
+    return (
+      <HostFacilityCreateView
+        currentUser={currentUser}
+        onNavigate={onNavigate}
+      />
+    );
+  }
+
+  // Screen pe_hw_02_04: Physical Inventory and Bay Layout
+  const layoutMatch = cleanPath.match(/^\/host\/facilities\/([^/]+)\/layout$/);
+  if (layoutMatch) {
+    if (!isAuthChecking && !currentUser) {
+      return (
+        <HostLoginView
+          onNavigate={onNavigate}
+          onLoginSuccess={handleLoginSuccess}
+          returnUrl={currentPath}
+        />
+      );
+    }
+    return (
+      <HostFacilityLayoutView
+        currentUser={currentUser}
+        facilityId={layoutMatch[1]}
+        onNavigate={onNavigate}
+      />
+    );
+  }
+
+  // Screen pe_hw_02_08: Listing Preview
+  const previewMatch = cleanPath.match(/^\/host\/facilities\/([^/]+)\/preview$/);
+  if (previewMatch) {
+    if (!isAuthChecking && !currentUser) {
+      return (
+        <HostLoginView
+          onNavigate={onNavigate}
+          onLoginSuccess={handleLoginSuccess}
+          returnUrl={currentPath}
+        />
+      );
+    }
+    return (
+      <HostFacilityPreviewView
+        currentUser={currentUser}
+        facilityId={previewMatch[1]}
+        onNavigate={onNavigate}
+      />
+    );
+  }
+
+  // Screen pe_hw_02_09: Publication Readiness and Validation
+  const publishMatch = cleanPath.match(/^\/host\/facilities\/([^/]+)\/publish$/);
+  if (publishMatch) {
+    if (!isAuthChecking && !currentUser) {
+      return (
+        <HostLoginView
+          onNavigate={onNavigate}
+          onLoginSuccess={handleLoginSuccess}
+          returnUrl={currentPath}
+        />
+      );
+    }
+    return (
+      <HostFacilityPublishView
+        currentUser={currentUser}
+        facilityId={publishMatch[1]}
+        onNavigate={onNavigate}
+      />
+    );
+  }
+
+  // Screen pe_hw_02_05: Core Space Attributes Editor
+  const spaceEditMatch =
+    cleanPath.match(/^\/host\/spaces\/([^/]+)\/edit$/) ||
+    cleanPath.match(/^\/host\/facilities\/[^/]+\/spaces\/([^/]+)\/edit$/);
+  if (spaceEditMatch) {
+    if (!isAuthChecking && !currentUser) {
+      return (
+        <HostLoginView
+          onNavigate={onNavigate}
+          onLoginSuccess={handleLoginSuccess}
+          returnUrl={currentPath}
+        />
+      );
+    }
+    return (
+      <HostSpaceEditView
+        currentUser={currentUser}
+        spaceId={spaceEditMatch[1]}
+        onNavigate={onNavigate}
+      />
+    );
+  }
+
+  // Screen pe_hw_02_06: Vehicle Restrictions and Clearance
+  const spaceRestMatch =
+    cleanPath.match(/^\/host\/spaces\/([^/]+)\/restrictions$/) ||
+    cleanPath.match(/^\/host\/facilities\/[^/]+\/spaces\/([^/]+)\/restrictions$/);
+  if (spaceRestMatch) {
+    if (!isAuthChecking && !currentUser) {
+      return (
+        <HostLoginView
+          onNavigate={onNavigate}
+          onLoginSuccess={handleLoginSuccess}
+          returnUrl={currentPath}
+        />
+      );
+    }
+    return (
+      <HostSpaceRestrictionsView
+        currentUser={currentUser}
+        spaceId={spaceRestMatch[1]}
+        onNavigate={onNavigate}
+      />
+    );
+  }
+
+  // Screen pe_hw_02_07: Amenities and Driver Access Instructions
+  const spaceAmenMatch =
+    cleanPath.match(/^\/host\/spaces\/([^/]+)\/amenities$/) ||
+    cleanPath.match(/^\/host\/facilities\/[^/]+\/spaces\/([^/]+)\/amenities$/);
+  if (spaceAmenMatch) {
+    if (!isAuthChecking && !currentUser) {
+      return (
+        <HostLoginView
+          onNavigate={onNavigate}
+          onLoginSuccess={handleLoginSuccess}
+          returnUrl={currentPath}
+        />
+      );
+    }
+    return (
+      <HostSpaceAmenitiesView
+        currentUser={currentUser}
+        spaceId={spaceAmenMatch[1]}
+        onNavigate={onNavigate}
+      />
+    );
+  }
+
+  // Screen pe_hw_02_03: Facility Detail and Management
+  const facilityDetailMatch = cleanPath.match(/^\/host\/facilities\/([^/]+)$/);
+  if (facilityDetailMatch && facilityDetailMatch[1] !== 'new') {
+    if (!isAuthChecking && !currentUser) {
+      return (
+        <HostLoginView
+          onNavigate={onNavigate}
+          onLoginSuccess={handleLoginSuccess}
+          returnUrl={currentPath}
+        />
+      );
+    }
+    return (
+      <HostFacilityDetailView
+        currentUser={currentUser}
+        facilityId={facilityDetailMatch[1]}
         onNavigate={onNavigate}
       />
     );

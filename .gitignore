@@ -8,3 +8,4 @@ coverage/
 !.env.example
 .data/
 *.enc.json
+apps/api/database/data/*.json

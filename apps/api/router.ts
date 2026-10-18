@@ -1,4 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
+import fs from 'fs';
+import path from 'path';
+import crypto from 'crypto';
 import { dbManager } from './database/connection';
 import { redisManager } from './cache/redis';
 import { migrationManager } from './database/migrator';
@@ -572,7 +575,8 @@ apiV1Router.delete(
 // 3. Inventory Endpoints (Locations & Bays)
 // ----------------------------------------------------------------------
 apiV1Router.get('/inventory/locations', (req: Request, res: Response) => {
-  const locations = inventoryService.getAllLocations();
+  const includeDrafts = req.query.includeDrafts === 'true';
+  const locations = inventoryService.getAllLocations(!includeDrafts);
   sendSuccess(res, locations, req.correlationId);
 });
 
@@ -918,6 +922,374 @@ apiV1Router.post(
     try {
       const submitted = authService.submitHostOnboarding(req.params.hostId);
       sendSuccess(res, submitted, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ----------------------------------------------------------------------
+// 5b. Host Facility & Physical Space Inventory Management (Phase 2)
+// ----------------------------------------------------------------------
+
+// 5b.1 List all facilities owned by the host
+apiV1Router.get(
+  '/hosts/:hostId/facilities',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+  ]),
+  (req: Request, res: Response) => {
+    const facilities = inventoryService.getLocationsForHost(req.params.hostId);
+    sendSuccess(res, facilities, req.correlationId);
+  }
+);
+
+// 5b.2 Create a new facility (Host ownership bound from authenticated context)
+apiV1Router.post(
+  '/hosts/:hostId/facilities',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'name', required: true, type: 'string', minLength: 3, maxLength: 255 },
+    { field: 'description', required: true, type: 'string', minLength: 10 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const created = inventoryService.createLocation(req.user!.id, req.body);
+      sendSuccess(res, created, req.correlationId, 201);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 5b.3 Retrieve specific facility details
+apiV1Router.get(
+  '/hosts/:hostId/facilities/:facilityId',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'facilityId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const isAdmin = req.user!.roles.includes(UserRole.ADMIN) || req.user!.roles.includes(UserRole.SUPER_ADMIN);
+      const facility = inventoryService.getLocationForHost(req.params.facilityId, req.user!.id, isAdmin);
+      sendSuccess(res, facility, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 5b.4 Update facility details
+apiV1Router.put(
+  '/hosts/:hostId/facilities/:facilityId',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'facilityId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const isAdmin = req.user!.roles.includes(UserRole.ADMIN) || req.user!.roles.includes(UserRole.SUPER_ADMIN);
+      const updated = inventoryService.updateLocation(req.params.facilityId, req.user!.id, req.body, isAdmin);
+      sendSuccess(res, updated, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 5b.5 Delete a facility (and its bays)
+apiV1Router.delete(
+  '/hosts/:hostId/facilities/:facilityId',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'facilityId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const isAdmin = req.user!.roles.includes(UserRole.ADMIN) || req.user!.roles.includes(UserRole.SUPER_ADMIN);
+      inventoryService.deleteLocation(req.params.facilityId, req.user!.id, isAdmin);
+      sendSuccess(res, { message: 'Facility removed successfully.' }, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 5b.6 List all physical spaces (bays) belonging to a facility
+apiV1Router.get(
+  '/hosts/:hostId/facilities/:facilityId/spaces',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'facilityId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const isAdmin = req.user!.roles.includes(UserRole.ADMIN) || req.user!.roles.includes(UserRole.SUPER_ADMIN);
+      const spaces = inventoryService.getBaysForHost(req.params.facilityId, req.user!.id, isAdmin);
+      sendSuccess(res, spaces, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 5b.7 Create a new physical space in a facility
+apiV1Router.post(
+  '/hosts/:hostId/facilities/:facilityId/spaces',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'facilityId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'bayNumber', required: true, type: 'string', minLength: 1, maxLength: 50 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const isAdmin = req.user!.roles.includes(UserRole.ADMIN) || req.user!.roles.includes(UserRole.SUPER_ADMIN);
+      const space = inventoryService.createBay(req.params.facilityId, req.user!.id, req.body, isAdmin);
+      sendSuccess(res, space, req.correlationId, 201);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 5b.8 Retrieve specific space details
+apiV1Router.get(
+  '/hosts/:hostId/facilities/:facilityId/spaces/:spaceId',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'facilityId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'spaceId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const isAdmin = req.user!.roles.includes(UserRole.ADMIN) || req.user!.roles.includes(UserRole.SUPER_ADMIN);
+      const space = inventoryService.getBayForHost(req.params.facilityId, req.params.spaceId, req.user!.id, isAdmin);
+      sendSuccess(res, space, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 5b.9 Update physical space details (restrictions, vehicle clearances, amenities)
+apiV1Router.put(
+  '/hosts/:hostId/facilities/:facilityId/spaces/:spaceId',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'facilityId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'spaceId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const isAdmin = req.user!.roles.includes(UserRole.ADMIN) || req.user!.roles.includes(UserRole.SUPER_ADMIN);
+      const updated = inventoryService.updateBay(
+        req.params.facilityId,
+        req.params.spaceId,
+        req.user!.id,
+        req.body,
+        isAdmin
+      );
+      sendSuccess(res, updated, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 5b.10 Delete a physical space
+apiV1Router.delete(
+  '/hosts/:hostId/facilities/:facilityId/spaces/:spaceId',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'facilityId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'spaceId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const isAdmin = req.user!.roles.includes(UserRole.ADMIN) || req.user!.roles.includes(UserRole.SUPER_ADMIN);
+      inventoryService.deleteBay(req.params.facilityId, req.params.spaceId, req.user!.id, isAdmin);
+      sendSuccess(res, { message: 'Parking space removed successfully.' }, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 5b.11 Publication Readiness Checklist Verification
+apiV1Router.get(
+  '/hosts/:hostId/facilities/:facilityId/publish-readiness',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'facilityId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const isAdmin = req.user!.roles.includes(UserRole.ADMIN) || req.user!.roles.includes(UserRole.SUPER_ADMIN);
+      inventoryService.getLocationForHost(req.params.facilityId, req.user!.id, isAdmin);
+      const validation = inventoryService.validatePublicationReadiness(req.params.facilityId);
+      sendSuccess(res, validation, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 5b.12 Publish Facility Listing
+apiV1Router.post(
+  '/hosts/:hostId/facilities/:facilityId/publish',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'facilityId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const isAdmin = req.user!.roles.includes(UserRole.ADMIN) || req.user!.roles.includes(UserRole.SUPER_ADMIN);
+      const result = inventoryService.publishLocation(req.params.facilityId, req.user!.id, isAdmin);
+      sendSuccess(res, result, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 5b.13 Unpublish / Suspend Facility Listing
+apiV1Router.post(
+  '/hosts/:hostId/facilities/:facilityId/unpublish',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'facilityId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const isAdmin = req.user!.roles.includes(UserRole.ADMIN) || req.user!.roles.includes(UserRole.SUPER_ADMIN);
+      const unpublished = inventoryService.unpublishLocation(req.params.facilityId, req.user!.id, isAdmin);
+      sendSuccess(res, unpublished, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 5b.14 Add Photograph to Facility
+apiV1Router.post(
+  '/hosts/:hostId/facilities/:facilityId/photos',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'facilityId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'url', required: true, type: 'string', minLength: 1 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const isAdmin = req.user!.roles.includes(UserRole.ADMIN) || req.user!.roles.includes(UserRole.SUPER_ADMIN);
+      const updated = inventoryService.addPhoto(req.params.facilityId, req.user!.id, req.body, isAdmin);
+      sendSuccess(res, updated, req.correlationId, 201);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 5b.15 Remove Photograph from Facility
+apiV1Router.delete(
+  '/hosts/:hostId/facilities/:facilityId/photos/:photoId',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'facilityId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'photoId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const isAdmin = req.user!.roles.includes(UserRole.ADMIN) || req.user!.roles.includes(UserRole.SUPER_ADMIN);
+      const updated = inventoryService.removePhoto(req.params.facilityId, req.params.photoId, req.user!.id, isAdmin);
+      sendSuccess(res, updated, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 5b.16 Secure Media Upload Endpoint
+apiV1Router.post(
+  '/media/upload',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { name, type, base64, dataUrl } = req.body;
+      const rawPayload = base64 || (dataUrl && dataUrl.includes(',') ? dataUrl.split(',')[1] : null);
+      if (!rawPayload) {
+        throw new AppError('Image payload (base64 or dataUrl) is required.', 400, 'VALIDATION_ERROR');
+      }
+
+      const mimeType = type || (dataUrl && dataUrl.startsWith('data:') ? dataUrl.split(';')[0].replace('data:', '') : 'image/jpeg');
+      const allowedMimes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg'];
+      if (!allowedMimes.includes(mimeType.toLowerCase())) {
+        throw new AppError('Unsupported file type. Only JPEG, PNG, and WebP images are permitted.', 400, 'UNSUPPORTED_MEDIA_TYPE');
+      }
+
+      const buffer = Buffer.from(rawPayload, 'base64');
+      const maxSizeBytes = 5 * 1024 * 1024; // 5MB
+      if (buffer.length > maxSizeBytes) {
+        throw new AppError('File size exceeds the 5MB upload limit.', 413, 'PAYLOAD_TOO_LARGE');
+      }
+
+      const ext = mimeType.toLowerCase().includes('png') ? 'png' : mimeType.toLowerCase().includes('webp') ? 'webp' : 'jpg';
+      const fileId = `media_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+      const filename = `${fileId}.${ext}`;
+
+      const uploadDir = path.resolve(process.cwd(), 'public/assets/images');
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+      }
+      fs.writeFileSync(path.join(uploadDir, filename), buffer);
+
+      const srcDir = path.resolve(process.cwd(), 'src/assets/images');
+      if (fs.existsSync(srcDir)) {
+        fs.writeFileSync(path.join(srcDir, filename), buffer);
+      }
+
+      sendSuccess(
+        res,
+        {
+          id: fileId,
+          url: `/assets/images/${filename}`,
+          mimeType,
+          sizeBytes: buffer.length,
+          filename,
+        },
+        req.correlationId,
+        201
+      );
     } catch (err) {
       next(err);
     }

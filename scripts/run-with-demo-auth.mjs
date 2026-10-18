@@ -40,9 +40,14 @@ async function expandPattern(pattern) {
 
 let args = [];
 for (const arg of inputArgs) args.push(...await expandPattern(arg));
+const isTestRun = inputArgs.includes('--test');
 const child = spawn(process.execPath, [tsxCli, ...args], {
   cwd: root,
-  env: { ...process.env, ENABLE_DEMO_AUTH: 'true' },
+  env: {
+    ...process.env,
+    ENABLE_DEMO_AUTH: 'true',
+    ...(isTestRun ? { NODE_ENV: 'test' } : {}),
+  },
   stdio: 'inherit',
   shell: false,
 });

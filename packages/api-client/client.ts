@@ -23,6 +23,13 @@ import {
   ResetPasswordRequest,
   HostOnboardingProfile,
   UpdateHostOnboardingRequest,
+  CreateFacilityRequest,
+  UpdateFacilityRequest,
+  CreateBayRequest,
+  UpdateBayRequest,
+  FacilityPublicationValidation,
+  PublishFacilityResponse,
+  FacilityPhoto,
 } from '../contracts';
 
 export class ApiError extends Error {
@@ -30,14 +37,25 @@ export class ApiError extends Error {
   public details?: any[];
   public correlationId: string;
   public timestamp: string;
+  public statusCode?: number;
+  public status?: number;
 
-  constructor(message: string, code: string, correlationId: string, timestamp: string, details?: any[]) {
+  constructor(
+    message: string,
+    code: string,
+    correlationId: string,
+    timestamp: string,
+    details?: any[],
+    statusCode?: number
+  ) {
     super(message);
     this.name = 'ApiError';
     this.code = code;
     this.correlationId = correlationId;
     this.timestamp = timestamp;
     this.details = details;
+    this.statusCode = statusCode;
+    this.status = statusCode;
   }
 }
 
@@ -117,14 +135,17 @@ export class ParkEazyApiClient {
             json.error.code || 'UNKNOWN_ERROR',
             json.error.correlationId || correlationId,
             json.error.timestamp || new Date().toISOString(),
-            json.error.details
+            json.error.details,
+            response.status
           );
         }
         throw new ApiError(
           `Request failed with HTTP status ${response.status}`,
           'HTTP_ERROR',
           correlationId,
-          new Date().toISOString()
+          new Date().toISOString(),
+          undefined,
+          response.status
         );
       }
 
@@ -306,6 +327,143 @@ export class ParkEazyApiClient {
 
   public async getBays(locationId: string): Promise<ParkingBay[]> {
     return this.request<ParkingBay[]>(`/inventory/locations/${locationId}/bays`);
+  }
+
+  // Host Facility & Inventory Management (Phase 2)
+  public async getHostFacilities(hostId: string): Promise<ParkingLocation[]> {
+    return this.request<ParkingLocation[]>(`/hosts/${hostId}/facilities`);
+  }
+
+  public async getHostFacility(hostId: string, facilityId: string): Promise<ParkingLocation> {
+    return this.request<ParkingLocation>(`/hosts/${hostId}/facilities/${facilityId}`);
+  }
+
+  public async createHostFacility(hostId: string, data: CreateFacilityRequest): Promise<ParkingLocation> {
+    return this.request<ParkingLocation>(`/hosts/${hostId}/facilities`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async updateHostFacility(
+    hostId: string,
+    facilityId: string,
+    data: UpdateFacilityRequest
+  ): Promise<ParkingLocation> {
+    return this.request<ParkingLocation>(`/hosts/${hostId}/facilities/${facilityId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async deleteHostFacility(hostId: string, facilityId: string): Promise<{ message: string }> {
+    return this.request<{ message: string }>(`/hosts/${hostId}/facilities/${facilityId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  public async getHostSpaces(hostId: string, facilityId: string): Promise<ParkingBay[]> {
+    return this.request<ParkingBay[]>(`/hosts/${hostId}/facilities/${facilityId}/spaces`);
+  }
+
+  public async getHostSpace(hostId: string, facilityId: string, spaceId: string): Promise<ParkingBay> {
+    return this.request<ParkingBay>(`/hosts/${hostId}/facilities/${facilityId}/spaces/${spaceId}`);
+  }
+
+  public async createHostSpace(
+    hostId: string,
+    facilityId: string,
+    data: CreateBayRequest
+  ): Promise<ParkingBay> {
+    return this.request<ParkingBay>(`/hosts/${hostId}/facilities/${facilityId}/spaces`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async updateHostSpace(
+    hostId: string,
+    facilityId: string,
+    spaceId: string,
+    data: UpdateBayRequest
+  ): Promise<ParkingBay> {
+    return this.request<ParkingBay>(`/hosts/${hostId}/facilities/${facilityId}/spaces/${spaceId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async deleteHostSpace(
+    hostId: string,
+    facilityId: string,
+    spaceId: string
+  ): Promise<{ message: string }> {
+    return this.request<{ message: string }>(`/hosts/${hostId}/facilities/${facilityId}/spaces/${spaceId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  public async getPublicationReadiness(
+    hostId: string,
+    facilityId: string
+  ): Promise<FacilityPublicationValidation> {
+    return this.request<FacilityPublicationValidation>(
+      `/hosts/${hostId}/facilities/${facilityId}/publish-readiness`
+    );
+  }
+
+  public async publishHostFacility(
+    hostId: string,
+    facilityId: string
+  ): Promise<PublishFacilityResponse> {
+    return this.request<PublishFacilityResponse>(`/hosts/${hostId}/facilities/${facilityId}/publish`, {
+      method: 'POST',
+    });
+  }
+
+  public async unpublishHostFacility(
+    hostId: string,
+    facilityId: string
+  ): Promise<ParkingLocation> {
+    return this.request<ParkingLocation>(`/hosts/${hostId}/facilities/${facilityId}/unpublish`, {
+      method: 'POST',
+    });
+  }
+
+  public async addFacilityPhoto(
+    hostId: string,
+    facilityId: string,
+    photo: Partial<FacilityPhoto>
+  ): Promise<ParkingLocation> {
+    return this.request<ParkingLocation>(`/hosts/${hostId}/facilities/${facilityId}/photos`, {
+      method: 'POST',
+      body: JSON.stringify(photo),
+    });
+  }
+
+  public async deleteFacilityPhoto(
+    hostId: string,
+    facilityId: string,
+    photoId: string
+  ): Promise<ParkingLocation> {
+    return this.request<ParkingLocation>(`/hosts/${hostId}/facilities/${facilityId}/photos/${photoId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  public async uploadMedia(data: {
+    name: string;
+    type?: string;
+    base64?: string;
+    dataUrl?: string;
+  }): Promise<{ id: string; url: string; mimeType: string; sizeBytes: number; filename: string }> {
+    return this.request<{ id: string; url: string; mimeType: string; sizeBytes: number; filename: string }>(
+      '/media/upload',
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }
+    );
   }
 
   // Booking Endpoints

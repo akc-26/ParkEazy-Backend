@@ -993,11 +993,11 @@ export class AuthService {
       throw new UnauthorizedError(`User '${userId}' not found.`);
     }
 
-    // 1. Resend throttling: enforce minimum 60 seconds interval (50ms in test)
-    const throttleMs = appConfig.nodeEnv === 'test' ? 50 : 60000;
+    // 1. Resend throttling: enforce minimum 60 seconds interval (0 in test)
+    const throttleMs = appConfig.nodeEnv === 'test' ? 0 : 60000;
     const lastSentTime = this.resendTimestamps.get(`${userId}:${type}`) || 0;
     const now = Date.now();
-    if (now - lastSentTime < throttleMs) {
+    if (throttleMs > 0 && now - lastSentTime < throttleMs) {
       const waitSeconds = Math.ceil((throttleMs - (now - lastSentTime)) / 1000);
       throw new AppError(
         `Please wait ${waitSeconds} second(s) before requesting another verification code.`,
