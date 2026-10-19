@@ -31,7 +31,7 @@ export const HostSpaceAmenitiesView: React.FC<HostSpaceAmenitiesViewProps> = ({
   spaceId,
   onNavigate,
 }) => {
-  const hostId = currentUser?.id || 'usr-host-001';
+  const hostId = currentUser?.id ?? '';
 
   const [facility, setFacility] = useState<ParkingLocation | null>(null);
   const [bay, setBay] = useState<ParkingBay | null>(null);

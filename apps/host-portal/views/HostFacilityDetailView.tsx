@@ -8,6 +8,7 @@ import {
   Layers,
   ArrowLeft,
   Check,
+  CheckCircle2,
   AlertCircle,
   Edit,
   Save,
@@ -17,14 +18,20 @@ import {
   Plus,
   RefreshCw,
   ExternalLink,
+  Zap,
+  Ruler,
+  Car,
 } from 'lucide-react';
 import { Button, Input, Card, Badge } from '../../../packages/ui';
 import { apiClient } from '../../../packages/api-client';
+import { AddBayModal } from '../components/AddBayModal';
 import {
   SessionUser,
   ParkingLocation,
   ParkingBay,
   LocationStatus,
+  BayStatus,
+  BayType,
   PropertyType,
   AccessMethod,
   UpdateFacilityRequest,
@@ -55,7 +62,7 @@ export const HostFacilityDetailView: React.FC<HostFacilityDetailViewProps> = ({
   facilityId,
   onNavigate,
 }) => {
-  const hostId = currentUser?.id || 'usr-host-001';
+  const hostId = currentUser?.id ?? '';
 
   const [facility, setFacility] = useState<ParkingLocation | null>(null);
   const [bays, setBays] = useState<ParkingBay[]>([]);
@@ -82,6 +89,16 @@ export const HostFacilityDetailView: React.FC<HostFacilityDetailViewProps> = ({
   // Photo upload
   const [newPhotoUrl, setNewPhotoUrl] = useState('');
   const [isAddingPhoto, setIsAddingPhoto] = useState(false);
+
+  // Bay management & in-app confirmation modal states
+  const [isAddBayModalOpen, setIsAddBayModalOpen] = useState(false);
+  const [deleteConfirmBay, setDeleteConfirmBay] = useState<ParkingBay | null>(null);
+  const [isDeletingBay, setIsDeletingBay] = useState(false);
+  const [updatingBayId, setUpdatingBayId] = useState<string | null>(null);
+  const [deleteConfirmFacility, setDeleteConfirmFacility] = useState(false);
+  const [isDeletingFacility, setIsDeletingFacility] = useState(false);
+  const [bayActionMessage, setBayActionMessage] = useState<string | null>(null);
+  const [bayErrorMessage, setBayErrorMessage] = useState<string | null>(null);
 
   const loadFacility = useCallback(async () => {
     setIsLoading(true);
@@ -154,15 +171,69 @@ export const HostFacilityDetailView: React.FC<HostFacilityDetailViewProps> = ({
     }
   };
 
-  const handleDeleteFacility = async () => {
-    if (!window.confirm('Are you sure you want to delete this entire facility and all its parking spaces? This cannot be undone.')) {
-      return;
+  const handleToggleBayStatus = async (bay: ParkingBay) => {
+    const nextStatus =
+      bay.status === BayStatus.AVAILABLE ? BayStatus.MAINTENANCE : BayStatus.AVAILABLE;
+    setUpdatingBayId(bay.id);
+    setBayErrorMessage(null);
+    setBayActionMessage(null);
+    try {
+      const updated = await apiClient.updateHostSpace(hostId, facilityId, bay.id, {
+        status: nextStatus,
+      });
+      setBays((prev) => prev.map((b) => (b.id === bay.id ? updated : b)));
+      setBayActionMessage(
+        `Space '${bay.bayNumber}' status changed to ${
+          nextStatus === BayStatus.AVAILABLE ? 'ACTIVE / AVAILABLE' : 'MAINTENANCE (Deactivated)'
+        }.`
+      );
+      setTimeout(() => setBayActionMessage(null), 3500);
+    } catch (err: any) {
+      setBayErrorMessage(err.message || 'Failed to update bay status.');
+    } finally {
+      setUpdatingBayId(null);
     }
+  };
+
+  const handleConfirmDeleteBay = async () => {
+    if (!deleteConfirmBay) return;
+    setIsDeletingBay(true);
+    setBayErrorMessage(null);
+    setBayActionMessage(null);
+    try {
+      await apiClient.deleteHostSpace(hostId, facilityId, deleteConfirmBay.id);
+      setBays((prev) => prev.filter((b) => b.id !== deleteConfirmBay.id));
+      if (facility) {
+        setFacility({ ...facility, totalBays: Math.max(0, facility.totalBays - 1) });
+      }
+      setBayActionMessage(`Space '${deleteConfirmBay.bayNumber}' removed from inventory.`);
+      setDeleteConfirmBay(null);
+      setTimeout(() => setBayActionMessage(null), 3500);
+    } catch (err: any) {
+      setBayErrorMessage(err.message || 'Failed to delete parking bay.');
+    } finally {
+      setIsDeletingBay(false);
+    }
+  };
+
+  const handleBayCreated = (newBay: ParkingBay) => {
+    setBays((prev) => [...prev, newBay]);
+    if (facility) {
+      setFacility({ ...facility, totalBays: facility.totalBays + 1 });
+    }
+    setBayActionMessage(`Space '${newBay.bayNumber}' successfully created and added to facility inventory.`);
+    setTimeout(() => setBayActionMessage(null), 4000);
+  };
+
+  const handleConfirmDeleteFacility = async () => {
+    setIsDeletingFacility(true);
     try {
       await apiClient.deleteHostFacility(hostId, facilityId);
       onNavigate('/host/spaces');
     } catch (err: any) {
-      alert(err.message || 'Failed to delete facility.');
+      setErrorMessage(err.message || 'Failed to delete facility.');
+      setIsDeletingFacility(false);
+      setDeleteConfirmFacility(false);
     }
   };
 
@@ -481,12 +552,183 @@ export const HostFacilityDetailView: React.FC<HostFacilityDetailViewProps> = ({
                   </div>
                 </div>
 
+                {/* Physical Bays & Spaces Inventory Management */}
+                <div className="pt-6 border-t border-slate-100 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                        <Layers className="w-4 h-4 text-emerald-600" />
+                        <span>Physical Bays &amp; Spaces ({bays.length})</span>
+                      </h4>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Discrete physical bays registered under this facility with individual clearance, EV, and activation status.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onNavigate(`/host/facilities/${facility.id}/layout`)}
+                        className="text-xs"
+                      >
+                        <Layers className="w-3.5 h-3.5 mr-1 text-emerald-600" />
+                        Visual Layout
+                      </Button>
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        themeContext="host"
+                        onClick={() => setIsAddBayModalOpen(true)}
+                        className="text-xs font-bold bg-[#22C55E] hover:bg-[#16A34A] text-[#12211C]"
+                      >
+                        <Plus className="w-3.5 h-3.5 mr-1 stroke-[3]" />
+                        Add Bay to Facility
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Bay Action Feedback */}
+                  {bayActionMessage && (
+                    <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs font-semibold flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>{bayActionMessage}</span>
+                    </div>
+                  )}
+                  {bayErrorMessage && (
+                    <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs font-semibold flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                      <span>{bayErrorMessage}</span>
+                    </div>
+                  )}
+
+                  {bays.length === 0 ? (
+                    <div className="p-8 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200 space-y-2">
+                      <p className="text-xs font-semibold text-slate-700">No bays created yet for this facility</p>
+                      <p className="text-[11px] text-slate-500 max-w-sm mx-auto">
+                        Facilities require at least one active parking space with AVAILABLE status before they can be published live to drivers.
+                      </p>
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        themeContext="host"
+                        onClick={() => setIsAddBayModalOpen(true)}
+                        className="mt-2 text-xs font-bold bg-[#22C55E]"
+                      >
+                        <Plus className="w-3.5 h-3.5 mr-1 stroke-[3]" />
+                        Add First Bay
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="border border-slate-200 rounded-xl overflow-hidden">
+                      <table className="w-full text-left text-xs text-slate-700">
+                        <thead className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                          <tr>
+                            <th className="px-3.5 py-2.5">Bay #</th>
+                            <th className="px-3.5 py-2.5">Level</th>
+                            <th className="px-3.5 py-2.5">Type</th>
+                            <th className="px-3.5 py-2.5">EV / Clearances</th>
+                            <th className="px-3.5 py-2.5">Status</th>
+                            <th className="px-3.5 py-2.5 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {bays.map((bay) => (
+                            <tr key={bay.id} className="hover:bg-slate-50/70 transition-colors">
+                              <td className="px-3.5 py-2.5 font-mono font-bold text-slate-900">
+                                {bay.bayNumber}
+                              </td>
+                              <td className="px-3.5 py-2.5 text-slate-600">
+                                {bay.levelOrFloor || 'Ground'}
+                              </td>
+                              <td className="px-3.5 py-2.5">
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                                  {bay.bayType}
+                                </span>
+                              </td>
+                              <td className="px-3.5 py-2.5 text-[11px]">
+                                {bay.isEvCharging ? (
+                                  <span className="text-emerald-700 font-bold flex items-center gap-1">
+                                    <Zap className="w-3 h-3" />
+                                    {bay.evChargerKw ? `${bay.evChargerKw} kW` : 'EV'}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400">Standard</span>
+                                )}
+                                <div className="text-[10px] text-slate-400">
+                                  H: {bay.maxVehicleHeightMeters || 2.2}m
+                                </div>
+                              </td>
+                              <td className="px-3.5 py-2.5">
+                                <Badge
+                                  variant={
+                                    bay.status === BayStatus.AVAILABLE
+                                      ? 'success'
+                                      : bay.status === BayStatus.MAINTENANCE
+                                      ? 'warning'
+                                      : 'info'
+                                  }
+                                >
+                                  {bay.status === BayStatus.AVAILABLE ? 'ACTIVE' : bay.status}
+                                </Badge>
+                              </td>
+                              <td className="px-3.5 py-2.5 text-right">
+                                <div className="flex items-center justify-end gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleBayStatus(bay)}
+                                    disabled={updatingSpaceId === bay.id}
+                                    className={`px-2 py-0.5 rounded text-[10px] font-bold transition-colors ${
+                                      bay.status === BayStatus.AVAILABLE
+                                        ? 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200'
+                                        : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
+                                    }`}
+                                  >
+                                    {updatingSpaceId === bay.id
+                                      ? '...'
+                                      : bay.status === BayStatus.AVAILABLE
+                                      ? 'Deactivate'
+                                      : 'Activate'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => onNavigate(`/host/spaces/${bay.id}/edit`)}
+                                    className="p-1 text-slate-500 hover:text-slate-800 rounded hover:bg-slate-100"
+                                    title="Edit Bay Properties"
+                                  >
+                                    <Edit className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => onNavigate(`/host/spaces/${bay.id}/restrictions`)}
+                                    className="p-1 text-slate-500 hover:text-slate-800 rounded hover:bg-slate-100"
+                                    title="Clearances & Dimensions"
+                                  >
+                                    <Ruler className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setDeleteConfirmBay(bay)}
+                                    className="p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-rose-50"
+                                    title="Delete Bay"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
                 {/* Dangerous Action */}
                 <div className="pt-6 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
                   <span>Created: {new Date(facility.createdAt).toLocaleDateString()}</span>
                   <button
                     type="button"
-                    onClick={handleDeleteFacility}
+                    onClick={() => setDeleteConfirmFacility(true)}
                     className="text-rose-600 hover:text-rose-800 font-semibold transition-colors flex items-center gap-1"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -612,6 +854,112 @@ export const HostFacilityDetailView: React.FC<HostFacilityDetailViewProps> = ({
           </div>
         </div>
       </main>
+
+      {/* Add Bay Modal */}
+      {facility && (
+        <AddBayModal
+          isOpen={isAddBayModalOpen}
+          onClose={() => setIsAddBayModalOpen(false)}
+          hostId={hostId}
+          facilities={[facility]}
+          preselectedFacilityId={facility.id}
+          onBayCreated={handleBayCreated}
+        />
+      )}
+
+      {/* Delete Space In-App Confirmation Modal */}
+      {deleteConfirmBay && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center gap-3 text-rose-600">
+              <div className="w-10 h-10 rounded-xl bg-rose-50 flex items-center justify-center border border-rose-100">
+                <AlertCircle className="w-5 h-5 text-rose-600" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-base text-slate-900">
+                  Delete Parking Bay
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Remove space from this facility inventory.
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3.5 rounded-xl border border-slate-100">
+              Are you sure you want to permanently delete space{' '}
+              <strong className="font-mono text-slate-900 font-bold">
+                {deleteConfirmBay.bayNumber}
+              </strong>
+              ? This action cannot be reversed.
+            </p>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setDeleteConfirmBay(null)}
+                disabled={isDeletingBay}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleConfirmDeleteBay}
+                disabled={isDeletingBay}
+                className="bg-rose-600 hover:bg-rose-700 text-white font-bold"
+              >
+                {isDeletingBay ? 'Deleting...' : 'Delete Space'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Facility In-App Confirmation Modal */}
+      {deleteConfirmFacility && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center gap-3 text-rose-600">
+              <div className="w-10 h-10 rounded-xl bg-rose-50 flex items-center justify-center border border-rose-100">
+                <AlertCircle className="w-5 h-5 text-rose-600" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-base text-slate-900">
+                  Delete Entire Facility
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Permanent decommission of parking location.
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed bg-rose-50/60 p-3.5 rounded-xl border border-rose-100 text-rose-900">
+              Are you sure you want to delete <strong className="font-bold">{facility.name}</strong> and all {bays.length} associated parking spaces? This will permanently remove the facility and cannot be undone.
+            </p>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setDeleteConfirmFacility(false)}
+                disabled={isDeletingFacility}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleConfirmDeleteFacility}
+                disabled={isDeletingFacility}
+                className="bg-rose-600 hover:bg-rose-700 text-white font-bold"
+              >
+                {isDeletingFacility ? 'Deleting Facility...' : 'Yes, Delete Facility'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

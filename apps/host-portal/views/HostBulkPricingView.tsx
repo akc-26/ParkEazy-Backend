@@ -32,7 +32,7 @@ export const HostBulkPricingView: React.FC<HostBulkPricingViewProps> = ({
   onNavigate,
   onLogout,
 }) => {
-  const hostId = currentUser?.id || 'usr-host-001';
+  const hostId = currentUser?.id ?? '';
 
   const [facilities, setFacilities] = useState<ParkingLocation[]>([]);
   const [selectedFacilityIds, setSelectedFacilityIds] = useState<string[]>([]);

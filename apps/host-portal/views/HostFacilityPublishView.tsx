@@ -37,7 +37,7 @@ export const HostFacilityPublishView: React.FC<HostFacilityPublishViewProps> = (
   facilityId,
   onNavigate,
 }) => {
-  const hostId = currentUser?.id || 'usr-host-001';
+  const hostId = currentUser?.id ?? '';
 
   const [facility, setFacility] = useState<ParkingLocation | null>(null);
   const [validation, setValidation] = useState<FacilityPublicationValidation | null>(null);
@@ -88,20 +88,19 @@ export const HostFacilityPublishView: React.FC<HostFacilityPublishViewProps> = (
     }
   };
 
-  const handleUnpublish = async () => {
-    if (!window.confirm('Are you sure you want to pause / unpublish this listing? It will no longer be visible to drivers searching for spaces.')) {
-      return;
-    }
+  const [confirmUnpublishOpen, setConfirmUnpublishOpen] = useState(false);
 
+  const executeUnpublish = async () => {
     setIsPublishing(true);
     setErrorMessage(null);
     setActionSuccessMsg(null);
+    setConfirmUnpublishOpen(false);
     try {
       const unpub = await apiClient.unpublishHostFacility(hostId, facilityId);
       setFacility(unpub);
       const val = await apiClient.getPublicationReadiness(hostId, facilityId);
       setValidation(val);
-      setActionSuccessMsg('Listing moved to DRAFT status.');
+      setActionSuccessMsg('Listing moved to DRAFT status. It is no longer visible on the driver marketplace.');
     } catch (err: any) {
       setErrorMessage(err.message || 'Failed to unpublish listing.');
     } finally {
@@ -270,7 +269,7 @@ export const HostFacilityPublishView: React.FC<HostFacilityPublishViewProps> = (
               <Button
                 variant="outline"
                 size="sm"
-                onClick={handleUnpublish}
+                onClick={() => setConfirmUnpublishOpen(true)}
                 disabled={isPublishing}
                 className="text-xs text-rose-700 border-rose-200 hover:bg-rose-50"
               >
@@ -403,6 +402,51 @@ export const HostFacilityPublishView: React.FC<HostFacilityPublishViewProps> = (
           <p>• All mutations are verified against host tenant context and persistent storage.</p>
         </div>
       </main>
+
+      {/* In-App Unpublish Confirmation Modal */}
+      {confirmUnpublishOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center gap-3 text-amber-600">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center border border-amber-100">
+                <PauseCircle className="w-6 h-6 text-amber-600" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-base text-slate-900">
+                  Pause &amp; Unpublish Listing
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Move listing back to DRAFT status
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3.5 rounded-xl border border-slate-100">
+              Are you sure you want to pause and unpublish <strong className="font-bold text-slate-900">{facility.name}</strong>? It will no longer appear in customer search results or accept new reservations until republished.
+            </p>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setConfirmUnpublishOpen(false)}
+                disabled={isPublishing}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={executeUnpublish}
+                disabled={isPublishing}
+                className="bg-amber-600 hover:bg-amber-700 text-white font-bold"
+              >
+                {isPublishing ? 'Pausing...' : 'Confirm Pause & Unpublish'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

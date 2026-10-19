@@ -29,7 +29,7 @@ export const HostPricingHistoryView: React.FC<HostPricingHistoryViewProps> = ({
   onNavigate,
   onLogout,
 }) => {
-  const hostId = currentUser?.id || 'usr-host-001';
+  const hostId = currentUser?.id ?? '';
 
   const [history, setHistory] = useState<PricingAuditRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);

@@ -31,7 +31,7 @@ export const HostPricingOverviewView: React.FC<HostPricingOverviewViewProps> = (
   onNavigate,
   onLogout,
 }) => {
-  const hostId = currentUser?.id || 'usr-host-001';
+  const hostId = currentUser?.id ?? '';
   const [overview, setOverview] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);

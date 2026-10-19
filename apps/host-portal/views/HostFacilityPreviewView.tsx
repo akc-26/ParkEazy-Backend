@@ -38,7 +38,7 @@ export const HostFacilityPreviewView: React.FC<HostFacilityPreviewViewProps> = (
   facilityId,
   onNavigate,
 }) => {
-  const hostId = currentUser?.id || 'usr-host-001';
+  const hostId = currentUser?.id ?? '';
 
   const [facility, setFacility] = useState<ParkingLocation | null>(null);
   const [bays, setBays] = useState<ParkingBay[]>([]);

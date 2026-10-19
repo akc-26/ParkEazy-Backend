@@ -40,7 +40,7 @@ export const HostPricingScheduleView: React.FC<HostPricingScheduleViewProps> = (
   onNavigate,
   onLogout,
 }) => {
-  const hostId = currentUser?.id || 'usr-host-001';
+  const hostId = currentUser?.id ?? '';
 
   const [facilities, setFacilities] = useState<ParkingLocation[]>([]);
   const [selectedFacilityId, setSelectedFacilityId] = useState<string>('');

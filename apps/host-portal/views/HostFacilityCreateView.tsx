@@ -63,7 +63,15 @@ export const HostFacilityCreateView: React.FC<HostFacilityCreateViewProps> = ({
   currentUser,
   onNavigate,
 }) => {
-  const hostId = currentUser?.id || 'usr-host-001';
+  const hostId = currentUser?.id ?? '';
+  if (!hostId) {
+    // Do not silently create or mutate records as a demo host when the session is missing.
+    return (
+      <div role="alert" className="p-6 text-sm text-red-700">
+        Your host session is unavailable. Please sign in again before creating a facility.
+      </div>
+    );
+  }
 
   // Form state
   const [name, setName] = useState('');
@@ -192,10 +200,8 @@ export const HostFacilityCreateView: React.FC<HostFacilityCreateViewProps> = ({
           state: state.trim(),
           postalCode: postalCode.trim(),
           country: country.trim(),
-          latitude: 37.7749, // Verified baseline default coordinates
-          longitude: -122.4194,
         },
-        timezone: 'America/Los_Angeles',
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
         accessMethod,
         accessInstructions: accessInstructions.trim(),
         hourlyRateCents,

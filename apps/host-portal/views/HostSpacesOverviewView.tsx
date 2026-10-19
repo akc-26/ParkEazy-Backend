@@ -49,7 +49,7 @@ export const HostSpacesOverviewView: React.FC<HostSpacesOverviewViewProps> = ({
   const [statusFilter, setStatusFilter] = useState<'ALL' | LocationStatus>('ALL');
   const [typeFilter, setTypeFilter] = useState<string>('ALL');
 
-  const hostId = currentUser?.id || 'usr-host-001';
+  const hostId = currentUser?.id ?? '';
 
   const loadData = useCallback(async () => {
     setIsLoading(true);

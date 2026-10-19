@@ -29,7 +29,7 @@ export const HostPricingConflictsView: React.FC<HostPricingConflictsViewProps> =
   onNavigate,
   onLogout,
 }) => {
-  const hostId = currentUser?.id || 'usr-host-001';
+  const hostId = currentUser?.id ?? '';
 
   const [conflicts, setConflicts] = useState<PricingConflict[]>([]);
   const [isLoading, setIsLoading] = useState(true);

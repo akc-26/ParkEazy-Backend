@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { Button, Input, Card, Badge, Modal } from '../../../packages/ui';
 import { apiClient } from '../../../packages/api-client';
+import { AddBayModal } from '../components/AddBayModal';
 import {
   SessionUser,
   ParkingLocation,
@@ -40,34 +41,24 @@ export const HostFacilityLayoutView: React.FC<HostFacilityLayoutViewProps> = ({
   facilityId,
   onNavigate,
 }) => {
-  const hostId = currentUser?.id || 'usr-host-001';
+  const hostId = currentUser?.id ?? '';
 
   const [facility, setFacility] = useState<ParkingLocation | null>(null);
   const [bays, setBays] = useState<ParkingBay[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [actionSuccessMsg, setActionSuccessMsg] = useState<string | null>(null);
 
   // Search & filter
   const [searchQuery, setSearchQuery] = useState('');
   const [levelFilter, setLevelFilter] = useState('ALL');
   const [typeFilter, setTypeFilter] = useState('ALL');
 
-  // Add Bay Modal
+  // Add Bay & Delete Modal states
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [newBayNumber, setNewBayNumber] = useState('');
-  const [newBayType, setNewBayType] = useState<BayType>(BayType.STANDARD);
-  const [newLevel, setNewLevel] = useState('Ground');
-  const [newHeightMeters, setNewHeightMeters] = useState('2.2');
-  const [newLengthMeters, setNewLengthMeters] = useState('5.2');
-  const [newWidthMeters, setNewWidthMeters] = useState('2.2');
-  const [newIsEvCharging, setNewIsEvCharging] = useState(false);
-  const [newEvKw, setNewEvKw] = useState('11');
-  const [newHasCctv, setNewHasCctv] = useState(true);
-  const [newIsCovered, setNewIsCovered] = useState(true);
-  const [newIsAccessible, setNewIsAccessible] = useState(false);
-  const [newNotes, setNewNotes] = useState('');
-  const [addError, setAddError] = useState<string | null>(null);
-  const [isSubmittingBay, setIsSubmittingBay] = useState(false);
+  const [deleteConfirmBay, setDeleteConfirmBay] = useState<ParkingBay | null>(null);
+  const [isDeletingBay, setIsDeletingBay] = useState(false);
+  const [updatingBayId, setUpdatingBayId] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -90,57 +81,52 @@ export const HostFacilityLayoutView: React.FC<HostFacilityLayoutViewProps> = ({
     loadData();
   }, [loadData]);
 
-  const handleCreateBay = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAddError(null);
-
-    if (!newBayNumber.trim()) {
-      setAddError('Bay number / identifier is required.');
-      return;
-    }
-
-    setIsSubmittingBay(true);
+  const handleToggleBayStatus = async (bay: ParkingBay) => {
+    const nextStatus =
+      bay.status === BayStatus.AVAILABLE ? BayStatus.MAINTENANCE : BayStatus.AVAILABLE;
+    setUpdatingBayId(bay.id);
+    setActionSuccessMsg(null);
+    setErrorMessage(null);
     try {
-      const payload: CreateBayRequest = {
-        bayNumber: newBayNumber.trim(),
-        bayType: newBayType,
-        levelOrFloor: newLevel.trim() || 'Ground',
-        maxVehicleHeightMeters: parseFloat(newHeightMeters || '2.2'),
-        maxVehicleLengthMeters: parseFloat(newLengthMeters || '5.2'),
-        maxVehicleWidthMeters: parseFloat(newWidthMeters || '2.2'),
-        isEvCharging: newIsEvCharging,
-        evChargerKw: newIsEvCharging ? parseFloat(newEvKw || '7.4') : undefined,
-        hasCctv: newHasCctv,
-        isCovered: newIsCovered,
-        isAccessible: newIsAccessible,
-        notes: newNotes.trim() || undefined,
-        status: BayStatus.AVAILABLE,
-      };
-
-      await apiClient.createHostSpace(hostId, facilityId, payload);
-      setIsAddModalOpen(false);
-      // Reset form
-      setNewBayNumber('');
-      setNewNotes('');
-      setNewIsEvCharging(false);
-      await loadData();
+      const updated = await apiClient.updateHostSpace(hostId, facilityId, bay.id, {
+        status: nextStatus,
+      });
+      setBays((prev) => prev.map((b) => (b.id === bay.id ? updated : b)));
+      setActionSuccessMsg(
+        `Space '${bay.bayNumber}' status updated to ${
+          nextStatus === BayStatus.AVAILABLE ? 'ACTIVE / AVAILABLE' : 'MAINTENANCE (Deactivated)'
+        }.`
+      );
+      setTimeout(() => setActionSuccessMsg(null), 3500);
     } catch (err: any) {
-      setAddError(err.message || 'Failed to create parking space.');
+      setErrorMessage(err.message || 'Failed to update space status.');
     } finally {
-      setIsSubmittingBay(false);
+      setUpdatingBayId(null);
     }
   };
 
-  const handleDeleteBay = async (bayId: string, bayNumber: string) => {
-    if (!window.confirm(`Are you sure you want to remove space '${bayNumber}'?`)) {
-      return;
-    }
+  const handleConfirmDeleteBay = async () => {
+    if (!deleteConfirmBay) return;
+    setIsDeletingBay(true);
+    setActionSuccessMsg(null);
+    setErrorMessage(null);
     try {
-      await apiClient.deleteHostSpace(hostId, facilityId, bayId);
+      await apiClient.deleteHostSpace(hostId, facilityId, deleteConfirmBay.id);
+      setDeleteConfirmBay(null);
+      setActionSuccessMsg(`Space '${deleteConfirmBay.bayNumber}' deleted successfully.`);
       await loadData();
+      setTimeout(() => setActionSuccessMsg(null), 3500);
     } catch (err: any) {
-      alert(err.message || 'Failed to delete parking space.');
+      setErrorMessage(err.message || 'Failed to delete parking space.');
+    } finally {
+      setIsDeletingBay(false);
     }
+  };
+
+  const handleBayCreated = async (newBay: ParkingBay) => {
+    setActionSuccessMsg(`Space '${newBay.bayNumber}' created and added to facility inventory.`);
+    await loadData();
+    setTimeout(() => setActionSuccessMsg(null), 4000);
   };
 
   // Distinct levels for filter
@@ -402,6 +388,27 @@ export const HostFacilityLayoutView: React.FC<HostFacilityLayoutViewProps> = ({
                   <div className="flex items-center gap-1">
                     <button
                       type="button"
+                      onClick={() => handleToggleBayStatus(bay)}
+                      disabled={updatingBayId === bay.id}
+                      className={`px-2 py-1 text-xs font-semibold rounded-md border transition-colors ${
+                        bay.status === BayStatus.AVAILABLE
+                          ? 'bg-amber-50 text-amber-700 hover:bg-amber-100 border-amber-200'
+                          : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border-emerald-200'
+                      }`}
+                      title={
+                        bay.status === BayStatus.AVAILABLE
+                          ? 'Deactivate space (set to MAINTENANCE)'
+                          : 'Activate space (set to AVAILABLE)'
+                      }
+                    >
+                      {updatingBayId === bay.id
+                        ? '...'
+                        : bay.status === BayStatus.AVAILABLE
+                        ? 'Deactivate'
+                        : 'Activate'}
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => onNavigate(`/host/spaces/${bay.id}/edit`)}
                       className="px-2 py-1 text-xs font-semibold text-slate-700 bg-slate-50 hover:bg-slate-100 rounded-md border border-slate-200"
                       title="Edit Bay Properties"
@@ -428,7 +435,7 @@ export const HostFacilityLayoutView: React.FC<HostFacilityLayoutViewProps> = ({
 
                   <button
                     type="button"
-                    onClick={() => handleDeleteBay(bay.id, bay.bayNumber)}
+                    onClick={() => setDeleteConfirmBay(bay)}
                     className="p-1 text-slate-400 hover:text-rose-600 transition-colors"
                     title="Delete Bay"
                   >
@@ -439,195 +446,68 @@ export const HostFacilityLayoutView: React.FC<HostFacilityLayoutViewProps> = ({
             ))}
           </div>
         )}
+      </main>
 
-        {/* Add Space Modal */}
-        {isAddModalOpen && (
-          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-            <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-xl border border-slate-200">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <div className="flex items-center gap-2">
-                  <Layers className="w-5 h-5 text-emerald-600" />
-                  <h3 className="font-extrabold text-base text-[#132A24]">
-                    Add New Parking Space
-                  </h3>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setIsAddModalOpen(false)}
-                  className="text-slate-400 hover:text-slate-600"
-                >
-                  <X className="w-5 h-5" />
-                </button>
+      {/* Full-Featured Add Space Modal */}
+      {facility && (
+        <AddBayModal
+          isOpen={isAddModalOpen}
+          onClose={() => setIsAddModalOpen(false)}
+          hostId={hostId}
+          facilities={[facility]}
+          preselectedFacilityId={facility.id}
+          onBayCreated={handleBayCreated}
+        />
+      )}
+
+      {/* Delete Space In-App Confirmation Modal */}
+      {deleteConfirmBay && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center gap-3 text-rose-600">
+              <div className="w-10 h-10 rounded-xl bg-rose-50 flex items-center justify-center border border-rose-100">
+                <AlertCircle className="w-5 h-5 text-rose-600" />
               </div>
+              <div>
+                <h3 className="font-extrabold text-base text-slate-900">
+                  Delete Parking Space
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Remove space from this facility layout.
+                </p>
+              </div>
+            </div>
 
-              {addError && (
-                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs">
-                  {addError}
-                </div>
-              )}
+            <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3.5 rounded-xl border border-slate-100">
+              Are you sure you want to permanently delete space{' '}
+              <strong className="font-mono text-slate-900 font-bold">
+                {deleteConfirmBay.bayNumber}
+              </strong>
+              ? This action cannot be reversed.
+            </p>
 
-              <form onSubmit={handleCreateBay} className="space-y-4 text-xs">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">
-                      Bay Identifier / Number <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. B2-38, Bay 5"
-                      value={newBayNumber}
-                      onChange={(e) => setNewBayNumber(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-200 font-mono font-bold"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">
-                      Level / Section
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Ground, B2, Deck 1"
-                      value={newLevel}
-                      onChange={(e) => setNewLevel(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-200"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">Bay Type</label>
-                    <select
-                      value={newBayType}
-                      onChange={(e) => setNewBayType(e.target.value as BayType)}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-white"
-                    >
-                      <option value={BayType.STANDARD}>Standard Bay</option>
-                      <option value={BayType.EV_CHARGING}>EV Charging Bay</option>
-                      <option value={BayType.ACCESSIBLE}>Accessible / ADA Bay</option>
-                      <option value={BayType.COVERED}>Covered Bay</option>
-                      <option value={BayType.COMPACT}>Compact Bay</option>
-                      <option value={BayType.OVERSIZED}>Oversized Vehicle</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">Max Height (m)</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={newHeightMeters}
-                      onChange={(e) => setNewHeightMeters(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-200 font-mono"
-                    />
-                  </div>
-                </div>
-
-                {/* EV Charging Config */}
-                <div className="p-3 bg-emerald-50/60 rounded-xl border border-emerald-100 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-emerald-950 flex items-center gap-1.5">
-                      <Zap className="w-3.5 h-3.5 text-emerald-600" />
-                      EV Charging Equipped
-                    </span>
-                    <input
-                      type="checkbox"
-                      checked={newIsEvCharging}
-                      onChange={(e) => setNewIsEvCharging(e.target.checked)}
-                      className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 h-4 w-4"
-                    />
-                  </div>
-
-                  {newIsEvCharging && (
-                    <div className="pt-2 flex items-center gap-3">
-                      <label className="font-medium text-slate-600">Charger Rating:</label>
-                      <select
-                        value={newEvKw}
-                        onChange={(e) => setNewEvKw(e.target.value)}
-                        className="px-2 py-1 bg-white border border-slate-200 rounded text-xs font-mono"
-                      >
-                        <option value="7.4">7.4 kW (Level 2)</option>
-                        <option value="11">11.0 kW (Three-Phase AC)</option>
-                        <option value="22">22.0 kW (Fast AC)</option>
-                        <option value="50">50.0 kW (DC Fast Charger)</option>
-                      </select>
-                    </div>
-                  )}
-                </div>
-
-                {/* Toggles */}
-                <div className="grid grid-cols-3 gap-2">
-                  <label className="flex items-center gap-2 p-2 rounded-lg border border-slate-200 bg-slate-50 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={newHasCctv}
-                      onChange={(e) => setNewHasCctv(e.target.checked)}
-                      className="rounded border-slate-300 text-emerald-600"
-                    />
-                    <span>CCTV Active</span>
-                  </label>
-
-                  <label className="flex items-center gap-2 p-2 rounded-lg border border-slate-200 bg-slate-50 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={newIsCovered}
-                      onChange={(e) => setNewIsCovered(e.target.checked)}
-                      className="rounded border-slate-300 text-emerald-600"
-                    />
-                    <span>Covered</span>
-                  </label>
-
-                  <label className="flex items-center gap-2 p-2 rounded-lg border border-slate-200 bg-slate-50 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={newIsAccessible}
-                      onChange={(e) => setNewIsAccessible(e.target.checked)}
-                      className="rounded border-slate-300 text-emerald-600"
-                    />
-                    <span>Accessible</span>
-                  </label>
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Bay Notes &amp; Driver Placement Guidance
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Pillar on right side; wall box charger on front."
-                    value={newNotes}
-                    onChange={(e) => setNewNotes(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-200"
-                  />
-                </div>
-
-                <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setIsAddModalOpen(false)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    variant="primary"
-                    themeContext="host"
-                    size="sm"
-                    disabled={isSubmittingBay}
-                    className="font-bold bg-[#22C55E]"
-                  >
-                    {isSubmittingBay ? 'Adding...' : 'Create Space'}
-                  </Button>
-                </div>
-              </form>
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setDeleteConfirmBay(null)}
+                disabled={isDeletingBay}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleConfirmDeleteBay}
+                disabled={isDeletingBay}
+                className="bg-rose-600 hover:bg-rose-700 text-white font-bold"
+              >
+                {isDeletingBay ? 'Deleting...' : 'Delete Space'}
+              </Button>
             </div>
           </div>
-        )}
-      </main>
+        </div>
+      )}
     </div>
   );
 };
