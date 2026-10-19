@@ -1,6 +1,6 @@
 {
-  "name": "ParkEazy - Booking Lifecycle & Concurrency Safeguards",
-  "description": "ParkEazy white-label parking infrastructure with booking lifecycle management, concurrency safeguards, customer marketplace, host portal, and administrative governance.",
+  "name": "ParkEazy - Parking Marketplace Platform",
+  "description": "Peer-to-peer parking marketplace connecting drivers with parking hosts, featuring dedicated User Website, Host Portal with Pricing, Policies, and Availability Calendar, Admin Panel, and unified REST API.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
