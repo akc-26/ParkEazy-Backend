@@ -12,7 +12,7 @@
     "dev": "tsx server.ts",
     "start": "node server.ts",
     "start:full": "node scripts/start-local-full.mjs",
-    "dev:same-origin": "npm run build:all && node scripts/start-local-full.mjs",
+    "dev:same-origin": "node scripts/dev-same-origin.mjs",
     "dev:same-origin:hmr": "node scripts/dev-same-origin.mjs",
     "dev:root": "vite --config vite.config.ts --port 3001 --host 0.0.0.0",
     "dev:website": "vite apps/website --port=3001 --host=0.0.0.0",

@@ -66,16 +66,6 @@ export function isValidPostalCode(postalCode: unknown): boolean {
   return /^[1-9][0-9]{5}$/.test(cleaned);
 }
 
-export function isValidTimezone(tz: unknown): boolean {
-  if (typeof tz !== 'string' || !tz.trim()) return false;
-  try {
-    Intl.DateTimeFormat(undefined, { timeZone: tz.trim() });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 export function isValidEnum<T extends string>(val: unknown, allowed: readonly T[]): val is T {
   return typeof val === 'string' && (allowed as readonly string[]).includes(val);
 }

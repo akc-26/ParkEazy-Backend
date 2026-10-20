@@ -159,11 +159,11 @@ export function BookingDetailsCommercialTermsPage({ bookingId, currentUser: _cur
                   </div>
                   <div>
                     <span className="text-[#64748B] block">Arrival Window:</span>
-                    <span className="font-medium text-[#101828]">{new Date(booking.startsAt || booking.startTime).toLocaleTimeString()}</span>
+                    <span className="font-medium text-[#101828]">{new Date(booking.startsAt || booking.startTime || Date.now()).toLocaleTimeString()}</span>
                   </div>
                   <div>
                     <span className="text-[#64748B] block">Scheduled Departure:</span>
-                    <span className="font-medium text-[#101828]">{new Date(booking.endsAt || booking.endTime).toLocaleTimeString()}</span>
+                    <span className="font-medium text-[#101828]">{new Date(booking.endsAt || booking.endTime || Date.now()).toLocaleTimeString()}</span>
                   </div>
                 </div>
 

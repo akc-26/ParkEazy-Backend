@@ -71,10 +71,17 @@ export function HostPortalContent({ onNavigateToWebsite, onNavigateToAdmin }: Ho
 
   const [currentUser] = useState<UserAccount>({
     id: 'host-usr-01',
+    tenantId: 'tenant-default',
     email: 'metro.host@parkeazy.internal',
     fullName: 'Ramesh Sundaram',
     role: 'host',
+    roles: ['host'],
     phone: '+91 98401 23456',
+    isEmailVerified: true,
+    isPhoneVerified: true,
+    status: 'active',
+    createdAt: '2026-01-01T00:00:00Z',
+    updatedAt: '2026-01-01T00:00:00Z',
   });
 
   const navigateTo = (path: string) => {

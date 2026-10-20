@@ -2,15 +2,8 @@
   "name": "@parkeazy/shared-types",
   "version": "0.1.0",
   "private": true,
-  "description": "Shared TypeScript schemas, models, and interfaces for ParkEazy",
+  "description": "Shared TypeScript types and interfaces across ParkEazy portals and backend API",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
-  "type": "module",
-  "exports": {
-    ".": {
-      "types": "./src/index.ts",
-      "import": "./src/index.ts",
-      "default": "./src/index.ts"
-    }
-  }
+  "type": "module"
 }

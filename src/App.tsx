@@ -1,16 +1,61 @@
 import React, { useState, useEffect } from 'react';
+import CustomerWebsiteApp from '../apps/website/src/App';
 import HostApp from '../apps/host/src/App';
 import AdminPanelApp from '../apps/admin/src/App';
-import { Shield, Building2, Activity, Database, CheckCircle2, RefreshCw, Server, AlertCircle } from 'lucide-react';
+import { Shield, Building2, Activity, Compass, Database, CheckCircle2, RefreshCw, Server } from 'lucide-react';
+
+type PortalType = 'website' | 'host' | 'admin' | 'diagnostics';
+
+function getPortalFromPath(pathname: string): PortalType {
+  if (pathname.startsWith('/host')) return 'host';
+  if (pathname.startsWith('/admin')) return 'admin';
+  if (pathname.startsWith('/diagnostics')) return 'diagnostics';
+  return 'website';
+}
+
+function getPathForPortal(portal: PortalType): string {
+  switch (portal) {
+    case 'host':
+      return '/host/';
+    case 'admin':
+      return '/admin/';
+    case 'diagnostics':
+      return '/diagnostics';
+    case 'website':
+    default:
+      return '/';
+  }
+}
 
 export default function App() {
-  const [activePortal, setActivePortal] = useState<'host' | 'admin' | 'diagnostics'>('host');
+  const [activePortal, setActivePortal] = useState<PortalType>(() => {
+    if (typeof window !== 'undefined') {
+      return getPortalFromPath(window.location.pathname);
+    }
+    return 'website';
+  });
+
   const [apiHealth, setApiHealth] = useState<{ status: string; uptime: number; modules: string[] } | null>(null);
   const [loadingHealth, setLoadingHealth] = useState(false);
 
   useEffect(() => {
     checkHealth();
+
+    const handlePopState = () => {
+      setActivePortal(getPortalFromPath(window.location.pathname));
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
   }, []);
+
+  const switchPortal = (portal: PortalType) => {
+    setActivePortal(portal);
+    const targetPath = getPathForPortal(portal);
+    if (window.location.pathname !== targetPath) {
+      window.history.pushState(null, '', targetPath);
+    }
+  };
 
   const checkHealth = async () => {
     setLoadingHealth(true);
@@ -18,10 +63,11 @@ export default function App() {
       const res = await fetch('/api/v1/health');
       if (res.ok) {
         const data = await res.json();
+        const health = data.data || data;
         setApiHealth({
-          status: data.status || 'healthy',
-          uptime: data.uptimeSeconds || 0,
-          modules: data.activeModules || ['auth', 'inventory', 'bookings', 'ledger', 'admin'],
+          status: health.status || 'healthy',
+          uptime: health.uptimeSeconds || 0,
+          modules: health.activeModules || ['auth', 'inventory', 'bookings', 'ledger', 'admin'],
         });
       } else {
         setApiHealth({
@@ -47,14 +93,17 @@ export default function App() {
       <header className="bg-slate-900 text-white sticky top-0 z-50 shadow-md border-b border-slate-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
           {/* Logo & Brand */}
-          <div className="flex items-center gap-3">
+          <div
+            className="flex items-center gap-3 cursor-pointer"
+            onClick={() => switchPortal('website')}
+          >
             <div className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center font-bold text-white shadow-xs">
               P
             </div>
             <div>
               <span className="font-bold text-base tracking-tight text-white">ParkEazy</span>
               <span className="ml-2 text-xs font-medium px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800/60">
-                Metro Hub
+                Unified Hub
               </span>
             </div>
           </div>
@@ -62,7 +111,19 @@ export default function App() {
           {/* Navigation Switcher Tabs */}
           <nav className="flex items-center gap-1 bg-slate-800/80 p-1 rounded-lg border border-slate-700/60">
             <button
-              onClick={() => setActivePortal('host')}
+              onClick={() => switchPortal('website')}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                activePortal === 'website'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-700/50'
+              }`}
+            >
+              <Compass className="w-3.5 h-3.5" />
+              <span>Customer Website</span>
+            </button>
+
+            <button
+              onClick={() => switchPortal('host')}
               className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
                 activePortal === 'host'
                   ? 'bg-emerald-600 text-white shadow-xs'
@@ -74,7 +135,7 @@ export default function App() {
             </button>
 
             <button
-              onClick={() => setActivePortal('admin')}
+              onClick={() => switchPortal('admin')}
               className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
                 activePortal === 'admin'
                   ? 'bg-emerald-600 text-white shadow-xs'
@@ -86,7 +147,7 @@ export default function App() {
             </button>
 
             <button
-              onClick={() => setActivePortal('diagnostics')}
+              onClick={() => switchPortal('diagnostics')}
               className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
                 activePortal === 'diagnostics'
                   ? 'bg-emerald-600 text-white shadow-xs'
@@ -94,7 +155,7 @@ export default function App() {
               }`}
             >
               <Activity className="w-3.5 h-3.5" />
-              <span>API & System Health</span>
+              <span>System Diagnostics</span>
             </button>
           </nav>
 
@@ -110,6 +171,7 @@ export default function App() {
 
       {/* Main App Content */}
       <main className="flex-1">
+        {activePortal === 'website' && <CustomerWebsiteApp />}
         {activePortal === 'host' && <HostApp />}
         {activePortal === 'admin' && <AdminPanelApp />}
         {activePortal === 'diagnostics' && (
@@ -149,16 +211,16 @@ export default function App() {
                 </div>
               </div>
 
-              {/* In-Memory Database Mode */}
+              {/* Database Storage */}
               <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs">
                 <div className="flex items-center justify-between mb-4">
                   <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Database Storage</span>
                   <Database className="w-5 h-5 text-sky-500" />
                 </div>
-                <div className="text-2xl font-bold text-slate-900">In-Memory Engine</div>
+                <div className="text-2xl font-bold text-slate-900">Authoritative Engine</div>
                 <p className="text-xs text-slate-500 mt-1">PostgreSQL migrations validated & ready</p>
                 <div className="mt-4 pt-4 border-t border-slate-100 text-xs text-slate-600">
-                  <span className="text-emerald-600 font-medium">✓ Safe local fallback</span> active without required native dependencies.
+                  <span className="text-emerald-600 font-medium">✓ Safe development persistence</span> active with strict validation.
                 </div>
               </div>
 

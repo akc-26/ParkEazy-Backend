@@ -1,9 +1,3 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-import CustomerWebsiteApp from './apps/website/src/App';
+import App from './src/App';
 
-export default function App() {
-  return <CustomerWebsiteApp />;
-}
+export default App;
