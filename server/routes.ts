@@ -103,12 +103,24 @@ apiRouter.post('/auth/register', (req, res) => {
       return res.status(400).json({ error: 'Missing required registration fields' });
     }
 
+    // Server-side enforcement: Public registration must never create an administrator
+    const requestedRole = String(role).toLowerCase().trim();
+    if (requestedRole === 'admin' || requestedRole === 'superadmin' || requestedRole === 'super_admin') {
+      return res.status(403).json({
+        error: 'Public registration cannot create administrative or privileged accounts. Privileged roles must be provisioned through an authorized administrative mechanism.'
+      });
+    }
+
+    if (requestedRole !== 'customer' && requestedRole !== 'host') {
+      return res.status(400).json({ error: 'Invalid registration role. Permitted roles are "customer" and "host".' });
+    }
+
     const newUser = db.createUser({
       email,
       password,
       fullName,
       phone,
-      role,
+      role: requestedRole as 'customer' | 'host',
       businessDetails
     });
 
@@ -154,13 +166,13 @@ apiRouter.post('/auth/logout', (req, res) => {
   return res.json({ success: true, message: 'Logged out successfully.' });
 });
 
-apiRouter.post('/auth/forgot-password', (req, res) => {
+apiRouter.post('/auth/forgot-password', async (req, res) => {
   try {
     const { email } = req.body;
     if (!email) {
       return res.status(400).json({ error: 'Email address is required.' });
     }
-    const result = db.createPasswordResetToken(email);
+    const result = await db.createPasswordResetToken(email);
     return res.json(result);
   } catch (err: any) {
     return res.status(429).json({ error: err.message });
@@ -200,8 +212,18 @@ apiRouter.get('/auth/demo-users', (req, res) => {
 // ----------------- FACILITIES -----------------
 apiRouter.get('/facilities', (req, res) => {
   const { hostId, status, city } = req.query;
+  const user = getAuthenticatedUser(req);
+  let effectiveHostId = hostId as string;
+
+  // Enforce host ownership isolation: A host cannot view another host's facilities by swapping hostId
+  if (user && user.role === 'host') {
+    if (effectiveHostId && effectiveHostId !== user.id) {
+      return res.status(403).json({ error: 'Access denied: You cannot view another host\'s facilities.' });
+    }
+  }
+
   const facilities = db.getFacilities({
-    hostId: hostId as string,
+    hostId: effectiveHostId,
     status: status as string,
     city: city as string
   });
@@ -237,6 +259,21 @@ apiRouter.put('/facilities/:id', requireHost, (req, res) => {
     }
     const facility = db.updateFacility(req.params.id, req.body, user);
     return res.json(facility);
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message });
+  }
+});
+
+apiRouter.delete('/facilities/:id', requireHost, (req, res) => {
+  try {
+    const user = (req as any).user as User;
+    const existing = db.getFacilityById(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Facility not found' });
+    if (existing.hostId !== user.id && user.role !== 'admin') {
+      return res.status(403).json({ error: 'You do not own this facility' });
+    }
+    const success = db.deleteFacility(req.params.id, user);
+    return res.json({ success });
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
   }
@@ -375,6 +412,23 @@ apiRouter.put('/pricing-rules/:id', requireHost, (req, res) => {
     const user = (req as any).user as User;
     const rule = db.updatePricingRule(req.params.id, req.body, user);
     return res.json(rule);
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message });
+  }
+});
+
+apiRouter.delete('/pricing-rules/:id', requireHost, (req, res) => {
+  try {
+    const user = (req as any).user as User;
+    const rule = db.getPricingRuleById(req.params.id);
+    if (!rule) return res.status(404).json({ error: 'Pricing rule not found' });
+    const facility = db.getFacilityById(rule.facilityId);
+    if (!facility) return res.status(404).json({ error: 'Facility not found' });
+    if (facility.hostId !== user.id && user.role !== 'admin') {
+      return res.status(403).json({ error: 'You do not own this facility' });
+    }
+    const success = db.deletePricingRule(req.params.id, user);
+    return res.json({ success });
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
   }
@@ -617,17 +671,18 @@ apiRouter.get('/payouts', requireHost, (req, res) => {
   return res.json(payouts);
 });
 
-apiRouter.post('/payouts', requireHost, (req, res) => {
+apiRouter.post('/payouts', requireHost, async (req, res) => {
   try {
     const user = (req as any).user as User;
     if (user.role !== 'host') {
       return res.status(403).json({ error: 'Only hosts can request payouts' });
     }
     const { amount, method, destinationAccount } = req.body;
+    const idempotencyKey = (req.headers['x-idempotency-key'] as string) || req.body.idempotencyKey;
     if (!amount || !method || !destinationAccount) {
       return res.status(400).json({ error: 'Amount, method, and destination account are required' });
     }
-    const payout = db.requestPayout(user.id, Number(amount), method, destinationAccount, user);
+    const payout = await db.requestPayout(user.id, Number(amount), method, destinationAccount, user, idempotencyKey);
     return res.status(201).json(payout);
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
@@ -744,6 +799,27 @@ apiRouter.post('/disputes/:id/resolve', requireAdmin, (req, res) => {
 });
 
 // ----------------- ADMIN CONSOLE -----------------
+apiRouter.post('/admin/users', requireAdmin, (req, res) => {
+  try {
+    const { email, password, fullName, phone, role } = req.body;
+    if (!email || !password || !fullName) {
+      return res.status(400).json({ error: 'Email, password, and fullName are required' });
+    }
+    const adminUser = (req as any).user as User;
+    const user = db.provisionAdminUser({
+      email,
+      password,
+      fullName,
+      phone,
+      role: role || 'admin',
+      actor: adminUser
+    });
+    return res.status(201).json({ user });
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message });
+  }
+});
+
 apiRouter.get('/admin/facilities', requireAdmin, (req, res) => {
   const { status } = req.query;
   const facilities = db.getFacilities(status ? { status: status as string } : undefined);

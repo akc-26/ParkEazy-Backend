@@ -452,9 +452,9 @@ export class IntegrationsService {
   ]);
 
   private constructor() {
-    // Derive 256-bit encryption key using scrypt from Category C bootstrap encryption key
+    // Derive 256-bit encryption key using scrypt from dedicated Category C bootstrap encryption key
     const salt = 'parkeazy-integrations-salt-v1';
-    const masterKeyString = appConfig.security?.configEncryptionKey || appConfig.auth.jwtSecret;
+    const masterKeyString = appConfig.security.configEncryptionKey;
     this.encryptionKey = crypto.scryptSync(masterKeyString, salt, 32);
 
     const dataDir = path.resolve(process.cwd(), '.data');
@@ -502,15 +502,30 @@ export class IntegrationsService {
     };
   }
 
-  // Symmetric AES-256-GCM authenticated decryption
+  // Symmetric AES-256-GCM authenticated decryption with safe migration handling
   private decrypt(payload: EncryptedPayload): string {
     const iv = Buffer.from(payload.ivHex, 'hex');
     const authTag = Buffer.from(payload.tagHex, 'hex');
-    const decipher = crypto.createDecipheriv('aes-256-gcm', this.encryptionKey, iv);
-    decipher.setAuthTag(authTag);
-    let plaintext = decipher.update(payload.cipherHex, 'hex', 'utf8');
-    plaintext += decipher.final('utf8');
-    return plaintext;
+    try {
+      const decipher = crypto.createDecipheriv('aes-256-gcm', this.encryptionKey, iv);
+      decipher.setAuthTag(authTag);
+      let plaintext = decipher.update(payload.cipherHex, 'hex', 'utf8');
+      plaintext += decipher.final('utf8');
+      return plaintext;
+    } catch (err: any) {
+      // Safe fallback migration for development environments only
+      if (appConfig.nodeEnv !== 'production' && appConfig.auth.jwtSecret) {
+        try {
+          const fallbackKey = crypto.scryptSync(appConfig.auth.jwtSecret, 'parkeazy-integrations-salt-v1', 32);
+          const decipher = crypto.createDecipheriv('aes-256-gcm', fallbackKey, iv);
+          decipher.setAuthTag(authTag);
+          let plaintext = decipher.update(payload.cipherHex, 'hex', 'utf8');
+          plaintext += decipher.final('utf8');
+          return plaintext;
+        } catch {}
+      }
+      throw err;
+    }
   }
 
   // Persist encrypted vault to disk (Category B secrets only)

@@ -54,10 +54,17 @@ export class DatabaseManager {
         const safeMessage = sanitizeDatabaseUrl(err.message);
         console.error('[ParkEazy-DB] Failed to initialize remote connection pool:', safeMessage);
         this.pool = null;
+        if (appConfig.nodeEnv === 'production' || appConfig.database.isRequired) {
+          throw new Error(`Production database connection pool failed to initialize: ${safeMessage}`);
+        }
       }
     }
 
-    // Authoritative in-process PostgreSQL engine using pg-mem
+    if (appConfig.nodeEnv === 'production' || appConfig.database.isRequired) {
+      throw new Error('Database connection is mandatory in production. In-memory pg-mem fallback is strictly prohibited.');
+    }
+
+    // Authoritative in-process PostgreSQL engine using pg-mem (development / testing only)
     this.initPgMem();
   }
 
@@ -122,6 +129,9 @@ export class DatabaseManager {
     if (!this.initializationPromise) {
       this.initializationPromise = (async () => {
         if (this.isPgMem) {
+          if (appConfig.nodeEnv === 'production' || appConfig.database.isRequired) {
+            throw new Error('In-memory database engine is strictly prohibited in production.');
+          }
           this.isConnected = true;
           return;
         }
@@ -135,6 +145,10 @@ export class DatabaseManager {
         } catch (err: any) {
           this.isConnected = false;
           const safeMessage = sanitizeDatabaseUrl(err.message);
+          if (appConfig.nodeEnv === 'production' || appConfig.database.isRequired) {
+            console.error(`[ParkEazy-DB] Production PostgreSQL connection failed: ${safeMessage}`);
+            throw new Error(`Production database connection failed: ${safeMessage}`);
+          }
           console.warn(`[ParkEazy-DB] Initial connectivity check to remote DB failed: ${safeMessage}. Falling back to authoritative in-process PostgreSQL engine.`);
           this.initPgMem();
         }
@@ -155,10 +169,25 @@ export class DatabaseManager {
     const isConfigured = overrideUrl !== undefined ? Boolean(targetUrl) : appConfig.database.isConfigured;
 
     if (!isConfigured || !targetUrl) {
+      if (appConfig.nodeEnv === 'production' || appConfig.database.isRequired) {
+        return {
+          status: 'down',
+          latencyMs: 0,
+          message: 'DATABASE_URL is not configured in production.',
+        };
+      }
       return {
         status: 'unconfigured',
         latencyMs: 0,
         message: 'DATABASE_URL not configured. Running in in-memory baseline mode.',
+      };
+    }
+
+    if (appConfig.nodeEnv === 'production' && this.isPgMem) {
+      return {
+        status: 'down',
+        latencyMs: 0,
+        message: 'In-memory database detected in production. Production PostgreSQL required.',
       };
     }
 

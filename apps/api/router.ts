@@ -188,6 +188,13 @@ apiV1Router.post(
   ]),
   (req: Request, res: Response, next: NextFunction) => {
     try {
+      const requestedRoles = req.body.roles || (req.body.role ? [req.body.role] : []);
+      if (
+        requestedRoles.some((r: any) => String(r).toUpperCase().includes('ADMIN')) ||
+        String(req.body.requestedPortal).toLowerCase().includes('admin')
+      ) {
+        throw new AppError('Administrative accounts cannot be registered publicly.', 403, 'FORBIDDEN');
+      }
       const result = authService.registerUser(req.body);
       sendSuccess(res, result, req.correlationId, 201);
     } catch (err) {
@@ -1574,8 +1581,8 @@ apiV1Router.post(
       const utr = `UTR-ACH-${Date.now().toString().slice(-8)}`;
 
       await dbManager.query(
-        `INSERT INTO host_payout_records (id, host_id, amount_cents, currency, status, payout_method_id, reference_or_utr, requested_at_utc, settled_at_utc)
-         VALUES ($1, $2, $3, 'USD', 'SETTLED', $4, $5, NOW(), NOW())`,
+        `INSERT INTO host_payout_records (id, host_id, amount_cents, currency, status, payout_method_id, reference_or_utr, requested_at_utc)
+         VALUES ($1, $2, $3, 'USD', 'PROCESSING', $4, $5, NOW())`,
         [payoutId, req.params.hostId, amountCents, payoutMethodId, utr]
       );
 
@@ -1583,9 +1590,9 @@ apiV1Router.post(
         id: payoutId,
         amountCents,
         currency: 'USD',
-        status: 'SETTLED',
+        status: 'PROCESSING',
         referenceOrUtr: utr,
-        message: 'Payout disbursement processed successfully.',
+        message: 'Payout disbursement request received and queued for processing.',
       }, req.correlationId, 201);
     } catch (err) {
       next(err);

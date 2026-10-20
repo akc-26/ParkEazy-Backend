@@ -149,12 +149,29 @@ export function loadAndValidateConfig(env: NodeJS.ProcessEnv = process.env): App
   const apiPrefix = env.API_PREFIX || '/api/v1';
   const bodyLimit = env.BODY_LIMIT || '1mb';
 
-  // CORS Origins Parsing
-  const rawCors = env.CORS_ORIGIN || env.CORS_ORIGINS || '*';
-  const corsOrigins = rawCors
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean);
+  // CORS Origins Parsing: Disallow permissive '*' default in production
+  const rawCors = env.CORS_ORIGIN || env.CORS_ORIGINS;
+  let corsOrigins: string[] = [];
+
+  if (rawCors) {
+    corsOrigins = rawCors
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean);
+  }
+
+  if (nodeEnv === 'production') {
+    if (!corsOrigins.length || corsOrigins.includes('*')) {
+      throw new ConfigurationError(
+        'CORS_ORIGIN environment variable must specify explicit trusted origins in production and cannot be "*" or empty.',
+        'CORS_ORIGIN'
+      );
+    }
+  } else {
+    if (!corsOrigins.length) {
+      corsOrigins = ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://localhost:5173', '*'];
+    }
+  }
 
   // Database Configuration: Mandatory in production
   const databaseUrl = env.DATABASE_URL?.trim();
@@ -251,10 +268,32 @@ export function loadAndValidateConfig(env: NodeJS.ProcessEnv = process.env): App
     allowDemoAuth,
   };
 
-  const configEncryptionKey =
-    env.CONFIG_ENCRYPTION_KEY?.trim() ||
-    jwtSecret ||
-    'parkeazy-bootstrap-encryption-fallback-key';
+  let configEncryptionKey = env.CONFIG_ENCRYPTION_KEY?.trim() || '';
+
+  if (nodeEnv === 'production') {
+    if (!configEncryptionKey) {
+      throw new ConfigurationError(
+        'CONFIG_ENCRYPTION_KEY environment variable is mandatory in production for provider secret encryption and cannot be omitted.',
+        'CONFIG_ENCRYPTION_KEY'
+      );
+    }
+    if (configEncryptionKey === jwtSecret) {
+      throw new ConfigurationError(
+        'CONFIG_ENCRYPTION_KEY in production must be a dedicated encryption key distinct from JWT_SECRET.',
+        'CONFIG_ENCRYPTION_KEY'
+      );
+    }
+    if (configEncryptionKey.length < 32) {
+      throw new ConfigurationError(
+        'CONFIG_ENCRYPTION_KEY in production must be a dedicated high-entropy key of at least 32 characters.',
+        'CONFIG_ENCRYPTION_KEY'
+      );
+    }
+  } else {
+    if (!configEncryptionKey) {
+      configEncryptionKey = 'parkeazy-dev-config-encryption-key-32bytes!';
+    }
+  }
 
   const shutdownTimeoutMs = parseInt(env.SHUTDOWN_TIMEOUT_MS || '10000', 10);
 

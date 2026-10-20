@@ -1,6 +1,9 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { dbManager } from '../apps/api/database/connection';
+import { NotificationAdapterFactory } from '../apps/api/services/notification-adapter';
+import { appConfig } from '../apps/api/config/env';
 import {
   User,
   Facility,
@@ -20,7 +23,8 @@ import {
   BayStatus,
   FacilityStatus,
   ActiveSession,
-  PasswordResetToken
+  PasswordResetToken,
+  UserRole
 } from './types';
 
 const DATA_DIR = path.resolve(process.cwd(), 'data');
@@ -72,6 +76,9 @@ export class Database {
   private saveTimeout: NodeJS.Timeout | null = null;
   private expiryInterval: NodeJS.Timeout | null = null;
   private resetRateLimits: Map<string, number[]> = new Map();
+  private isInitialized = false;
+  private isPostgresActive = false;
+  private payoutLock = false;
 
   constructor() {
     this.data = this.loadOrSeed();
@@ -83,6 +90,335 @@ export class Database {
       this.cleanExpiredSessions();
     }, 30000);
     this.expiryInterval.unref();
+  }
+
+  /**
+   * Initializes authoritative PostgreSQL persistence.
+   * Runs migrations, migrates existing JSON store data without data loss,
+   * and establishes PostgreSQL as the authoritative persistence source of truth.
+   */
+  public async initialize(): Promise<void> {
+    if (this.isInitialized) return;
+
+    try {
+      await dbManager.initialize();
+      this.isPostgresActive = true;
+
+      // Check if data already exists in PostgreSQL
+      const existingRes = await dbManager.query('SELECT count(*) as count FROM app_store_entities');
+      const count = parseInt(existingRes.rows[0]?.count || '0', 10);
+
+      if (count === 0) {
+        // Safe, controlled migration path for existing JSON data without losing anything
+        console.log('[ParkEazy-Store] Migrating existing application data into authoritative PostgreSQL database...');
+        await this.migrateDataToPostgres(this.data);
+      } else {
+        // Load authoritative data from PostgreSQL
+        console.log('[ParkEazy-Store] Loading authoritative application data from PostgreSQL...');
+        await this.loadDataFromPostgres();
+      }
+
+      this.isInitialized = true;
+      console.log('[ParkEazy-Store] Authoritative PostgreSQL persistence initialized successfully.');
+    } catch (err: any) {
+      if (appConfig.nodeEnv === 'production' || appConfig.database.isRequired) {
+        console.error('[ParkEazy-Store] Failed to initialize authoritative PostgreSQL persistence in production:', err);
+        throw err;
+      }
+      console.warn('[ParkEazy-Store] Running in development mode with local store synchronization:', err.message);
+      this.isInitialized = true;
+    }
+  }
+
+  private async migrateDataToPostgres(schema: DatabaseSchema): Promise<void> {
+    const client = await dbManager.getClient();
+    try {
+      await client.query('BEGIN');
+      const collections: (keyof DatabaseSchema)[] = [
+        'users', 'facilities', 'bays', 'pricingRules', 'holds', 'bookings',
+        'ledger', 'payouts', 'reviews', 'messages', 'notifications', 'disputes',
+        'providers', 'auditLogs', 'sessions', 'passwordResetTokens'
+      ];
+
+      for (const col of collections) {
+        const items = (schema[col] || []) as any[];
+        for (const item of items) {
+          const id = item.id || item.token || crypto.randomUUID();
+          await client.query(
+            `INSERT INTO app_store_entities (collection, id, data, updated_at)
+             VALUES ($1, $2, $3, NOW())
+             ON CONFLICT (collection, id) DO UPDATE SET data = $3, updated_at = NOW()`,
+            [col, id, JSON.stringify(item)]
+          );
+        }
+      }
+
+      for (const user of schema.users || []) {
+        const nameParts = (user.fullName || '').split(' ');
+        const firstName = nameParts[0] || 'User';
+        const lastName = nameParts.slice(1).join(' ') || 'User';
+        await client.query(
+          `INSERT INTO users (id, email, first_name, last_name, phone_number, roles, full_name, password_hash, role, status, avatar_url, business_details, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+           ON CONFLICT (id) DO UPDATE SET
+             email = EXCLUDED.email, full_name = EXCLUDED.full_name, role = EXCLUDED.role, status = EXCLUDED.status, updated_at = NOW()`,
+          [
+            user.id,
+            user.email,
+            firstName,
+            lastName,
+            user.phone,
+            user.role === 'admin' ? ['ADMIN'] : (user.role === 'host' ? ['HOST', 'CUSTOMER'] : ['CUSTOMER']),
+            user.fullName,
+            user.passwordHash,
+            user.role,
+            user.status || 'active',
+            user.avatarUrl || null,
+            user.businessDetails ? JSON.stringify(user.businessDetails) : null,
+            user.createdAt || new Date().toISOString(),
+            user.updatedAt || new Date().toISOString()
+          ]
+        );
+      }
+
+      for (const fac of schema.facilities || []) {
+        await client.query(
+          `INSERT INTO parking_locations (id, host_id, name, description, address_line1, city, state, postal_code, country, latitude, longitude, status, hourly_rate_cents, daily_rate_cents, metadata, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+           ON CONFLICT (id) DO UPDATE SET
+             name = EXCLUDED.name, status = EXCLUDED.status, metadata = EXCLUDED.metadata, updated_at = NOW()`,
+          [
+            fac.id,
+            fac.hostId,
+            fac.name,
+            fac.description || '',
+            fac.address || '',
+            fac.city || '',
+            fac.state || '',
+            fac.postalCode || '',
+            fac.country || 'US',
+            fac.latitude || 0,
+            fac.longitude || 0,
+            fac.status ? fac.status.toUpperCase() : 'ACTIVE',
+            Math.round(((fac as any).baseHourlyRate || 5) * 100),
+            Math.round(((fac as any).baseDailyRate || 35) * 100),
+            JSON.stringify(fac),
+            fac.createdAt || new Date().toISOString(),
+            fac.updatedAt || new Date().toISOString()
+          ]
+        );
+      }
+
+      for (const bay of schema.bays || []) {
+        await client.query(
+          `INSERT INTO parking_bays (id, location_id, bay_number, status, metadata, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           ON CONFLICT (id) DO UPDATE SET
+             status = EXCLUDED.status, metadata = EXCLUDED.metadata, updated_at = NOW()`,
+          [
+            bay.id,
+            bay.facilityId,
+            bay.identifier,
+            bay.status ? bay.status.toUpperCase() : 'AVAILABLE',
+            JSON.stringify(bay),
+            bay.createdAt || new Date().toISOString(),
+            bay.updatedAt || new Date().toISOString()
+          ]
+        );
+      }
+
+      for (const rule of schema.pricingRules || []) {
+        await client.query(
+          `INSERT INTO facility_pricing_rules (id, facility_id, data, created_at)
+           VALUES ($1, $2, $3, NOW())
+           ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data`,
+          [rule.id, rule.facilityId, JSON.stringify(rule)]
+        );
+      }
+
+      for (const booking of schema.bookings || []) {
+        await client.query(
+          `INSERT INTO bookings (id, bay_id, location_id, user_id, host_id, start_time_utc, end_time_utc, status, base_amount_cents, security_deposit_cents, platform_fee_cents, taxes_cents, total_payable_cents, currency, license_plate, booking_reference, metadata, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+           ON CONFLICT (id) DO UPDATE SET
+             status = EXCLUDED.status, metadata = EXCLUDED.metadata, updated_at = NOW()`,
+          [
+            booking.id,
+            booking.bayId,
+            booking.facilityId,
+            booking.userId,
+            booking.hostId,
+            booking.startTime,
+            booking.endTime,
+            booking.status ? booking.status.toUpperCase() : 'CONFIRMED',
+            Math.round((booking.totalAmount || 0) * 100),
+            0,
+            0,
+            0,
+            Math.round((booking.totalAmount || 0) * 100),
+            'USD',
+            booking.licensePlate || null,
+            booking.reference || ('BK-' + booking.id),
+            JSON.stringify(booking),
+            booking.createdAt || new Date().toISOString(),
+            booking.updatedAt || new Date().toISOString()
+          ]
+        );
+      }
+
+      for (const entry of schema.ledger || []) {
+        await client.query(
+          `INSERT INTO financial_ledger (id, host_id, booking_id, entry_type, debit_account, credit_account, amount_cents, currency, payment_provider, provider_transaction_id, description, idempotency_key, reference_number, status, created_at_utc)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+           ON CONFLICT (idempotency_key) DO NOTHING`,
+          [
+            entry.id,
+            (entry as any).hostId || null,
+            (entry as any).bookingId || null,
+            entry.type ? entry.type.toUpperCase() : 'GENERAL',
+            'ACCOUNTS_RECEIVABLE',
+            'OPERATING_REVENUE',
+            Math.round(entry.amount * 100),
+            entry.currency || 'USD',
+            'STRIPE',
+            null,
+            entry.description || 'Ledger transaction',
+            (entry as any).idempotencyKey || ('ledger_' + entry.id),
+            entry.referenceId || null,
+            entry.status || 'completed',
+            entry.timestamp || new Date().toISOString()
+          ]
+        );
+      }
+
+      for (const payout of schema.payouts || []) {
+        await client.query(
+          `INSERT INTO host_payout_records (id, host_id, amount_cents, currency, status, method, destination_account, reference_or_utr, requested_at_utc, notes, idempotency_key)
+           VALUES ($1, $2, $3, 'USD', $4, $5, $6, $7, $8, $9, $10)
+           ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, notes = EXCLUDED.notes`,
+          [
+            payout.id,
+            payout.hostId,
+            Math.round(payout.amount * 100),
+            payout.status.toUpperCase(),
+            payout.method,
+            payout.destinationAccount,
+            payout.referenceNumber,
+            payout.requestedAt,
+            payout.notes || null,
+            (payout as any).idempotencyKey || ('payout_' + payout.id)
+          ]
+        );
+      }
+
+      for (const prov of schema.providers || []) {
+        await client.query(
+          `INSERT INTO provider_configs (id, name, category, is_enabled, mode, operational_settings, credentials, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+           ON CONFLICT (id) DO UPDATE SET
+             is_enabled = EXCLUDED.is_enabled, mode = EXCLUDED.mode, operational_settings = EXCLUDED.operational_settings, credentials = EXCLUDED.credentials, updated_at = NOW()`,
+          [
+            prov.id,
+            prov.name,
+            prov.category,
+            Boolean(prov.isEnabled),
+            prov.mode || 'test',
+            JSON.stringify(prov.settings || {}),
+            JSON.stringify(prov.credentials || {})
+          ]
+        );
+      }
+
+      for (const audit of schema.auditLogs || []) {
+        await client.query(
+          `INSERT INTO system_audit_logs (id, timestamp, user_id, user_name, user_role, action, entity_type, entity_id, details)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           ON CONFLICT (id) DO NOTHING`,
+          [
+            audit.id,
+            audit.timestamp,
+            audit.userId || null,
+            audit.userName || null,
+            audit.userRole || null,
+            audit.action,
+            audit.entityType,
+            audit.entityId,
+            audit.details || null
+          ]
+        );
+      }
+
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  private async loadDataFromPostgres(): Promise<void> {
+    const res = await dbManager.query('SELECT collection, id, data FROM app_store_entities');
+    const collectionsMap: Record<string, any[]> = {};
+    for (const row of res.rows) {
+      const col = row.collection;
+      if (!collectionsMap[col]) collectionsMap[col] = [];
+      const item = typeof row.data === 'string' ? JSON.parse(row.data) : row.data;
+      collectionsMap[col].push(item);
+    }
+
+    this.data = {
+      version: 1,
+      users: collectionsMap.users || this.data.users,
+      facilities: collectionsMap.facilities || this.data.facilities,
+      bays: collectionsMap.bays || this.data.bays,
+      pricingRules: collectionsMap.pricingRules || this.data.pricingRules,
+      holds: collectionsMap.holds || this.data.holds,
+      bookings: collectionsMap.bookings || this.data.bookings,
+      ledger: collectionsMap.ledger || this.data.ledger,
+      payouts: collectionsMap.payouts || this.data.payouts,
+      reviews: collectionsMap.reviews || this.data.reviews,
+      messages: collectionsMap.messages || this.data.messages,
+      notifications: collectionsMap.notifications || this.data.notifications,
+      disputes: collectionsMap.disputes || this.data.disputes,
+      providers: collectionsMap.providers || this.data.providers,
+      auditLogs: collectionsMap.auditLogs || this.data.auditLogs,
+      sessions: collectionsMap.sessions || [],
+      passwordResetTokens: collectionsMap.passwordResetTokens || []
+    };
+  }
+
+  private async persistToPostgres(): Promise<void> {
+    if (!this.isPostgresActive) return;
+    const collections: (keyof DatabaseSchema)[] = [
+      'users', 'facilities', 'bays', 'pricingRules', 'holds', 'bookings',
+      'ledger', 'payouts', 'reviews', 'messages', 'notifications', 'disputes',
+      'providers', 'auditLogs', 'sessions', 'passwordResetTokens'
+    ];
+
+    const client = await dbManager.getClient();
+    try {
+      await client.query('BEGIN');
+      for (const col of collections) {
+        const items = (this.data[col] || []) as any[];
+        for (const item of items) {
+          const id = item.id || item.token;
+          if (!id) continue;
+          await client.query(
+            `INSERT INTO app_store_entities (collection, id, data, updated_at)
+             VALUES ($1, $2, $3, NOW())
+             ON CONFLICT (collection, id) DO UPDATE SET data = $3, updated_at = NOW()`,
+            [col, id, JSON.stringify(item)]
+          );
+        }
+      }
+      await client.query('COMMIT');
+    } catch (err: any) {
+      await client.query('ROLLBACK');
+      console.error('[ParkEazy-Store] Batch persist to PostgreSQL failed:', err.message);
+    } finally {
+      client.release();
+    }
   }
 
   private loadOrSeed(): DatabaseSchema {
@@ -107,11 +443,27 @@ export class Database {
     const seeded = this.generateSeedData();
     seeded.sessions = [];
     seeded.passwordResetTokens = [];
-    fs.writeFileSync(DB_FILE, JSON.stringify(seeded, null, 2), 'utf-8');
+    if (appConfig.nodeEnv !== 'production') {
+      fs.writeFileSync(DB_FILE, JSON.stringify(seeded, null, 2), 'utf-8');
+    }
     return seeded;
   }
 
   private persist() {
+    if (this.isPostgresActive) {
+      this.persistToPostgres().catch(err => {
+        console.error('[ParkEazy-Store] Error persisting to PostgreSQL:', err.message);
+        if (appConfig.nodeEnv === 'production') {
+          console.error('[ParkEazy-Store] CRITICAL: PostgreSQL persistence write failure in production');
+        }
+      });
+    }
+
+    // In production, never use the JSON store as the production source of truth
+    if (appConfig.nodeEnv === 'production') {
+      return;
+    }
+
     if (this.saveTimeout) clearTimeout(this.saveTimeout);
     this.saveTimeout = setTimeout(() => {
       try {
@@ -197,6 +549,14 @@ export class Database {
     role: User['role'];
     businessDetails?: User['businessDetails'];
   }): User {
+    const requestedRole = (userData.role || 'customer').toLowerCase().trim() as UserRole;
+    if (requestedRole === 'admin') {
+      throw new Error('Administrative accounts cannot be registered publicly. Privileged accounts must be provisioned through an authorized administrative mechanism.');
+    }
+    if (requestedRole !== 'customer' && requestedRole !== 'host') {
+      throw new Error('Invalid registration role. Permitted public registration roles are "customer" and "host".');
+    }
+
     const existing = this.findUserByEmail(userData.email);
     if (existing) {
       throw new Error('A user with this email already exists.');
@@ -205,16 +565,16 @@ export class Database {
     const now = new Date().toISOString();
     const newUser: User = {
       id: 'usr_' + crypto.randomUUID().slice(0, 8),
-      email: userData.email.toLowerCase(),
+      email: userData.email.toLowerCase().trim(),
       passwordHash: hashPassword(userData.password),
       fullName: userData.fullName,
       phone: userData.phone || '+1 (555) 000-0000',
-      role: userData.role,
-      status: userData.role === 'host' ? 'active' : 'active',
+      role: requestedRole,
+      status: 'active',
       isEmailVerified: true,
       createdAt: now,
       updatedAt: now,
-      businessDetails: userData.businessDetails || (userData.role === 'host' ? {
+      businessDetails: userData.businessDetails || (requestedRole === 'host' ? {
         businessName: userData.fullName + ' Properties',
         registrationNumber: 'REG-' + Math.floor(100000 + Math.random() * 900000),
         taxId: 'XX-XXXXXXX',
@@ -228,6 +588,50 @@ export class Database {
 
     this.data.users.push(newUser);
     this.logAudit(newUser.id, newUser.fullName, newUser.role, 'USER_REGISTERED', 'user', newUser.id, `User registered as ${newUser.role}`);
+    this.persist();
+    return newUser;
+  }
+
+  public provisionAdminUser(data: {
+    email: string;
+    password: string;
+    fullName: string;
+    phone?: string;
+    role: User['role'];
+    actor: User;
+  }): User {
+    if (data.actor.role !== 'admin') {
+      throw new Error('Access denied: Administrator privileges required to provision privileged accounts.');
+    }
+    const existing = this.findUserByEmail(data.email);
+    if (existing) {
+      throw new Error('A user with this email already exists.');
+    }
+
+    const now = new Date().toISOString();
+    const newUser: User = {
+      id: 'usr_' + crypto.randomUUID().slice(0, 8),
+      email: data.email.toLowerCase().trim(),
+      passwordHash: hashPassword(data.password),
+      fullName: data.fullName,
+      phone: data.phone || '+1 (555) 000-0000',
+      role: data.role,
+      status: 'active',
+      isEmailVerified: true,
+      createdAt: now,
+      updatedAt: now
+    };
+
+    this.data.users.push(newUser);
+    this.logAudit(
+      data.actor.id,
+      data.actor.fullName,
+      data.actor.role,
+      'ADMIN_USER_PROVISIONED',
+      'user',
+      newUser.id,
+      `Administrator ${data.actor.fullName} provisioned account for ${newUser.email} with role ${newUser.role}`
+    );
     this.persist();
     return newUser;
   }
@@ -321,12 +725,12 @@ export class Database {
   }
 
   // ----------------- PASSWORD RECOVERY -----------------
-  public createPasswordResetToken(email: string): {
+  public async createPasswordResetToken(email: string): Promise<{
     success: boolean;
     message: string;
     resetToken?: string;
     deliveryStatus: 'DELIVERED' | 'SIMULATED' | 'FAILED' | 'UNCONFIGURED';
-  } {
+  }> {
     const normalizedEmail = email.toLowerCase().trim();
     const now = Date.now();
 
@@ -381,14 +785,40 @@ export class Database {
     );
     this.persist();
 
-    const emailProvider = this.data.providers.find(p => p.category === 'communications' && p.isEnabled);
-    const deliveryStatus = emailProvider ? 'DELIVERED' : (process.env.NODE_ENV === 'production' ? 'UNCONFIGURED' : 'SIMULATED');
+    // CONNECT TO REAL EMAIL/NOTIFICATION ADAPTER
+    let deliveryStatus: 'DELIVERED' | 'SIMULATED' | 'FAILED' | 'UNCONFIGURED' = 'SIMULATED';
+    try {
+      const emailAdapter = NotificationAdapterFactory.getAdapter('EMAIL');
+      const sendResult = await emailAdapter.send({
+        channel: 'EMAIL',
+        type: 'SECURITY_ALERT',
+        recipient: normalizedEmail,
+        subject: 'ParkEazy - Password Reset Verification Code',
+        content: `Hello ${user.fullName},\n\nA password reset request was received for your ParkEazy account.\n\nYour single-use password reset verification code is:\n\n${rawToken}\n\nThis code will expire in 15 minutes.\nIf you did not request this change, please ignore this email or contact support.`,
+        metadata: { userId: user.id }
+      });
+
+      if (sendResult.delivered) {
+        deliveryStatus = 'DELIVERED';
+      } else if (sendResult.isSimulated) {
+        deliveryStatus = 'SIMULATED';
+      } else if (sendResult.errorCode === 'CONFIGURATION_ERROR') {
+        deliveryStatus = 'UNCONFIGURED';
+      } else {
+        deliveryStatus = 'FAILED';
+      }
+    } catch (sendErr: any) {
+      console.error('[ParkEazy-Auth] Email delivery exception:', sendErr.message);
+      deliveryStatus = 'FAILED';
+    }
 
     return {
       success: true,
       message: deliveryStatus === 'SIMULATED'
         ? `A simulated password recovery token has been generated for ${normalizedEmail}.`
-        : `Password recovery instructions have been dispatched to ${normalizedEmail}.`,
+        : (deliveryStatus === 'DELIVERED'
+            ? `Password recovery instructions have been dispatched to ${normalizedEmail}.`
+            : `Password recovery request received. If email service is configured, instructions will arrive shortly.`),
       resetToken: process.env.NODE_ENV !== 'production' ? rawToken : undefined,
       deliveryStatus
     };
@@ -592,6 +1022,30 @@ export class Database {
     this.logAudit(actor.id, actor.fullName, actor.role, 'FACILITY_UPDATED', 'facility', facilityId, `Facility updated: ${facility.name}`);
     this.persist();
     return facility;
+  }
+
+  public deleteFacility(facilityId: string, actor: User): boolean {
+    const index = this.data.facilities.findIndex(f => f.id === facilityId);
+    if (index === -1) return false;
+    const facility = this.data.facilities[index];
+    if (actor.role === 'host' && facility.hostId !== actor.id) {
+      throw new Error('Unauthorized: You do not own this facility.');
+    }
+
+    // Check for active or confirmed bookings
+    const activeBooking = this.data.bookings.find(
+      b => b.facilityId === facilityId && (b.status === 'confirmed' || b.status === 'checked_in')
+    );
+    if (activeBooking) {
+      throw new Error('Cannot delete facility with active or confirmed customer reservations. Please suspend the facility instead.');
+    }
+
+    this.data.facilities.splice(index, 1);
+    this.data.bays = this.data.bays.filter(b => b.facilityId !== facilityId);
+    this.data.pricingRules = this.data.pricingRules.filter(r => r.facilityId !== facilityId);
+    this.logAudit(actor.id, actor.fullName, actor.role, 'FACILITY_DELETED', 'facility', facilityId, `Deleted facility "${facility.name}"`);
+    this.persist();
+    return true;
   }
 
   public submitFacilityForReview(facilityId: string, host: User): Facility {
@@ -838,6 +1292,24 @@ export class Database {
     this.logAudit(actor.id, actor.fullName, actor.role, 'PRICING_CREATED', 'pricing', newRule.id, `Created pricing rule "${newRule.name}"`);
     this.persist();
     return newRule;
+  }
+
+  public getPricingRuleById(ruleId: string): PricingRule | undefined {
+    return this.data.pricingRules.find(r => r.id === ruleId);
+  }
+
+  public deletePricingRule(ruleId: string, actor: User): boolean {
+    const index = this.data.pricingRules.findIndex(r => r.id === ruleId);
+    if (index === -1) return false;
+    const rule = this.data.pricingRules[index];
+    const facility = this.getFacilityById(rule.facilityId);
+    if (facility && actor.role === 'host' && facility.hostId !== actor.id) {
+      throw new Error('Unauthorized: You do not own this facility.');
+    }
+    this.data.pricingRules.splice(index, 1);
+    this.logAudit(actor.id, actor.fullName, actor.role, 'PRICING_DELETED', 'pricing', ruleId, `Deleted pricing rule "${rule.name}"`);
+    this.persist();
+    return true;
   }
 
   public calculateQuote(facilityId: string, startTimeIso: string, endTimeIso: string, bayMultiplier = 1.0) {
@@ -1386,13 +1858,19 @@ export class Database {
     return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 
-  public requestPayout(
+  public async requestPayout(
     hostId: string,
     amount: number,
     method: 'stripe_instant' | 'ach_bank_transfer',
     destinationAccount: string,
-    actor: User
-  ): PayoutRequest {
+    actor: User,
+    idempotencyKey?: string
+  ): Promise<PayoutRequest> {
+    // 1. Authorization: Verify host ownership or admin
+    if (actor.role !== 'admin' && (actor.role !== 'host' || actor.id !== hostId)) {
+      throw new Error('Forbidden: You can only request payouts for your own host account.');
+    }
+
     if (typeof amount !== 'number' || isNaN(amount) || !isFinite(amount) || amount <= 0) {
       throw new Error('Payout amount must be a positive number.');
     }
@@ -1400,42 +1878,137 @@ export class Database {
     if (sanitizedAmount < 10) {
       throw new Error('Minimum payout request amount is $10.00.');
     }
-
-    const available = this.getHostAvailableBalance(hostId);
-    if (sanitizedAmount > available) {
-      throw new Error(`Insufficient available balance ($${available.toFixed(2)}) for payout of $${sanitizedAmount.toFixed(2)}.`);
+    if (!destinationAccount || !destinationAccount.trim()) {
+      throw new Error('Destination account or payout method details are required.');
     }
 
-    const now = new Date().toISOString();
-    const refNum = 'PO-' + Math.floor(10000000 + Math.random() * 90000000);
-    const payout: PayoutRequest = {
-      id: 'po_' + crypto.randomUUID().slice(0, 8),
-      hostId,
-      amount: sanitizedAmount,
-      method,
-      destinationAccount,
-      status: method === 'stripe_instant' ? 'paid' : 'processing',
-      referenceNumber: refNum,
-      requestedAt: now,
-      completedAt: method === 'stripe_instant' ? now : undefined,
-      notes: method === 'stripe_instant' ? 'Transferred via Stripe Instant Payouts' : 'ACH Standard Transfer initiated'
-    };
+    // 2. Prevent duplicate payouts via Idempotency protection
+    const resolvedIdempotencyKey = idempotencyKey || `payout_${hostId}_${sanitizedAmount}_${destinationAccount}_${Math.floor(Date.now() / 60000)}`;
+    const existingPayout = this.data.payouts.find(p => (p as any).idempotencyKey === resolvedIdempotencyKey);
+    if (existingPayout) {
+      return existingPayout;
+    }
 
-    // Atomic transaction: store payout and deduct ledger entry synchronously
-    this.data.payouts.push(payout);
-    this.recordLedgerEntry({
-      idempotencyKey: 'payout_tx_' + payout.id,
-      hostId,
-      type: 'host_payout',
-      amount: -sanitizedAmount,
-      currency: 'USD',
-      description: `Payout to ${destinationAccount} (${refNum})`,
-      status: 'completed'
-    });
+    // 3. Concurrency lock to prevent concurrent double-spend of available balance
+    if (this.payoutLock) {
+      throw new Error('A financial payout transaction is currently in progress. Please retry in a moment.');
+    }
+    this.payoutLock = true;
 
-    this.logAudit(actor.id, actor.fullName, actor.role, 'PAYOUT_REQUESTED', 'payout', payout.id, `Requested payout $${sanitizedAmount.toFixed(2)} via ${method}`);
-    this.persist();
-    return payout;
+    try {
+      const available = this.getHostAvailableBalance(hostId);
+      if (sanitizedAmount > available) {
+        throw new Error(`Insufficient available balance ($${available.toFixed(2)}) for payout of $${sanitizedAmount.toFixed(2)}.`);
+      }
+
+      const now = new Date().toISOString();
+      const refNum = 'PO-' + Math.floor(10000000 + Math.random() * 90000000);
+
+      // Financial Integrity: NEVER record as 'paid' or 'completed' before confirmed external provider transfer
+      const payout: PayoutRequest = {
+        id: 'po_' + crypto.randomUUID().slice(0, 8),
+        hostId,
+        amount: sanitizedAmount,
+        method,
+        destinationAccount,
+        status: 'processing',
+        referenceNumber: refNum,
+        requestedAt: now,
+        notes: method === 'stripe_instant'
+          ? 'Instant payout transfer queued and awaiting provider confirmation'
+          : 'ACH Standard Transfer initiated and processing batch clearance'
+      };
+      (payout as any).idempotencyKey = resolvedIdempotencyKey;
+
+      const ledgerId = 'led_' + crypto.randomUUID().slice(0, 8);
+      const ledgerEntry: LedgerEntry = {
+        id: ledgerId,
+        timestamp: now,
+        type: 'host_payout',
+        amount: -sanitizedAmount,
+        currency: 'USD',
+        description: `Payout disbursement (${method === 'stripe_instant' ? 'Stripe Instant' : 'ACH Bank Transfer'}) to ${destinationAccount} (${refNum})`,
+        referenceId: payout.id,
+        status: 'pending'
+      };
+      (ledgerEntry as any).hostId = hostId;
+      (ledgerEntry as any).idempotencyKey = 'payout_tx_' + payout.id;
+
+      // 4. PostgreSQL Atomic Transaction Execution
+      if (this.isPostgresActive) {
+        const client = await dbManager.getClient();
+        try {
+          await client.query('BEGIN');
+
+          // Idempotency check inside transaction
+          const checkRes = await client.query(
+            'SELECT id FROM host_payout_records WHERE idempotency_key = $1',
+            [resolvedIdempotencyKey]
+          );
+          if (checkRes.rows.length > 0) {
+            await client.query('ROLLBACK');
+            return existingPayout || payout;
+          }
+
+          // Atomic insert into host_payout_records
+          await client.query(
+            `INSERT INTO host_payout_records (id, host_id, amount_cents, currency, status, method, destination_account, reference_or_utr, requested_at_utc, notes, idempotency_key)
+             VALUES ($1, $2, $3, 'USD', 'PROCESSING', $4, $5, $6, NOW(), $7, $8)`,
+            [payout.id, hostId, Math.round(sanitizedAmount * 100), method, destinationAccount, refNum, payout.notes, resolvedIdempotencyKey]
+          );
+
+          // Atomic insert into financial_ledger
+          await client.query(
+            `INSERT INTO financial_ledger (id, host_id, entry_type, debit_account, credit_account, amount_cents, currency, payment_provider, description, idempotency_key, reference_number, status, created_at_utc)
+             VALUES ($1, $2, 'HOST_PAYOUT', 'ACCOUNTS_PAYABLE', 'BANK_ACCOUNT', $3, 'USD', $4, $5, $6, $7, 'PENDING', NOW())`,
+            [ledgerEntry.id, hostId, Math.round(sanitizedAmount * 100), method === 'stripe_instant' ? 'STRIPE' : 'ACH', ledgerEntry.description, (ledgerEntry as any).idempotencyKey, refNum]
+          );
+
+          // Atomic insert into system_audit_logs
+          await client.query(
+            `INSERT INTO system_audit_logs (id, timestamp, user_id, user_name, user_role, action, entity_type, entity_id, details)
+             VALUES ($1, NOW(), $2, $3, $4, 'PAYOUT_REQUESTED', 'payout', $5, $6)`,
+            [crypto.randomUUID(), actor.id, actor.fullName, actor.role, payout.id, `Requested payout $${sanitizedAmount.toFixed(2)} via ${method} (Reference: ${refNum}, Status: processing)`]
+          );
+
+          // Atomic persistence of entities
+          await client.query(
+            `INSERT INTO app_store_entities (collection, id, data, updated_at) VALUES ($1, $2, $3, NOW())`,
+            ['payouts', payout.id, JSON.stringify(payout)]
+          );
+          await client.query(
+            `INSERT INTO app_store_entities (collection, id, data, updated_at) VALUES ($1, $2, $3, NOW())`,
+            ['ledger', ledgerEntry.id, JSON.stringify(ledgerEntry)]
+          );
+
+          await client.query('COMMIT');
+        } catch (dbErr: any) {
+          await client.query('ROLLBACK');
+          console.error('[ParkEazy-Store] Atomic payout transaction in PostgreSQL failed:', dbErr.message);
+          throw new Error('Database transaction failed while processing payout request: ' + dbErr.message);
+        } finally {
+          client.release();
+        }
+      }
+
+      // Deduct ledger balance with processing status
+      this.data.payouts.push(payout);
+      this.recordLedgerEntry(ledgerEntry);
+
+      this.logAudit(
+        actor.id,
+        actor.fullName,
+        actor.role,
+        'PAYOUT_REQUESTED',
+        'payout',
+        payout.id,
+        `Requested payout $${sanitizedAmount.toFixed(2)} via ${method} (Reference: ${refNum}, Status: processing)`
+      );
+      this.persist();
+      return payout;
+    } finally {
+      this.payoutLock = false;
+    }
   }
 
   public getPayouts(hostId?: string): PayoutRequest[] {

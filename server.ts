@@ -5,11 +5,12 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { apiRouter } from './server/routes';
 import { apiV1Router } from './apps/api/router';
-import { loadAndValidateConfig, sanitizeDatabaseUrl } from './apps/api/config/env';
+import { loadAndValidateConfig, sanitizeDatabaseUrl, appConfig } from './apps/api/config/env';
 import { correlationMiddleware, requestLogger } from './apps/api/middleware/correlation';
 import { errorHandler } from './apps/api/middleware/error-handler';
 import { dbManager } from './apps/api/database/connection';
 import { redisManager } from './apps/api/cache/redis';
+import { migrationManager } from './apps/api/database/migrator';
 import { db } from './server/db';
 
 dotenv.config();
@@ -51,20 +52,27 @@ export function createApp(): Express {
   // CORS configuration
   app.use((req, res, next) => {
     const origin = req.headers.origin;
-    const configuredOrigin = process.env.CORS_ORIGIN || '*';
-    if (configuredOrigin === '*') {
-      res.setHeader('Access-Control-Allow-Origin', '*');
-    } else {
-      const allowed = configuredOrigin.split(',').map((s) => s.trim());
-      if (origin && allowed.includes(origin)) {
+    const isProd = process.env.NODE_ENV === 'production';
+    const allowed = appConfig.corsOrigins;
+
+    if (origin) {
+      if (allowed.includes(origin)) {
         res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Vary', 'Origin');
+      } else if (!isProd && (allowed.includes('*') || origin.includes('localhost') || origin.includes('127.0.0.1'))) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Vary', 'Origin');
       }
+    } else if (!isProd && allowed.includes('*')) {
+      res.setHeader('Access-Control-Allow-Origin', '*');
     }
+
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.setHeader(
       'Access-Control-Allow-Headers',
-      'Content-Type, Authorization, X-User-Id, X-Correlation-Id, X-Request-Id'
+      'Content-Type, Authorization, X-User-Id, X-Correlation-Id, X-Request-Id, X-Idempotency-Key'
     );
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
     if (req.method === 'OPTIONS') {
       return res.sendStatus(204);
     }
@@ -73,7 +81,20 @@ export function createApp(): Express {
 
   // Health check endpoints
   app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+    const isPostgresConnected = dbManager.isPostgresConnected();
+    const isProduction = process.env.NODE_ENV === 'production';
+    if (isProduction && !isPostgresConnected) {
+      return res.status(503).json({
+        status: 'down',
+        message: 'PostgreSQL database unavailable in production',
+        timestamp: new Date().toISOString()
+      });
+    }
+    res.json({
+      status: 'ok',
+      database: isPostgresConnected ? 'connected' : 'in-memory',
+      timestamp: new Date().toISOString()
+    });
   });
 
   // Mount API routers
@@ -101,9 +122,22 @@ export function createApp(): Express {
 
 async function startServer() {
   const config = loadAndValidateConfig(process.env);
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  // 1. Establish database connection before serving database-dependent requests
+  console.log('[ParkEazy] Establishing authoritative database connection...');
+  await dbManager.initialize();
+
+  // 2. Apply required migrations through existing migration process
+  console.log('[ParkEazy] Applying database migrations...');
+  await migrationManager.runMigrations();
+
+  // 3. Initialize active database persistence store
+  console.log('[ParkEazy] Initializing active application data layer...');
+  await db.initialize();
+
   const app = createApp();
   const PORT = Number(process.env.PORT) || config.port || 3000;
-  const isProduction = process.env.NODE_ENV === 'production';
 
   if (!isProduction) {
     // Vite middleware for development

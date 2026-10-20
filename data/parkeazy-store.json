@@ -348,10 +348,10 @@
         "EV Charging 22kW",
         "Covered"
       ],
-      "status": "held",
+      "status": "available",
       "hourlyRateMultiplier": 1.2,
       "createdAt": "2026-01-12T10:00:00.000Z",
-      "updatedAt": "2026-10-20T13:57:57.647Z"
+      "updatedAt": "2026-10-20T15:26:59.839Z"
     },
     {
       "id": "bay_m3",
@@ -747,18 +747,7 @@
       "updatedAt": "2026-01-18T10:00:00.000Z"
     }
   ],
-  "holds": [
-    {
-      "id": "hld_4b8ffe35",
-      "bayId": "bay_m2",
-      "facilityId": "fac_metro_downtown",
-      "userId": "usr_cust1",
-      "startTime": "2026-10-20T13:57:57.643Z",
-      "endTime": "2026-10-20T14:57:57.643Z",
-      "heldAt": "2026-10-20T13:57:57.647Z",
-      "expiresAt": "2026-10-20T14:12:57.647Z"
-    }
-  ],
+  "holds": [],
   "bookings": [
     {
       "id": "bk_active_1",
@@ -877,6 +866,18 @@
       "description": "Net earnings for booking PKZ-784910 (L1-A04)",
       "status": "completed",
       "createdAt": "2026-10-20T03:30:00.000Z"
+    },
+    {
+      "id": "tx_eced11f4",
+      "idempotencyKey": "payout_tx_po_abd98d97",
+      "hostId": "usr_host1",
+      "type": "host_payout",
+      "amount": -25,
+      "balanceAfter": 35.99,
+      "currency": "USD",
+      "description": "Payout disbursement (Stripe Instant) to acct_test123 (PO-66868239)",
+      "status": "pending",
+      "createdAt": "2026-10-20T15:27:10.975Z"
     }
   ],
   "payouts": [
@@ -891,6 +892,18 @@
       "requestedAt": "2026-10-10T14:20:00.000Z",
       "completedAt": "2026-10-12T09:00:00.000Z",
       "notes": "ACH Regular Transfer cleared"
+    },
+    {
+      "id": "po_abd98d97",
+      "hostId": "usr_host1",
+      "amount": 25,
+      "method": "stripe_instant",
+      "destinationAccount": "acct_test123",
+      "status": "processing",
+      "referenceNumber": "PO-66868239",
+      "requestedAt": "2026-10-20T15:27:10.974Z",
+      "notes": "Instant payout transfer queued and awaiting provider confirmation",
+      "idempotencyKey": "payout_usr_host1_25_acct_test123_29875167"
     }
   ],
   "reviews": [
@@ -1060,6 +1073,28 @@
   ],
   "auditLogs": [
     {
+      "id": "aud_0e046d9b-7",
+      "timestamp": "2026-10-20T15:27:10.976Z",
+      "actorId": "usr_cust1",
+      "actorName": "Alex Driver",
+      "actorRole": "customer",
+      "action": "PASSWORD_RESET_REQUESTED",
+      "entityType": "user",
+      "entityId": "usr_cust1",
+      "details": "Password reset requested for alex.driver@example.com"
+    },
+    {
+      "id": "aud_c9c7ff39-3",
+      "timestamp": "2026-10-20T15:27:10.975Z",
+      "actorId": "usr_host1",
+      "actorName": "Marcus Vance",
+      "actorRole": "host",
+      "action": "PAYOUT_REQUESTED",
+      "entityType": "payout",
+      "entityId": "po_abd98d97",
+      "details": "Requested payout $25.00 via stripe_instant (Reference: PO-66868239, Status: processing)"
+    },
+    {
       "id": "aud_seed_1",
       "timestamp": "2026-10-20T04:12:00.000Z",
       "actorId": "usr_cust1",
@@ -1091,6 +1126,18 @@
       "entityType": "facility",
       "entityId": "fac_metro_downtown",
       "details": "Approved facility listing after compliance check"
+    }
+  ],
+  "sessions": [],
+  "passwordResetTokens": [
+    {
+      "id": "prt_caac20ef",
+      "tokenHash": "2735b4ab8db9dfc2b2852c32e65aa430749b923bd9ec8da8c0bb816eaffd101b",
+      "userId": "usr_cust1",
+      "email": "alex.driver@example.com",
+      "expiresAt": "2026-10-20T15:42:10.976Z",
+      "isUsed": false,
+      "createdAt": "2026-10-20T15:27:10.976Z"
     }
   ]
 }
