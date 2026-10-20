@@ -15,7 +15,7 @@ describe('Part 05: Facilities & Space Inventory Subsystem Tests', () => {
     it('should list default pre-seeded host facilities with complete metadata', async () => {
       const facilities = await facilitiesService.listHostFacilities(HOST_A_ID, 'default');
       expect(facilities.length).toBeGreaterThanOrEqual(3);
-      const annaNagar = facilities.find((f) => f.facilityCode === '#FAC-0104');
+      const annaNagar = facilities.find((f: any) => f.facilityCode === '#FAC-0104');
       expect(annaNagar).toBeDefined();
       expect(annaNagar?.name).toContain('Anna Nagar Plaza');
       expect(annaNagar?.city).toBe('Chennai');
@@ -68,11 +68,11 @@ describe('Part 05: Facilities & Space Inventory Subsystem Tests', () => {
   describe('2. Space Inventory & Bay Layout Management', () => {
     it('should list pre-seeded spaces for Anna Nagar Plaza facility', async () => {
       const facilities = await facilitiesService.listHostFacilities(HOST_A_ID, 'default');
-      const annaNagar = facilities.find((f) => f.facilityCode === '#FAC-0104')!;
+      const annaNagar = facilities.find((f: any) => f.facilityCode === '#FAC-0104')!;
       const spaces = await facilitiesService.listSpaces(annaNagar.id, HOST_A_ID, 'default');
       expect(spaces.length).toBe(24);
-      expect(spaces.some((s) => s.bayIdentifier === 'A-01')).toBe(true);
-      expect(spaces.some((s) => s.hasEvCharger)).toBe(true);
+      expect(spaces.some((s: any) => s.bayIdentifier === 'A-01')).toBe(true);
+      expect(spaces.some((s: any) => s.hasEvCharger)).toBe(true);
     });
 
     it('should create an individual parking space with custom attributes', async () => {
@@ -135,7 +135,7 @@ describe('Part 05: Facilities & Space Inventory Subsystem Tests', () => {
       };
       const created = await facilitiesService.bulkCreateSpaces(facilityId, HOST_A_ID, 'default', bulkPayload);
       expect(created.length).toBe(5);
-      expect(created.map((s) => s.bayIdentifier)).toEqual([
+      expect(created.map((s: any) => s.bayIdentifier)).toEqual([
         'BULK-01',
         'BULK-02',
         'BULK-03',
@@ -263,8 +263,8 @@ describe('Part 05: Facilities & Space Inventory Subsystem Tests', () => {
       });
       const publicListings = await facilitiesService.listPublicListings('default');
       expect(publicListings.length).toBeGreaterThanOrEqual(1);
-      expect(publicListings.some((l) => l.id === draft.id)).toBe(false);
-      expect(publicListings.some((l) => l.facilityCode === '#FAC-0104')).toBe(true);
+      expect(publicListings.some((l: any) => l.id === draft.id)).toBe(false);
+      expect(publicListings.some((l: any) => l.facilityCode === '#FAC-0104')).toBe(true);
     });
 
     it('should redact private host fields from public responses', async () => {

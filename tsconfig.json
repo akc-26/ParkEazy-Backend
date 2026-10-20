@@ -43,5 +43,5 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "exclude": ["dist", "services"]
+  "exclude": ["dist"]
 }

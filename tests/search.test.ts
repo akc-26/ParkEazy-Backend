@@ -67,9 +67,9 @@ describe('Part 06: Availability, Search & Discovery Test Suite', () => {
       });
 
       // Anna Nagar Plaza is at 13.0850, 80.2100 (0 meters away)
-      expect(resTight.results.some(r => r.facilityName.includes('Anna Nagar'))).toBe(true);
+      expect(resTight.results.some((r: any) => r.facilityName.includes('Anna Nagar'))).toBe(true);
       // T. Nagar (~5.5km away) must be excluded
-      expect(resTight.results.some(r => r.facilityName.includes('T. Nagar'))).toBe(false);
+      expect(resTight.results.some((r: any) => r.facilityName.includes('T. Nagar'))).toBe(false);
     });
 
     it('should filter by vehicle category compatibility (car vs bike vs auto)', async () => {
@@ -163,7 +163,7 @@ describe('Part 06: Availability, Search & Discovery Test Suite', () => {
     it('should return matching published inventory when searching for "Anna"', async () => {
       const suggestions = await searchService.getSuggestions('Anna');
       expect(suggestions.length).toBeGreaterThan(0);
-      const match = suggestions.find(s => s.title.includes('Anna Nagar'));
+      const match = suggestions.find((s: any) => s.title.includes('Anna Nagar'));
       expect(match).toBeDefined();
       expect(match?.type).toBe('commercial_hub');
     });
@@ -171,7 +171,7 @@ describe('Part 06: Availability, Search & Discovery Test Suite', () => {
     it('should return matching published inventory when searching for "Usman"', async () => {
       const suggestions = await searchService.getSuggestions('Usman');
       expect(suggestions.length).toBeGreaterThan(0);
-      const match = suggestions.find(s => s.title.includes('T. Nagar'));
+      const match = suggestions.find((s: any) => s.title.includes('T. Nagar'));
       expect(match).toBeDefined();
     });
 

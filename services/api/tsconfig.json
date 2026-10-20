@@ -1,0 +1,24 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "outDir": "../../dist/api",
+    "rootDir": "../..",
+    "types": [
+      "node"
+    ],
+    "noEmit": false,
+    "sourceMap": true,
+    "declaration": false
+  },
+  "include": [
+    "src/**/*.ts",
+    "../../packages/shared-types/src/**/*.ts",
+    "../../packages/validation/src/**/*.ts"
+  ],
+  "exclude": [
+    "../../node_modules",
+    "../../dist"
+  ]
+}

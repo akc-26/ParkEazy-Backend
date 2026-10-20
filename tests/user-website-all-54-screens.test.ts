@@ -162,7 +162,7 @@ describe('Point 01: Complete User Website — 54 Authoritative Screens Acceptanc
     it('returns truthful Indian payment methods (UPI, Card, Netbanking, Wallet)', () => {
       const methods = paymentsService.getPaymentMethods();
       expect(methods).toHaveLength(4);
-      expect(methods.map((m) => m.id)).toEqual(['upi', 'card', 'netbanking', 'wallet']);
+      expect(methods.map((m: any) => m.id)).toEqual(['upi', 'card', 'netbanking', 'wallet']);
       expect(methods[0].popular).toBe(true);
     });
 

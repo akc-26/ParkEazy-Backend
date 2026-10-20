@@ -241,7 +241,7 @@ export class UsersService {
           [userId]
         );
         if (res.rows.length > 0) {
-          return res.rows.map((r) => ({
+          return res.rows.map((r: any) => ({
             id: r.id,
             userId: r.user_id,
             plateNumber: r.plate_number,
