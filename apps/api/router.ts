@@ -1298,6 +1298,438 @@ apiV1Router.post(
   }
 );
 
+// 5b.17 Bulk Spaces Creation Endpoint
+apiV1Router.post(
+  '/hosts/:hostId/facilities/:facilityId/spaces/bulk',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'facilityId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'bays', required: true, type: 'array' },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const isAdmin = req.user!.roles.includes(UserRole.ADMIN) || req.user!.roles.includes(UserRole.SUPER_ADMIN);
+      const created = inventoryService.bulkCreateBays(req.params.facilityId, req.user!.id, req.body.bays, isAdmin);
+      sendSuccess(res, created, req.correlationId, 201);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 5b.18 Host Extension Requests (List & Decision)
+apiV1Router.get(
+  '/hosts/:hostId/extension-requests',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const queryRes = await dbManager.query(
+        `SELECT r.*, b.bay_id, b.location_id, b.start_time_utc, b.end_time_utc, 
+                u.first_name as customer_first_name, u.last_name as customer_last_name, u.email as customer_email,
+                loc.name as facility_name, bay.bay_number
+         FROM booking_extension_requests r
+         JOIN bookings b ON b.id = r.booking_id
+         JOIN users u ON u.id = r.customer_id
+         JOIN parking_locations loc ON loc.id = r.facility_id
+         JOIN parking_bays bay ON bay.id = b.bay_id
+         WHERE loc.host_id = $1
+         ORDER BY r.requested_at_utc DESC`,
+        [req.params.hostId]
+      );
+      sendSuccess(res, queryRes.rows || [], req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.post(
+  '/hosts/:hostId/extension-requests/:id/decision',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'decision', required: true, type: 'string' },
+  ]),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { decision, notes } = req.body;
+      const decisionUpper = String(decision).toUpperCase();
+      if (decisionUpper !== 'APPROVE' && decisionUpper !== 'REJECT') {
+        throw new AppError('Decision must be either APPROVE or REJECT', 400, 'INVALID_DECISION');
+      }
+
+      const reqRes = await dbManager.query(
+        `SELECT r.*, loc.host_id, b.end_time_utc, b.bay_id
+         FROM booking_extension_requests r
+         JOIN parking_locations loc ON loc.id = r.facility_id
+         JOIN bookings b ON b.id = r.booking_id
+         WHERE r.id = $1`,
+        [req.params.id]
+      );
+
+      if (!reqRes.rows.length) {
+        throw new AppError('Extension request not found', 404, 'NOT_FOUND');
+      }
+
+      const requestRecord = reqRes.rows[0];
+      const isAdmin = req.user!.roles.includes(UserRole.ADMIN) || req.user!.roles.includes(UserRole.SUPER_ADMIN);
+      if (!isAdmin && requestRecord.host_id !== req.params.hostId) {
+        throw new AppError('You do not own this facility', 403, 'FORBIDDEN');
+      }
+
+      if (decisionUpper === 'APPROVE') {
+        // Calculate new end time
+        const currentEnd = new Date(requestRecord.end_time_utc);
+        const hoursToAdd = Number(requestRecord.requested_additional_hours) || 1;
+        const newEnd = new Date(currentEnd.getTime() + hoursToAdd * 3600 * 1000);
+
+        // Check for conflicts with existing confirmed bookings on same bay
+        const conflictRes = await dbManager.query(
+          `SELECT id FROM bookings
+           WHERE bay_id = $1 AND id != $2 AND status = 'CONFIRMED'
+             AND start_time_utc < $3 AND end_time_utc > $4`,
+          [requestRecord.bay_id, requestRecord.booking_id, newEnd.toISOString(), currentEnd.toISOString()]
+        );
+
+        if (conflictRes.rows.length > 0) {
+          throw new AppError('Cannot approve extension: conflicting confirmed booking exists on this bay.', 409, 'EXTENSION_CONFLICT');
+        }
+
+        // Update booking end time
+        await dbManager.query(
+          `UPDATE bookings SET end_time_utc = $1 WHERE id = $2`,
+          [newEnd.toISOString(), requestRecord.booking_id]
+        );
+
+        // Update request status
+        await dbManager.query(
+          `UPDATE booking_extension_requests
+           SET status = 'APPROVED', decision_at_utc = NOW(), decision_notes = $1
+           WHERE id = $2`,
+          [notes || 'Approved by host', req.params.id]
+        );
+      } else {
+        await dbManager.query(
+          `UPDATE booking_extension_requests
+           SET status = 'REJECTED', decision_at_utc = NOW(), decision_notes = $1
+           WHERE id = $2`,
+          [notes || 'Rejected by host', req.params.id]
+        );
+      }
+
+      sendSuccess(res, { success: true, decision: decisionUpper }, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// Customer Extension Request
+apiV1Router.post(
+  '/bookings/:id/extension-request',
+  authGuard([UserRole.CUSTOMER, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  validate([
+    { field: 'additionalHours', required: true, type: 'number' },
+  ]),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const bRes = await dbManager.query('SELECT * FROM bookings WHERE id = $1', [req.params.id]);
+      if (!bRes.rows.length) {
+        throw new AppError('Booking not found', 404, 'NOT_FOUND');
+      }
+      const booking = bRes.rows[0];
+      if (booking.user_id !== req.user!.id && !req.user!.roles.includes(UserRole.ADMIN)) {
+        throw new AppError('Forbidden: not your booking', 403, 'FORBIDDEN');
+      }
+
+      const id = `ext-${crypto.randomUUID().slice(0, 8)}`;
+      const hours = Number(req.body.additionalHours) || 1;
+      const priceCents = hours * 500;
+      const feeCents = Math.round(priceCents * 0.15);
+
+      await dbManager.query(
+        `INSERT INTO booking_extension_requests (id, booking_id, facility_id, host_id, customer_id, requested_additional_hours, additional_price_cents, platform_fee_cents, status, requested_at_utc)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'PENDING', NOW())`,
+        [id, booking.id, booking.location_id, booking.host_id, req.user!.id, hours, priceCents, feeCents]
+      );
+
+      // Create notification for host
+      await dbManager.query(
+        `INSERT INTO host_notifications (id, host_id, notification_type, title, message, link, created_at_utc)
+         VALUES ($1, $2, 'EXTENSION_REQUEST', 'New Extension Request', $3, '/host/extensions', NOW())`,
+        [`notif-${crypto.randomUUID().slice(0, 8)}`, booking.host_id, `Driver requested +${hours}h extension for booking ${booking.id}.`]
+      ).catch(() => {});
+
+      sendSuccess(res, { id, status: 'PENDING', additionalHours: hours, additionalPriceCents: priceCents }, req.correlationId, 201);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 5b.19 Host Payout Methods & Settlement
+apiV1Router.get(
+  '/hosts/:hostId/payout-methods',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const methods = await dbManager.query(
+        `SELECT id, host_id, payout_type, beneficiary_name, bank_name, routing_number, account_number_masked, is_default, status, created_at_utc
+         FROM host_payout_methods
+         WHERE host_id = $1
+         ORDER BY is_default DESC, created_at_utc DESC`,
+        [req.params.hostId]
+      );
+      sendSuccess(res, methods.rows, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.post(
+  '/hosts/:hostId/payout-methods',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'beneficiaryName', required: true, type: 'string', minLength: 2 },
+    { field: 'bankName', required: true, type: 'string', minLength: 2 },
+    { field: 'accountNumber', required: true, type: 'string', minLength: 4 },
+  ]),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { beneficiaryName, bankName, routingNumber, accountNumber } = req.body;
+      const masked = '•••• ' + String(accountNumber).slice(-4);
+      const id = `pm-${crypto.randomUUID().slice(0, 8)}`;
+
+      // Reset existing defaults if this is default
+      await dbManager.query('UPDATE host_payout_methods SET is_default = FALSE WHERE host_id = $1', [req.params.hostId]);
+
+      await dbManager.query(
+        `INSERT INTO host_payout_methods (id, host_id, payout_type, beneficiary_name, bank_name, routing_number, account_number_masked, is_default, status, created_at_utc, updated_at_utc)
+         VALUES ($1, $2, 'BANK_TRANSFER', $3, $4, $5, $6, TRUE, 'ACTIVE', NOW(), NOW())`,
+        [id, req.params.hostId, beneficiaryName, bankName, routingNumber || '021000021', masked]
+      );
+
+      sendSuccess(res, { id, beneficiaryName, bankName, accountNumberMasked: masked, status: 'ACTIVE' }, req.correlationId, 201);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.get(
+  '/hosts/:hostId/payouts',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const earnings = ledgerService.getHostEarnings(req.params.hostId);
+      const records = await dbManager.query(
+        `SELECT p.*, m.bank_name, m.account_number_masked
+         FROM host_payout_records p
+         LEFT JOIN host_payout_methods m ON m.id = p.payout_method_id
+         WHERE p.host_id = $1
+         ORDER BY p.requested_at_utc DESC`,
+        [req.params.hostId]
+      );
+      sendSuccess(res, { earnings, records: records.rows || [] }, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.post(
+  '/hosts/:hostId/payouts',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'amountCents', required: true, type: 'number' },
+  ]),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const amountCents = Number(req.body.amountCents);
+      if (amountCents <= 0) {
+        throw new AppError('Payout amount must be greater than zero.', 400, 'INVALID_AMOUNT');
+      }
+
+      const earnings = ledgerService.getHostEarnings(req.params.hostId);
+      if (amountCents > earnings.availableForPayoutCents) {
+        throw new AppError(
+          `Requested payout amount ($${(amountCents / 100).toFixed(2)}) exceeds available balance ($${(earnings.availableForPayoutCents / 100).toFixed(2)}).`,
+          400,
+          'INSUFFICIENT_FUNDS'
+        );
+      }
+
+      const methods = await dbManager.query('SELECT id FROM host_payout_methods WHERE host_id = $1 AND status = \'ACTIVE\' LIMIT 1', [req.params.hostId]);
+      const payoutMethodId = methods.rows[0]?.id || null;
+
+      const payoutId = `pay-${crypto.randomUUID().slice(0, 8)}`;
+      const utr = `UTR-ACH-${Date.now().toString().slice(-8)}`;
+
+      await dbManager.query(
+        `INSERT INTO host_payout_records (id, host_id, amount_cents, currency, status, payout_method_id, reference_or_utr, requested_at_utc, settled_at_utc)
+         VALUES ($1, $2, $3, 'USD', 'SETTLED', $4, $5, NOW(), NOW())`,
+        [payoutId, req.params.hostId, amountCents, payoutMethodId, utr]
+      );
+
+      sendSuccess(res, {
+        id: payoutId,
+        amountCents,
+        currency: 'USD',
+        status: 'SETTLED',
+        referenceOrUtr: utr,
+        message: 'Payout disbursement processed successfully.',
+      }, req.correlationId, 201);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 5b.20 Customer Reviews & Host Replies
+apiV1Router.get(
+  '/hosts/:hostId/reviews',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const reviews = await dbManager.query(
+        `SELECT r.*, u.first_name as customer_first_name, u.last_name as customer_last_name, loc.name as facility_name
+         FROM customer_reviews r
+         JOIN parking_locations loc ON loc.id = r.facility_id
+         JOIN users u ON u.id = r.customer_id
+         WHERE loc.host_id = $1
+         ORDER BY r.created_at_utc DESC`,
+        [req.params.hostId]
+      );
+      sendSuccess(res, reviews.rows || [], req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.post(
+  '/hosts/:hostId/reviews/:id/reply',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'reply', required: true, type: 'string', minLength: 2 },
+  ]),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      await dbManager.query(
+        `UPDATE customer_reviews
+         SET host_reply = $1, updated_at_utc = NOW()
+         WHERE id = $2`,
+        [req.body.reply, req.params.id]
+      );
+      sendSuccess(res, { success: true }, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 5b.21 Notifications Subsystem
+apiV1Router.get(
+  '/hosts/:hostId/notifications',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const notifs = await dbManager.query(
+        `SELECT * FROM host_notifications WHERE host_id = $1 ORDER BY created_at_utc DESC LIMIT 50`,
+        [req.params.hostId]
+      );
+      sendSuccess(res, notifs.rows || [], req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.post(
+  '/hosts/:hostId/notifications/:id/read',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      await dbManager.query('UPDATE host_notifications SET is_read = TRUE WHERE id = $1 AND host_id = $2', [req.params.id, req.params.hostId]);
+      sendSuccess(res, { success: true }, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.post(
+  '/hosts/:hostId/notifications/read-all',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      await dbManager.query('UPDATE host_notifications SET is_read = TRUE WHERE host_id = $1', [req.params.hostId]);
+      sendSuccess(res, { success: true }, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 5b.22 Disputes & Support Inquiries
+apiV1Router.get(
+  '/hosts/:hostId/disputes',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const disputes = await dbManager.query(
+        `SELECT d.*, loc.name as facility_name
+         FROM support_disputes d
+         LEFT JOIN parking_locations loc ON loc.id = d.facility_id
+         WHERE loc.host_id = $1 OR d.raised_by_user_id = $1
+         ORDER BY d.created_at_utc DESC`,
+        [req.params.hostId]
+      );
+      sendSuccess(res, disputes.rows || [], req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.post(
+  '/hosts/:hostId/disputes',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'category', required: true, type: 'string' },
+    { field: 'description', required: true, type: 'string', minLength: 5 },
+  ]),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { category, description, bookingId, facilityId } = req.body;
+      const id = `disp-${crypto.randomUUID().slice(0, 8)}`;
+      await dbManager.query(
+        `INSERT INTO support_disputes (id, booking_id, facility_id, raised_by_user_id, category, description, status, created_at_utc)
+         VALUES ($1, $2, $3, $4, $5, $6, 'OPEN', NOW())`,
+        [id, bookingId || null, facilityId || null, req.params.hostId, category, description]
+      );
+      sendSuccess(res, { id, status: 'OPEN', message: 'Dispute registered and queued for mediation.' }, req.correlationId, 201);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
 // ----------------------------------------------------------------------
 // 5c. HP-05 Pricing & Policies Endpoints
 // ----------------------------------------------------------------------

@@ -108,13 +108,11 @@ export async function startServer() {
   const app = createApp();
   const PORT = appConfig.port;
 
-  // Initialize DB pool if configured
-  if (appConfig.database.isConfigured) {
-    try {
-      await dbManager.initialize();
-    } catch (err: any) {
-      console.warn('[ParkEazy] Non-blocking database initial connection notice:', err.message);
-    }
+  // Initialize DB pool (remote PostgreSQL or authoritative in-process PostgreSQL engine)
+  try {
+    await dbManager.initialize();
+  } catch (err: any) {
+    console.warn('[ParkEazy] Non-blocking database initial connection notice:', err.message);
   }
 
   // Initialize Redis client if configured

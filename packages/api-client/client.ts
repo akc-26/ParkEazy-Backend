@@ -882,6 +882,110 @@ export class ParkEazyApiClient {
       }
     );
   }
+
+  // --------------------------------------------------------------------------
+  // Host Operations & Workflows Client Methods
+  // --------------------------------------------------------------------------
+
+  public async getHostExtensionRequests(hostId: string): Promise<any[]> {
+    return this.request<any[]>(`/hosts/${hostId}/extension-requests`);
+  }
+
+  public async decideExtensionRequest(
+    hostId: string,
+    requestId: string,
+    decision: 'APPROVE' | 'REJECT',
+    notes?: string
+  ): Promise<any> {
+    return this.request<any>(`/hosts/${hostId}/extension-requests/${requestId}/decision`, {
+      method: 'POST',
+      body: JSON.stringify({ decision, notes }),
+    });
+  }
+
+  public async requestBookingExtension(bookingId: string, additionalHours: number): Promise<any> {
+    return this.request<any>(`/bookings/${bookingId}/extension-request`, {
+      method: 'POST',
+      body: JSON.stringify({ additionalHours }),
+    });
+  }
+
+  public async getHostPayoutMethods(hostId: string): Promise<any[]> {
+    return this.request<any[]>(`/hosts/${hostId}/payout-methods`);
+  }
+
+  public async saveHostPayoutMethod(
+    hostId: string,
+    data: { beneficiaryName: string; bankName: string; routingNumber?: string; accountNumber: string }
+  ): Promise<any> {
+    return this.request<any>(`/hosts/${hostId}/payout-methods`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async getHostPayouts(hostId: string): Promise<{ earnings: any; records: any[] }> {
+    return this.request<{ earnings: any; records: any[] }>(`/hosts/${hostId}/payouts`);
+  }
+
+  public async requestHostPayout(hostId: string, amountCents: number): Promise<any> {
+    return this.request<any>(`/hosts/${hostId}/payouts`, {
+      method: 'POST',
+      body: JSON.stringify({ amountCents }),
+    });
+  }
+
+  public async getHostReviews(hostId: string): Promise<any[]> {
+    return this.request<any[]>(`/hosts/${hostId}/reviews`);
+  }
+
+  public async replyToReview(hostId: string, reviewId: string, reply: string): Promise<any> {
+    return this.request<any>(`/hosts/${hostId}/reviews/${reviewId}/reply`, {
+      method: 'POST',
+      body: JSON.stringify({ reply }),
+    });
+  }
+
+  public async getHostNotifications(hostId: string): Promise<any[]> {
+    return this.request<any[]>(`/hosts/${hostId}/notifications`);
+  }
+
+  public async markNotificationRead(hostId: string, notificationId: string): Promise<any> {
+    return this.request<any>(`/hosts/${hostId}/notifications/${notificationId}/read`, {
+      method: 'POST',
+    });
+  }
+
+  public async markAllNotificationsRead(hostId: string): Promise<any> {
+    return this.request<any>(`/hosts/${hostId}/notifications/read-all`, {
+      method: 'POST',
+    });
+  }
+
+  public async getHostDisputes(hostId: string): Promise<any[]> {
+    return this.request<any[]>(`/hosts/${hostId}/disputes`);
+  }
+
+  public async createHostDispute(
+    hostId: string,
+    data: { category: string; description: string; bookingId?: string; facilityId?: string }
+  ): Promise<any> {
+    return this.request<any>(`/hosts/${hostId}/disputes`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async bulkCreateSpaces(
+    facilityId: string,
+    hostId: string,
+    bays: CreateBayRequest[]
+  ): Promise<ParkingBay[]> {
+    return this.request<ParkingBay[]>(`/hosts/${hostId}/facilities/${facilityId}/spaces/bulk`, {
+      method: 'POST',
+      body: JSON.stringify({ bays }),
+    });
+  }
 }
 
 export const apiClient = new ParkEazyApiClient();
