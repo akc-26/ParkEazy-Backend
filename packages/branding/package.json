@@ -2,12 +2,18 @@
   "name": "@parkeazy/branding",
   "version": "0.1.0",
   "private": true,
-  "description": "Centralized branding provider, theme manager, and token resolution for ParkEazy portals",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "description": "Multi-tenant branding provider and tokens for ParkEazy",
+  "main": "./src/index.tsx",
+  "types": "./src/index.tsx",
+  "type": "module",
   "dependencies": {
-    "@parkeazy/shared-types": "^0.1.0",
-    "@parkeazy/validation": "^0.1.0",
     "react": "^19.0.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.tsx",
+      "import": "./src/index.tsx",
+      "default": "./src/index.tsx"
+    }
   }
 }

@@ -25,7 +25,7 @@ export function BookingDurationAdvanceBookingRulesPage({ currentUser, onNavigate
     setSaving(true);
     setTimeout(() => {
       setSaving(false);
-      setSuccessMsg('Booking horizon thresholds and dwell limits updated successfully.');
+      setSuccessMsg('Booking horizon thresholds saved as browser draft only; backend duration rules engine integration required for enforcement.');
     }, 400);
   };
 

@@ -1,8 +1,6 @@
 {
-  "name": "ParkEazy - Parking Marketplace Platform",
-  "description": "Peer-to-peer parking marketplace connecting drivers with parking hosts, featuring dedicated User Website, Host Portal with Pricing, Policies, and Availability Calendar, Admin Panel, and unified REST API.",
+  "name": "ParkEazy",
+  "description": "Peer-to-peer parking marketplace connecting drivers needing parking with parking-space hosts, featuring Host Operations Studio, Admin Platform Operations, and Shared Backend API.",
   "requestFramePermissions": [],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

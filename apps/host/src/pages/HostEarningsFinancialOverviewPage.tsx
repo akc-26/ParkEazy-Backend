@@ -152,7 +152,7 @@ export function HostEarningsFinancialOverviewPage({ currentUser: _currentUser, o
 
           <div className="bg-white p-5 rounded-2xl border border-[#E2E8F0] shadow-xs">
             <div className="flex items-center justify-between text-xs text-[#64748B] mb-2 font-semibold">
-              <span>Platform Fee (15%)</span>
+              <span>Platform Service Fee</span>
               <span className="text-base">💼</span>
             </div>
             <div className="text-2xl font-extrabold text-[#141B2C]">
@@ -269,7 +269,7 @@ export function HostEarningsFinancialOverviewPage({ currentUser: _currentUser, o
                     <th className="py-3 px-4">Timestamp</th>
                     <th className="py-3 px-4">Allocated Bay</th>
                     <th className="py-3 px-4">Gross Invoiced</th>
-                    <th className="py-3 px-4">Platform Fee (15%)</th>
+                    <th className="py-3 px-4">Platform Fee</th>
                     <th className="py-3 px-4">Net Host Share</th>
                     <th className="py-3 px-4">Status</th>
                   </tr>
@@ -289,16 +289,16 @@ export function HostEarningsFinancialOverviewPage({ currentUser: _currentUser, o
                         })}
                       </td>
                       <td className="py-3.5 px-4 font-bold text-[#141B2C]">
-                        {item.spaceIdentifier || 'Bay B1-04'}
+                        {item.spaceIdentifier || 'Allocated Space'}
                       </td>
                       <td className="py-3.5 px-4 font-bold text-[#141B2C]">
-                        ₹{item.grossAmountInr?.toFixed(2) || '120.00'}
+                        ₹{item.grossAmountInr != null ? item.grossAmountInr.toFixed(2) : '0.00'}
                       </td>
                       <td className="py-3.5 px-4 text-[#EF4444] font-semibold">
-                        -₹{item.platformCommissionInr?.toFixed(2) || '18.00'}
+                        -₹{item.platformCommissionInr != null ? item.platformCommissionInr.toFixed(2) : '0.00'}
                       </td>
                       <td className="py-3.5 px-4 font-bold text-[#0F766E]">
-                        ₹{item.netAmountInr?.toFixed(2) || '102.00'}
+                        ₹{item.netAmountInr != null ? item.netAmountInr.toFixed(2) : '0.00'}
                       </td>
                       <td className="py-3.5 px-4">
                         <span
@@ -320,7 +320,7 @@ export function HostEarningsFinancialOverviewPage({ currentUser: _currentUser, o
         </div>
 
         {/* RECENT SETTLEMENT PAYOUTS WITH UTR NUMBERS */}
-        {payouts.length > 0 && (
+        {payouts.length > 0 ? (
           <div className="bg-white rounded-2xl p-6 border border-[#E2E8F0] shadow-xs">
             <h3 className="text-base font-bold text-[#141B2C] mb-4">
               Disbursed Settlement Batches & Banking UTRs
@@ -347,12 +347,16 @@ export function HostEarningsFinancialOverviewPage({ currentUser: _currentUser, o
                       ₹{p.netPayoutInr?.toFixed(2) || '0.00'}
                     </div>
                     <div className="text-[10px] text-[#94A3B8]">
-                      Settled on {new Date(p.disbursedAt || p.createdAt).toLocaleDateString()}
+                      Settled on {new Date(p.disbursedAt || p.createdAt || Date.now()).toLocaleDateString()}
                     </div>
                   </div>
                 </div>
               ))}
             </div>
+          </div>
+        ) : (
+          <div className="bg-white rounded-2xl p-6 border border-[#E2E8F0] shadow-xs text-xs text-[#64748B] text-center">
+            Payout history unavailable — no disbursed batches recorded yet.
           </div>
         )}
       </main>

@@ -1,14 +1,19 @@
 import React, { useState } from 'react';
 import { useBrand } from '@parkeazy/branding';
 import { UserAccount } from '@parkeazy/shared-types';
+import { ApiClient } from '@parkeazy/api-client';
 
 interface Props {
   currentUser?: UserAccount | null;
   onNavigate: (path: string) => void;
 }
 
+const apiClient = new ApiClient();
+
 export function SpacePricingConfigurationPage({ currentUser, onNavigate }: Props) {
   const { tenant } = useBrand();
+
+  const [selectedSpaceId, setSelectedSpaceId] = useState<string>('sp-anna-a04');
 
   // Form State
   const [baseRate, setBaseRate] = useState('40.00');
@@ -34,13 +39,19 @@ export function SpacePricingConfigurationPage({ currentUser, onNavigate }: Props
   const totalDriverPays = rawTotal + platformFee + gst;
   const hostNetTakeHome = rawTotal * 0.88;
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
-    setTimeout(() => {
+    setSuccessMsg(null);
+    try {
+      const rate = numBase;
+      await apiClient.spaces.update(selectedSpaceId, { hourlyRateInr: rate });
+      setSuccessMsg('Base tariff committed to space inventory. Note: dynamic multipliers are browser draft parameters and do not change live booking calculations without custom rate-matrix backend support.');
+    } catch (err: any) {
+      setSuccessMsg(err.message || 'Failed to update space pricing');
+    } finally {
       setSaving(false);
-      setSuccessMsg('Commercial tariff parameters and dynamic peak rules committed successfully.');
-    }, 400);
+    }
   };
 
   return (

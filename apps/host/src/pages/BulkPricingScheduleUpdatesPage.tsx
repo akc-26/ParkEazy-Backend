@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useBrand } from '@parkeazy/branding';
-import { UserAccount } from '@parkeazy/shared-types';
+import { UserAccount, ParkingSpace } from '@parkeazy/shared-types';
+import { ApiClient } from '@parkeazy/api-client';
 
 interface Props {
   currentUser?: UserAccount | null;
@@ -15,50 +16,60 @@ interface BayDeltaItem {
   delta: number;
 }
 
-const INITIAL_BAYS: BayDeltaItem[] = [
-  { bay: 'A-01', floor: 'Basement 1', currentRate: 40, proposedRate: 50, delta: 10 },
-  { bay: 'A-02', floor: 'Basement 1', currentRate: 40, proposedRate: 50, delta: 10 },
-  { bay: 'A-03', floor: 'Basement 1', currentRate: 40, proposedRate: 50, delta: 10 },
-  { bay: 'A-04 (EV)', floor: 'Basement 1', currentRate: 60, proposedRate: 70, delta: 10 },
-  { bay: 'B-01', floor: 'Basement 2', currentRate: 40, proposedRate: 50, delta: 10 },
-  { bay: 'B-02', floor: 'Basement 2', currentRate: 40, proposedRate: 50, delta: 10 },
-];
+const apiClient = new ApiClient();
 
 export function BulkPricingScheduleUpdatesPage({ currentUser, onNavigate }: Props) {
   const { tenant } = useBrand();
 
-  const [targetScope, setTargetScope] = useState('all_24');
+  const [spaces, setSpaces] = useState<ParkingSpace[]>([]);
+  const [targetScope, setTargetScope] = useState('all');
   const [adjustMethod, setAdjustMethod] = useState<'flat' | 'percentage' | 'fixed'>('flat');
   const [adjustValue, setAdjustValue] = useState('10');
   const [effectiveDate, setEffectiveDate] = useState('immediate');
   const [saving, setSaving] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
+  useEffect(() => {
+    let isMounted = true;
+    apiClient.facilities.getSpaces('fac-anna-001')
+      .then((loaded) => {
+        if (isMounted) setSpaces(loaded || []);
+      })
+      .catch(() => {
+        if (isMounted) setSpaces([]);
+      });
+    return () => { isMounted = false; };
+  }, []);
+
   const numVal = parseFloat(adjustValue) || 0;
 
-  const previewItems: BayDeltaItem[] = INITIAL_BAYS.map((b) => {
-    let nextRate = b.currentRate;
+  const previewItems: BayDeltaItem[] = spaces.map((s) => {
+    const cur = s.hourlyRateInr || 40;
+    let nextRate = cur;
     if (adjustMethod === 'flat') {
-      nextRate = b.currentRate + numVal;
+      nextRate = cur + numVal;
     } else if (adjustMethod === 'percentage') {
-      nextRate = Math.round(b.currentRate * (1 + numVal / 100));
+      nextRate = Math.round(cur * (1 + numVal / 100));
     } else {
       nextRate = numVal;
     }
     return {
-      ...b,
+      bay: s.bayIdentifier || s.spaceNumber || 'Bay',
+      floor: s.floorLevel || 'Ground',
+      currentRate: cur,
       proposedRate: Math.max(10, nextRate),
-      delta: Math.max(10, nextRate) - b.currentRate,
+      delta: Math.max(10, nextRate) - cur,
     };
   });
 
   const handleApply = (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+    setSuccessMsg(null);
     setTimeout(() => {
       setSaving(false);
-      setSuccessMsg(`Bulk tariff adjustments committed across ${previewItems.length} parking bays with full audit logging.`);
-    }, 400);
+      setSuccessMsg('Bulk update halted: A transactional bulk-pricing API is required on the server to execute atomic updates without partial failure.');
+    }, 300);
   };
 
   return (

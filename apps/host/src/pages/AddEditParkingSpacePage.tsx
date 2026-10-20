@@ -55,7 +55,7 @@ export function AddEditParkingSpacePage({ facilityId, spaceId, currentUser, onNa
     try {
       const s = await apiClient.spaces.get(spaceId);
       setSpace(s);
-      setBayIdentifier(s.bayIdentifier);
+      setBayIdentifier(s.bayIdentifier || s.spaceNumber || '');
       setFloorLevel(s.floorLevel || 'Ground');
       setVehicleCategory(s.vehicleCategory || 'car');
       setClassification(s.classification || 'standard');

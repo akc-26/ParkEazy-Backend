@@ -13,6 +13,10 @@ export default defineConfig({
     port: 3003,
     host: '0.0.0.0',
   },
+  build: {
+    outDir: path.resolve(currentDir, '../../dist/admin'),
+    emptyOutDir: true,
+  },
   resolve: {
     alias: {
       '@parkeazy/config': path.resolve(currentDir, '../../packages/config/src/index.ts'),

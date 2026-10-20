@@ -8,7 +8,14 @@ export default defineConfig(() => {
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, '.'),
+        '@': path.resolve('.'),
+        '@parkeazy/config': path.resolve('./packages/config/src/index.ts'),
+        '@parkeazy/shared-types': path.resolve('./packages/shared-types/src/index.ts'),
+        '@parkeazy/branding': path.resolve('./packages/branding/src/index.tsx'),
+        '@parkeazy/validation': path.resolve('./packages/validation/src/index.ts'),
+        '@parkeazy/api-client': path.resolve('./packages/api-client/src/index.ts'),
+        '@parkeazy/shared-ui': path.resolve('./packages/shared-ui/src/index.tsx'),
+        '@parkeazy/contracts': path.resolve('./packages/contracts/index.ts'),
       },
     },
     server: {

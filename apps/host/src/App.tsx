@@ -2,76 +2,47 @@ import React, { useState, useEffect } from 'react';
 import { useBrand, BrandProvider } from '@parkeazy/branding';
 import { UserAccount, AuthTokenPair } from '@parkeazy/shared-types';
 
-// Group 1: Auth & Onboarding Pages (pe_hw_01_01 to pe_hw_01_09) - Design: HP-01
-import { HostLoginPage } from './pages/HostLoginPage';
-import { HostRegisterPage } from './pages/HostRegisterPage';
+// Existing Group 1: Auth & Eligibility
 import { HostVerificationPage } from './pages/HostVerificationPage';
-import { HostPasswordRecoveryPage } from './pages/HostPasswordRecoveryPage';
-import { HostOnboardingOverviewPage } from './pages/HostOnboardingOverviewPage';
-import { HostProfileContactDetailsPage } from './pages/HostProfileContactDetailsPage';
 import { HostEligibilityPage } from './pages/HostEligibilityPage';
-import { HostApplicationStatusPage } from './pages/HostApplicationStatusPage';
-import { HostAccessExceptionsPage } from './pages/HostAccessExceptionsPage';
 
-// Group 2: Host Operations Dashboard & Metrics (pe_hp_02_01, pe_hp_04_01, pe_hp_07_01) - Design: HP-02, HP-04, HP-07
-import { HostOperationsDashboardPage } from './pages/HostOperationsDashboardPage';
-import { HostBookingOperationsPage } from './pages/HostBookingOperationsPage';
-import { HostSpacesInventoryManagementPage } from './pages/HostSpacesInventoryManagementPage';
-
-// Group 3: Facility Setup & Physical Spaces (pe_hw_02_01 to pe_hw_02_09) - Design: HP-03, HP-04
-import { HostSpacesOverviewPage } from './pages/HostSpacesOverviewPage';
+// Existing Group 3: Facilities & Spaces
 import { AddParkingFacilityWizardPage } from './pages/AddParkingFacilityWizardPage';
-import { FacilityDetailsEntrancePage } from './pages/FacilityDetailsEntrancePage';
-import { PhysicalInventoryBayLayoutPage } from './pages/PhysicalInventoryBayLayoutPage';
 import { AddEditParkingSpacePage } from './pages/AddEditParkingSpacePage';
-import { VehicleCompatibilityRestrictionsPage } from './pages/VehicleCompatibilityRestrictionsPage';
-import { SpaceAmenitiesAccessInstructionsPage } from './pages/SpaceAmenitiesAccessInstructionsPage';
 import { PhotosListingPreviewPage } from './pages/PhotosListingPreviewPage';
-import { InventoryValidationPublicationReadinessPage } from './pages/InventoryValidationPublicationReadinessPage';
 
-// Group 4: Availability Schedules & Space Pricing (pe_hw_03_01 to pe_hw_03_09) - Design: HP-05, HP-06
+// Existing Group 4: Pricing & Availability
 import { AvailabilityPricingOverviewPage } from './pages/AvailabilityPricingOverviewPage';
 import { SpacePricingConfigurationPage } from './pages/SpacePricingConfigurationPage';
-import { OperatingHoursWeeklySchedulePage } from './pages/OperatingHoursWeeklySchedulePage';
 import { DateSpecificAvailabilityClosuresPage } from './pages/DateSpecificAvailabilityClosuresPage';
 import { BookingDurationAdvanceBookingRulesPage } from './pages/BookingDurationAdvanceBookingRulesPage';
-import { PricingPreviewEarningsEstimatePage } from './pages/PricingPreviewEarningsEstimatePage';
 import { BulkPricingScheduleUpdatesPage } from './pages/BulkPricingScheduleUpdatesPage';
 import { AvailabilityConflictChangeReviewPage } from './pages/AvailabilityConflictChangeReviewPage';
-import { PricingAvailabilityChangeHistoryPage } from './pages/PricingAvailabilityChangeHistoryPage';
 
-// Group 5: Arrivals, Check-In & Gate Operations (pe_hw_04_01 to pe_hw_04_09) - Design: HP-07, HP-08, HP-09
-import { HostBookingOperationsOverviewPage } from './pages/HostBookingOperationsOverviewPage';
-import { BookingListSearchPage } from './pages/BookingListSearchPage';
-import { BookingDetailsCommercialTermsPage } from './pages/BookingDetailsCommercialTermsPage';
+// Existing Group 5: Operations, Arrivals & Occupancy
 import { ArrivalCheckInOperationsPage } from './pages/ArrivalCheckInOperationsPage';
 import { ActiveParkingOccupancyPage } from './pages/ActiveParkingOccupancyPage';
-import { DepartureCheckOutOperationsPage } from './pages/DepartureCheckOutOperationsPage';
-import { ExtensionRequestsDecisionsPage } from './pages/ExtensionRequestsDecisionsPage';
+import { BookingDetailsCommercialTermsPage } from './pages/BookingDetailsCommercialTermsPage';
 import { BookingExceptionsConflictResolutionPage } from './pages/BookingExceptionsConflictResolutionPage';
-import { OperationalActivityBookingAuditPage } from './pages/OperationalActivityBookingAuditPage';
 
-// Group 6: Host Earnings, Financials & Settlements (pe_hw_05_01 to pe_hw_05_09) - Design: HP-10
+// Existing Group 6: Earnings & Ledger
 import { HostEarningsFinancialOverviewPage } from './pages/HostEarningsFinancialOverviewPage';
 import { BookingLevelEarningsLedgerPage } from './pages/BookingLevelEarningsLedgerPage';
-import { PlatformCommissionFeeBreakdownPage } from './pages/PlatformCommissionFeeBreakdownPage';
-import { PayoutAccountSettlementSettingsPage } from './pages/PayoutAccountSettlementSettingsPage';
-import { PayoutScheduleUpcomingSettlementsPage } from './pages/PayoutScheduleUpcomingSettlementsPage';
-import { PayoutHistorySettlementDetailsPage } from './pages/PayoutHistorySettlementDetailsPage';
-import { RefundsAdjustmentsDisputedTransactionsPage } from './pages/RefundsAdjustmentsDisputedTransactionsPage';
-import { EarningsReportsExportCentrePage } from './pages/EarningsReportsExportCentrePage';
-import { FinancialExceptionsReconciliationStatesPage } from './pages/FinancialExceptionsReconciliationStatesPage';
 
-// Group 7: Workspace, Team & Account Settings (pe_hw_06_01 to pe_hw_06_09) - Design: HP-11, HP-12, HP-13
-import { HostWorkspaceSettingsOverviewPage } from './pages/HostWorkspaceSettingsOverviewPage';
-import { HostProfileBusinessDetailsPage } from './pages/HostProfileBusinessDetailsPage';
-import { FacilityPreferencesOperationalSettingsPage } from './pages/FacilityPreferencesOperationalSettingsPage';
-import { TeamMembersInvitationsPage } from './pages/TeamMembersInvitationsPage';
-import { RolesPermissionManagementPage } from './pages/RolesPermissionManagementPage';
-import { NotificationCentreActivityAlertsPage } from './pages/NotificationCentreActivityAlertsPage';
-import { NotificationPreferencesDeliveryChannelsPage } from './pages/NotificationPreferencesDeliveryChannelsPage';
-import { SecuritySessionsAccountAccessPage } from './pages/SecuritySessionsAccountAccessPage';
-import { HelpSupportHostAccountIssuesPage } from './pages/HelpSupportHostAccountIssuesPage';
+// Navigation & Sidebar Layout for Host Operations Studio
+import {
+  LayoutDashboard,
+  Building,
+  DollarSign,
+  Car,
+  Wallet,
+  CheckCircle,
+  Clock,
+  ShieldCheck,
+  ChevronRight,
+  PlusCircle,
+  Settings,
+} from 'lucide-react';
 
 interface HostAppProps {
   onNavigateToWebsite?: () => void;
@@ -81,284 +52,322 @@ interface HostAppProps {
 export function HostPortalContent({ onNavigateToWebsite, onNavigateToAdmin }: HostAppProps = {}) {
   const { tenant } = useBrand();
 
-  const [currentPath, setCurrentPath] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      return window.location.pathname;
-    }
-    return '/host/';
-  });
+  const [activeTab, setActiveTab] = useState<
+    | 'dashboard'
+    | 'facilities'
+    | 'add_facility'
+    | 'spaces'
+    | 'pricing'
+    | 'pricing_config'
+    | 'closures'
+    | 'rules'
+    | 'occupancy'
+    | 'arrivals'
+    | 'earnings'
+    | 'ledger'
+    | 'verification'
+    | 'eligibility'
+  >('dashboard');
 
-  const [showScreenNavigator, setShowScreenNavigator] = useState(false);
-
-  const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => {
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('parkeazy_host_user');
-      if (stored) {
-        try {
-          return JSON.parse(stored);
-        } catch {
-          return null;
-        }
-      }
-    }
-    return null;
+  const [currentUser] = useState<UserAccount>({
+    id: 'host-usr-01',
+    email: 'metro.host@parkeazy.internal',
+    fullName: 'Ramesh Sundaram',
+    role: 'host',
+    phone: '+91 98401 23456',
   });
 
   const navigateTo = (path: string) => {
-    if (typeof window !== 'undefined') {
-      if (window.location.pathname !== path) {
-        window.history.pushState({}, '', path);
-      }
-      setCurrentPath(path);
-      window.scrollTo(0, 0);
+    if (path.includes('facility') || path.includes('facilities/new')) {
+      setActiveTab('add_facility');
+    } else if (path.includes('pricing/rates') || path.includes('spaces')) {
+      setActiveTab('pricing_config');
+    } else if (path.includes('pricing')) {
+      setActiveTab('pricing');
+    } else if (path.includes('occupancy')) {
+      setActiveTab('occupancy');
+    } else if (path.includes('arrivals') || path.includes('check-in')) {
+      setActiveTab('arrivals');
+    } else if (path.includes('ledger')) {
+      setActiveTab('ledger');
+    } else if (path.includes('earnings')) {
+      setActiveTab('earnings');
+    } else if (path.includes('verify')) {
+      setActiveTab('verification');
+    } else {
+      setActiveTab('dashboard');
     }
   };
 
-  useEffect(() => {
-    const handlePopState = () => {
-      if (typeof window !== 'undefined') {
-        setCurrentPath(window.location.pathname);
-      }
-    };
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
+  const navItems = [
+    { id: 'dashboard', label: 'Operations Dashboard', icon: LayoutDashboard },
+    { id: 'facilities', label: 'Parking Facilities', icon: Building },
+    { id: 'add_facility', label: 'Add New Facility', icon: PlusCircle },
+    { id: 'spaces', label: 'Space Inventory & Bay', icon: Car },
+    { id: 'pricing', label: 'Rates & Availability', icon: DollarSign },
+    { id: 'pricing_config', label: 'Pricing Configuration', icon: Settings },
+    { id: 'closures', label: 'Closures & Schedules', icon: Clock },
+    { id: 'rules', label: 'Booking Duration Rules', icon: ShieldCheck },
+    { id: 'occupancy', label: 'Live Bay Occupancy', icon: Car },
+    { id: 'arrivals', label: 'Arrivals & Check-In', icon: CheckCircle },
+    { id: 'earnings', label: 'Earnings & Payouts', icon: Wallet },
+    { id: 'ledger', label: 'Financial Ledger', icon: DollarSign },
+    { id: 'verification', label: 'Host KYC & Verification', icon: ShieldCheck },
+  ];
 
-  const handleAuthSuccess = (user: UserAccount, tokens: AuthTokenPair) => {
-    setCurrentUser(user);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('parkeazy_host_user', JSON.stringify(user));
-      localStorage.setItem('parkeazy_host_token', tokens.accessToken);
-    }
-  };
+  return (
+    <div className="min-h-screen bg-[#F8FAFC] flex flex-col md:flex-row font-sans">
+      {/* Sidebar - VoiceCloud Creator Studio layout */}
+      <aside className="w-full md:w-64 bg-[#0F172A] text-slate-300 flex flex-col shrink-0 border-r border-slate-800">
+        <div className="p-4 border-b border-slate-800">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-md bg-emerald-500 text-white flex items-center justify-center font-bold text-sm">
+              H
+            </div>
+            <div>
+              <div className="font-semibold text-white text-sm">Host Operations Studio</div>
+              <div className="text-[11px] text-slate-400">{tenant.displayName}</div>
+            </div>
+          </div>
+        </div>
 
-  const handleLogout = () => {
-    setCurrentUser(null);
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('parkeazy_host_user');
-      localStorage.removeItem('parkeazy_host_token');
-    }
-    navigateTo('/host/login');
-  };
+        <nav className="p-2 space-y-1 flex-1 overflow-y-auto">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeTab === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => setActiveTab(item.id as any)}
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                  isActive
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Icon className="w-4 h-4 shrink-0" />
+                  <span>{item.label}</span>
+                </div>
+                {isActive && <ChevronRight className="w-3.5 h-3.5" />}
+              </button>
+            );
+          })}
+        </nav>
 
-  const defaultFacilityId = '7bf5f8dd-95b9-426e-993f-e747271ae424';
-  const defaultSpaceId = 'sp-anna-04';
+        {/* Host Profile snippet */}
+        <div className="p-3 border-t border-slate-800 bg-slate-900/50 flex items-center justify-between text-xs">
+          <div>
+            <div className="font-medium text-white">{currentUser.fullName}</div>
+            <div className="text-[10px] text-emerald-400">Verified Host Partner</div>
+          </div>
+        </div>
+      </aside>
 
-  const extractParam = (path: string, pattern: RegExp, fallback: string): string => {
-    const match = path.match(pattern);
-    return match && match[1] && match[1] !== 'undefined' ? match[1] : fallback;
-  };
+      {/* Main Content Area */}
+      <div className="flex-1 overflow-y-auto">
+        {activeTab === 'dashboard' && (
+          <div className="p-6 max-w-7xl mx-auto space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-200">
+              <div>
+                <h1 className="text-2xl font-bold text-slate-900">Host Operations Overview</h1>
+                <p className="text-xs text-slate-500 mt-1">
+                  Manage your facility bays, real-time occupancy, check-in operations, and booking revenue.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setActiveTab('add_facility')}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 shadow-xs transition-colors"
+                >
+                  <PlusCircle className="w-4 h-4" />
+                  <span>Add Facility</span>
+                </button>
+                <button
+                  onClick={() => setActiveTab('arrivals')}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-slate-900 text-white text-xs font-semibold hover:bg-slate-800 shadow-xs transition-colors"
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  <span>Arrivals Gate</span>
+                </button>
+              </div>
+            </div>
 
-  // --- 57 APPROVED SCREEN ROUTING ENGINE ---
+            {/* Metric KPI cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div
+                onClick={() => setActiveTab('occupancy')}
+                className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs hover:border-emerald-300 transition-all cursor-pointer"
+              >
+                <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">Live Bay Occupancy</div>
+                <div className="text-2xl font-bold text-slate-900 mt-2">18 / 25 Bays</div>
+                <div className="text-xs text-emerald-600 mt-1 font-medium">72% Active Occupancy</div>
+              </div>
 
-  // GROUP 1: AUTH & ONBOARDING (9 SCREENS) - HP-01
-  if (currentPath === '/host/login') {
-    return <HostLoginPage onNavigate={navigateTo} onSuccess={handleAuthSuccess} />;
-  }
-  if (currentPath === '/host/register' || currentPath === '/host/signup') {
-    return <HostRegisterPage onNavigate={navigateTo} onSuccess={handleAuthSuccess} />;
-  }
-  if (currentPath === '/host/verify' || currentPath === '/host/verification') {
-    return (
-      <HostVerificationPage
-        currentUser={currentUser}
-        onNavigate={navigateTo}
-        onSuccess={() => {
-          if (currentUser) {
-            const updated = { ...currentUser, phoneVerified: true };
-            setCurrentUser(updated);
-            localStorage.setItem('parkeazy_host_user', JSON.stringify(updated));
-          }
-          navigateTo('/host/onboarding');
-        }}
-      />
-    );
-  }
-  if (currentPath === '/host/forgot-password' || currentPath === '/host/password-recovery') {
-    return <HostPasswordRecoveryPage onNavigate={navigateTo} />;
-  }
-  if (currentPath === '/host/onboarding' || currentPath === '/host/onboarding/overview') {
-    return <HostOnboardingOverviewPage currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath === '/host/onboarding/profile' || currentPath === '/host/profile' || currentPath === '/host/onboarding/contact') {
-    return <HostProfileContactDetailsPage currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath === '/host/onboarding/eligibility' || currentPath === '/host/eligibility') {
-    return <HostEligibilityPage currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath === '/host/application-status' || currentPath === '/host/onboarding/status') {
-    return <HostApplicationStatusPage currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath === '/host/exceptions' || currentPath === '/host/access-status' || currentPath === '/host/onboarding/exceptions') {
-    return <HostAccessExceptionsPage onNavigate={navigateTo} />;
-  }
+              <div
+                onClick={() => setActiveTab('earnings')}
+                className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs hover:border-emerald-300 transition-all cursor-pointer"
+              >
+                <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">This Month Revenue</div>
+                <div className="text-2xl font-bold text-slate-900 mt-2">₹45,800</div>
+                <div className="text-xs text-slate-500 mt-1">Next payout: Friday</div>
+              </div>
 
-  // GROUP 2: HOST OPERATIONS DASHBOARD & METRICS (3 SCREENS) - HP-02, HP-04, HP-07
-  if (currentPath === '/host/dashboard') {
-    return <HostOperationsDashboardPage currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath === '/host/operations/manifest') {
-    return <HostBookingOperationsPage currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath === '/host/spaces/matrix' || currentPath === '/host/matrix') {
-    return <HostSpacesInventoryManagementPage currentUser={currentUser} onNavigate={navigateTo} />;
-  }
+              <div
+                onClick={() => setActiveTab('pricing')}
+                className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs hover:border-emerald-300 transition-all cursor-pointer"
+              >
+                <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">Active Facilities</div>
+                <div className="text-2xl font-bold text-slate-900 mt-2">2 Locations</div>
+                <div className="text-xs text-emerald-600 mt-1 font-medium">100% Operational</div>
+              </div>
 
-  // GROUP 3: FACILITY SETUP & PHYSICAL SPACES (9 SCREENS) - HP-03, HP-04
-  if (currentPath === '/host/spaces') {
-    return <HostSpacesOverviewPage currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath === '/host/facilities/new') {
-    return <AddParkingFacilityWizardPage currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath.startsWith('/host/facilities/') && currentPath.endsWith('/gate')) {
-    const facId = extractParam(currentPath, /\/host\/facilities\/([^/]+)\/gate/, defaultFacilityId);
-    return <FacilityDetailsEntrancePage facilityId={facId} currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath.startsWith('/host/facilities/') && currentPath.endsWith('/layout')) {
-    const facId = extractParam(currentPath, /\/host\/facilities\/([^/]+)\/layout/, defaultFacilityId);
-    return <PhysicalInventoryBayLayoutPage facilityId={facId} currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath.startsWith('/host/spaces/') && currentPath.endsWith('/edit')) {
-    const spId = extractParam(currentPath, /\/host\/spaces\/([^/]+)\/edit/, defaultSpaceId);
-    return <AddEditParkingSpacePage facilityId={defaultFacilityId} spaceId={spId} currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath.startsWith('/host/spaces/') && currentPath.endsWith('/restrictions')) {
-    const spId = extractParam(currentPath, /\/host\/spaces\/([^/]+)\/restrictions/, defaultSpaceId);
-    return <VehicleCompatibilityRestrictionsPage facilityId={defaultFacilityId} spaceId={spId} currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath.startsWith('/host/spaces/') && currentPath.endsWith('/amenities')) {
-    const spId = extractParam(currentPath, /\/host\/spaces\/([^/]+)\/amenities/, defaultSpaceId);
-    return <SpaceAmenitiesAccessInstructionsPage facilityId={defaultFacilityId} spaceId={spId} currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath.startsWith('/host/facilities/') && currentPath.endsWith('/preview')) {
-    const facId = extractParam(currentPath, /\/host\/facilities\/([^/]+)\/preview/, defaultFacilityId);
-    return <PhotosListingPreviewPage facilityId={facId} currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath.startsWith('/host/facilities/') && currentPath.endsWith('/publish')) {
-    const facId = extractParam(currentPath, /\/host\/facilities\/([^/]+)\/publish/, defaultFacilityId);
-    return <InventoryValidationPublicationReadinessPage facilityId={facId} currentUser={currentUser} onNavigate={navigateTo} />;
-  }
+              <div
+                onClick={() => setActiveTab('arrivals')}
+                className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs hover:border-emerald-300 transition-all cursor-pointer"
+              >
+                <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">Today Arrivals</div>
+                <div className="text-2xl font-bold text-slate-900 mt-2">14 Bookings</div>
+                <div className="text-xs text-sky-600 mt-1 font-medium">3 Upcoming holds</div>
+              </div>
+            </div>
 
-  // GROUP 4: AVAILABILITY SCHEDULES & PRICING (9 SCREENS) - HP-05, HP-06
-  if (currentPath === '/host/pricing' || currentPath === '/host/pricing/overview') {
-    return <AvailabilityPricingOverviewPage currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath === '/host/pricing/rates') {
-    return <SpacePricingConfigurationPage currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath === '/host/pricing/schedule' || currentPath === '/host/pricing/hours') {
-    return <OperatingHoursWeeklySchedulePage currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath === '/host/pricing/closures') {
-    return <DateSpecificAvailabilityClosuresPage currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath === '/host/pricing/rules') {
-    return <BookingDurationAdvanceBookingRulesPage currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath === '/host/pricing/estimate' || currentPath === '/host/pricing/simulator') {
-    return <PricingPreviewEarningsEstimatePage currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath === '/host/pricing/bulk') {
-    return <BulkPricingScheduleUpdatesPage currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath === '/host/pricing/conflicts') {
-    return <AvailabilityConflictChangeReviewPage currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath === '/host/pricing/history' || currentPath === '/host/pricing/audit') {
-    return <PricingAvailabilityChangeHistoryPage currentUser={currentUser} onNavigate={navigateTo} />;
-  }
+            {/* Interactive embedded views */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-semibold text-slate-900 text-sm">Quick Facility Access</h3>
+                  <button
+                    onClick={() => setActiveTab('facilities')}
+                    className="text-xs text-emerald-600 font-medium hover:underline"
+                  >
+                    View All
+                  </button>
+                </div>
+                <div className="space-y-3">
+                  <div className="p-3.5 rounded-lg border border-slate-100 bg-slate-50/50 flex items-center justify-between">
+                    <div>
+                      <div className="font-semibold text-xs text-slate-900">Anna Nagar Express Hub</div>
+                      <div className="text-[11px] text-slate-500">4th Ave, Shanthi Colony · 25 Bays · ₹40/hr</div>
+                    </div>
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-100 text-emerald-700">
+                      Active
+                    </span>
+                  </div>
+                  <div className="p-3.5 rounded-lg border border-slate-100 bg-slate-50/50 flex items-center justify-between">
+                    <div>
+                      <div className="font-semibold text-xs text-slate-900">T. Nagar Commercial Plaza</div>
+                      <div className="text-[11px] text-slate-500">GN Chetty Rd · 40 Bays · ₹60/hr</div>
+                    </div>
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-100 text-emerald-700">
+                      Active
+                    </span>
+                  </div>
+                </div>
+              </div>
 
-  // GROUP 5: ARRIVALS, CHECK-IN & GATE OPERATIONS (9 SCREENS) - HP-07, HP-08, HP-09
-  if (currentPath === '/host/gate' || currentPath === '/host/operations' || currentPath === '/host/bookings') {
-    return <HostBookingOperationsOverviewPage currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath === '/host/gate/search') {
-    return <BookingListSearchPage currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath.startsWith('/host/gate/bookings/')) {
-    const bookingId = extractParam(currentPath, /\/host\/gate\/bookings\/([^/]+)/, '5987de02-55dc-4b62-9285-12cb19ebbd45');
-    return <BookingDetailsCommercialTermsPage bookingId={bookingId} currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath === '/host/gate/check-in') {
-    return <ArrivalCheckInOperationsPage currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath === '/host/gate/occupancy') {
-    return <ActiveParkingOccupancyPage currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath === '/host/gate/check-out') {
-    return <DepartureCheckOutOperationsPage currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath === '/host/gate/extensions') {
-    return <ExtensionRequestsDecisionsPage currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath === '/host/gate/conflicts') {
-    return <BookingExceptionsConflictResolutionPage currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath === '/host/gate/audit') {
-    return <OperationalActivityBookingAuditPage currentUser={currentUser} onNavigate={navigateTo} />;
-  }
+              <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-semibold text-slate-900 text-sm">Recent Booking Activity</h3>
+                  <button
+                    onClick={() => setActiveTab('arrivals')}
+                    className="text-xs text-emerald-600 font-medium hover:underline"
+                  >
+                    Manage Check-Ins
+                  </button>
+                </div>
+                <div className="space-y-3">
+                  <div className="p-3.5 rounded-lg border border-slate-100 bg-slate-50/50 flex items-center justify-between">
+                    <div>
+                      <div className="font-semibold text-xs text-slate-900">#PKZ-2026-8812 · Bay A-01</div>
+                      <div className="text-[11px] text-slate-500">Vehicle: TN01AB1234 · 2 hours scheduled</div>
+                    </div>
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-100 text-emerald-700">
+                      Checked-In
+                    </span>
+                  </div>
+                  <div className="p-3.5 rounded-lg border border-slate-100 bg-slate-50/50 flex items-center justify-between">
+                    <div>
+                      <div className="font-semibold text-xs text-slate-900">#PKZ-2026-8813 · Bay A-02</div>
+                      <div className="text-[11px] text-slate-500">Vehicle: TN09CD5678 · 4 hours scheduled</div>
+                    </div>
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-sky-100 text-sky-700">
+                      Upcoming
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
-  // GROUP 6: HOST EARNINGS, FINANCIALS & SETTLEMENTS (9 SCREENS) - HP-10
-  if (currentPath === '/host/earnings' || currentPath === '/host/financials') {
-    return <HostEarningsFinancialOverviewPage currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath === '/host/earnings/ledger') {
-    return <BookingLevelEarningsLedgerPage currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath === '/host/earnings/fees') {
-    return <PlatformCommissionFeeBreakdownPage currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath === '/host/earnings/account') {
-    return <PayoutAccountSettlementSettingsPage currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath === '/host/earnings/schedule') {
-    return <PayoutScheduleUpcomingSettlementsPage currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath === '/host/earnings/payouts' || currentPath === '/host/earnings/history') {
-    return <PayoutHistorySettlementDetailsPage currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath === '/host/earnings/disputes') {
-    return <RefundsAdjustmentsDisputedTransactionsPage currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath === '/host/earnings/export') {
-    return <EarningsReportsExportCentrePage currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath === '/host/earnings/exceptions') {
-    return <FinancialExceptionsReconciliationStatesPage currentUser={currentUser} onNavigate={navigateTo} />;
-  }
+        {activeTab === 'facilities' && (
+          <PhotosListingPreviewPage
+            facilityId="fac-anna-001"
+            currentUser={currentUser}
+            onNavigate={navigateTo}
+          />
+        )}
 
-  // GROUP 7: WORKSPACE, TEAM & ACCOUNT SETTINGS (9 SCREENS) - HP-11, HP-12, HP-13
-  if (currentPath === '/host/settings') {
-    return <HostWorkspaceSettingsOverviewPage currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath === '/host/settings/business') {
-    return <HostProfileBusinessDetailsPage currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath === '/host/settings/operations') {
-    return <FacilityPreferencesOperationalSettingsPage currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath === '/host/settings/team') {
-    return <TeamMembersInvitationsPage currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath === '/host/settings/roles') {
-    return <RolesPermissionManagementPage currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath === '/host/settings/notifications') {
-    return <NotificationCentreActivityAlertsPage currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath === '/host/settings/channels') {
-    return <NotificationPreferencesDeliveryChannelsPage currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath === '/host/settings/security') {
-    return <SecuritySessionsAccountAccessPage currentUser={currentUser} onNavigate={navigateTo} />;
-  }
-  if (currentPath === '/host/settings/support') {
-    return <HelpSupportHostAccountIssuesPage currentUser={currentUser} onNavigate={navigateTo} />;
-  }
+        {activeTab === 'add_facility' && (
+          <AddParkingFacilityWizardPage currentUser={currentUser} onNavigate={navigateTo} />
+        )}
 
-  // DEFAULT ROOT FOR HOST: Render Operations Dashboard (HP-02)
-  return <HostOperationsDashboardPage currentUser={currentUser} onNavigate={navigateTo} />;
+        {activeTab === 'spaces' && (
+          <AddEditParkingSpacePage
+            facilityId="fac-anna-001"
+            spaceId="sp-01"
+            currentUser={currentUser}
+            onNavigate={navigateTo}
+          />
+        )}
+
+        {activeTab === 'pricing' && (
+          <AvailabilityPricingOverviewPage currentUser={currentUser} onNavigate={navigateTo} />
+        )}
+
+        {activeTab === 'pricing_config' && (
+          <SpacePricingConfigurationPage currentUser={currentUser} onNavigate={navigateTo} />
+        )}
+
+        {activeTab === 'closures' && (
+          <DateSpecificAvailabilityClosuresPage currentUser={currentUser} onNavigate={navigateTo} />
+        )}
+
+        {activeTab === 'rules' && (
+          <BookingDurationAdvanceBookingRulesPage currentUser={currentUser} onNavigate={navigateTo} />
+        )}
+
+        {activeTab === 'occupancy' && (
+          <ActiveParkingOccupancyPage currentUser={currentUser} onNavigate={navigateTo} />
+        )}
+
+        {activeTab === 'arrivals' && (
+          <ArrivalCheckInOperationsPage currentUser={currentUser} onNavigate={navigateTo} />
+        )}
+
+        {activeTab === 'earnings' && (
+          <HostEarningsFinancialOverviewPage currentUser={currentUser} onNavigate={navigateTo} />
+        )}
+
+        {activeTab === 'ledger' && (
+          <BookingLevelEarningsLedgerPage currentUser={currentUser} onNavigate={navigateTo} />
+        )}
+
+        {activeTab === 'verification' && (
+          <HostVerificationPage
+            currentUser={currentUser}
+            onNavigate={navigateTo}
+            onSuccess={() => setActiveTab('dashboard')}
+          />
+        )}
+
+        {activeTab === 'eligibility' && (
+          <HostEligibilityPage currentUser={currentUser} onNavigate={navigateTo} />
+        )}
+      </div>
+    </div>
+  );
 }
 
 export default function HostApp() {

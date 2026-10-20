@@ -52,7 +52,7 @@ export function HostVerificationPage({ currentUser, onNavigate, onSuccess }: Pro
       setOtpTimer(60);
       setMessage(`Security SMS dispatched to ${phone}. Enter 6-digit verification OTP.`);
     } catch (err: any) {
-      setError(err.message || 'Failed to dispatch SMS challenge. Please check your number.');
+      setError(err.message || 'Phone verification is not supported in the mock environment without external gateway.');
     } finally {
       setIsSendingOtp(false);
     }
@@ -104,8 +104,7 @@ export function HostVerificationPage({ currentUser, onNavigate, onSuccess }: Pro
   };
 
   const handleSimulateEmailVerify = () => {
-    setEmailVerified(true);
-    setMessage('Email endpoint verified successfully.');
+    setError('Email verification is not configured in the current API.');
   };
 
   const handleProceed = () => {

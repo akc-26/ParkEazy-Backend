@@ -82,9 +82,9 @@ export function AvailabilityConflictChangeReviewPage({ currentUser, onNavigate }
           <div className="p-4 sm:p-5 rounded-2xl bg-[#F0FDF4] border border-[#86EFAC] text-[#166534] flex items-center gap-3">
             <span className="text-2xl">✅</span>
             <div>
-              <h3 className="font-bold text-sm">Conflict Successfully Resolved</h3>
+              <h3 className="font-bold text-sm">Conflict Inspection Completed</h3>
               <p className="text-xs text-[#15803D]">
-                Booking #BK-9021 reassigned to Bay B-05. Motorist notified with updated QR pass and gate directives.
+                Host audit confirmed. Resolution unavailable — no safe execution API exists for automatically modifying live bookings.
               </p>
             </div>
           </div>
@@ -102,7 +102,7 @@ export function AvailabilityConflictChangeReviewPage({ currentUser, onNavigate }
             <div className="p-4 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-3 text-xs">
               <div className="flex justify-between border-b border-[#E2E8F0] pb-2">
                 <span className="text-[#64748B]">Affected Booking:</span>
-                <span className="font-mono font-bold text-[#141B2C]">#BK-9021</span>
+                <span className="font-mono font-bold text-[#141B2C]">Active Session</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-[#64748B]">Motorist Name:</span>
@@ -135,13 +135,13 @@ export function AvailabilityConflictChangeReviewPage({ currentUser, onNavigate }
                 {
                   id: 'reassign',
                   title: 'Pathway A: Reassign Motorist to Bay B-05',
-                  desc: 'Move booking #BK-9021 to adjacent vacant Bay B-05 with matching vehicle dimensions and automatically update motorist pass.',
+                  desc: 'Resolution unavailable — no safe execution API exists for automatically reallocating confirmed customer bookings without driver consent.',
                   recommended: true,
                 },
                 {
                   id: 'postpone',
                   title: 'Pathway B: Postpone Maintenance Window',
-                  desc: 'Shift the flooring wash window to 18:30 IST after motorist Rahul Sharma completes departure.',
+                  desc: 'Shift the flooring wash window to 18:30 IST after motorist completes departure.',
                   recommended: false,
                 },
                 {
@@ -173,6 +173,10 @@ export function AvailabilityConflictChangeReviewPage({ currentUser, onNavigate }
               ))}
             </div>
 
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
+              <strong>Operational Notice:</strong> Resolution unavailable — no safe execution API is currently exposed to mutate active confirmed driver reservations.
+            </div>
+
             {!resolved ? (
               <div className="pt-2">
                 <button
@@ -181,7 +185,7 @@ export function AvailabilityConflictChangeReviewPage({ currentUser, onNavigate }
                   disabled={resolving}
                   className="w-full py-3 rounded-xl bg-[#0F766E] hover:bg-[#0D655E] text-white text-xs font-bold shadow-sm cursor-pointer"
                 >
-                  {resolving ? 'Executing Protocol...' : '🚀 Execute Selected Resolution'}
+                  {resolving ? 'Executing Protocol...' : 'Review Resolution Plan'}
                 </button>
               </div>
             ) : (

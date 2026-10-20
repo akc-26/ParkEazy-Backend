@@ -17,40 +17,11 @@ interface ClosureEvent {
   status: 'active' | 'upcoming' | 'expired';
 }
 
-const INITIAL_CLOSURES: ClosureEvent[] = [
-  {
-    id: 'cl-1',
-    title: 'Diwali Festival Public Holiday',
-    type: 'holiday',
-    startDate: '2025-11-01',
-    endDate: '2025-11-03',
-    scope: 'All 24 Bays',
-    status: 'upcoming',
-  },
-  {
-    id: 'cl-2',
-    title: 'Basement 2 Hydro-Jet Flooring Wash',
-    type: 'maintenance',
-    startDate: '2025-11-15',
-    endDate: '2025-11-16',
-    scope: 'Basement 2 (B-01 to B-12)',
-    status: 'upcoming',
-  },
-  {
-    id: 'cl-3',
-    title: 'Pongal Festival Surge Period',
-    type: 'event',
-    startDate: '2026-01-14',
-    endDate: '2026-01-17',
-    scope: 'All 24 Bays',
-    status: 'upcoming',
-  },
-];
-
 export function DateSpecificAvailabilityClosuresPage({ currentUser, onNavigate }: Props) {
   const { tenant } = useBrand();
-  const [closures, setClosures] = useState<ClosureEvent[]>(INITIAL_CLOSURES);
+  const [closures, setClosures] = useState<ClosureEvent[]>([]);
   const [showModal, setShowModal] = useState(false);
+  const [saveNotice, setSaveNotice] = useState<string | null>(null);
 
   // Form State
   const [newTitle, setNewTitle] = useState('');
@@ -73,6 +44,7 @@ export function DateSpecificAvailabilityClosuresPage({ currentUser, onNavigate }
     };
     setClosures([...closures, item]);
     setShowModal(false);
+    setSaveNotice('Closure draft saved in this browser only. Server-side schedule blackout API required for live synchronization.');
     setNewTitle('');
     setNewStart('');
     setNewEnd('');

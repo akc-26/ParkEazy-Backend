@@ -9,33 +9,6 @@ interface Props {
   onNavigate: (path: string) => void;
 }
 
-const SAMPLE_PHOTO_PRESETS: FacilityPhoto[] = [
-  {
-    id: 'p1',
-    url: 'https://images.unsplash.com/photo-1590674899484-d5640e854abe?w=800&auto=format&fit=crop&q=80',
-    caption: 'Main Entrance & ANPR Gate Barrier',
-    category: 'entrance',
-    isCover: true,
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'p2',
-    url: 'https://images.unsplash.com/photo-1506521781263-d8422e82f27a?w=800&auto=format&fit=crop&q=80',
-    caption: 'Basement 1 Epoxy Marked Bays (A-01 to A-12)',
-    category: 'bay',
-    isCover: false,
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'p3',
-    url: 'https://images.unsplash.com/photo-1573348722427-f1d6819fdf98?w=800&auto=format&fit=crop&q=80',
-    caption: 'Dedicated 22kW EV Charging Station (Bay A-04)',
-    category: 'amenities',
-    isCover: false,
-    createdAt: new Date().toISOString(),
-  },
-];
-
 export function PhotosListingPreviewPage({
   facilityId,
   currentUser,
@@ -43,7 +16,7 @@ export function PhotosListingPreviewPage({
 }: Props) {
   const { tenant } = useBrand();
   const [facility, setFacility] = useState<ParkingFacility | null>(null);
-  const [photos, setPhotos] = useState<FacilityPhoto[]>(SAMPLE_PHOTO_PRESETS);
+  const [photos, setPhotos] = useState<FacilityPhoto[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -121,7 +94,7 @@ export function PhotosListingPreviewPage({
     }
   };
 
-  const coverPhoto = photos.find((p) => p.isCover) || photos[0] || SAMPLE_PHOTO_PRESETS[0];
+  const coverPhoto = photos.find((p) => p.isCover) || photos[0];
 
   if (loading) {
     return (

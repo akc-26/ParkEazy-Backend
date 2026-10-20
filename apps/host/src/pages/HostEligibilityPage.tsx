@@ -97,7 +97,7 @@ export function HostEligibilityPage({ currentUser, onNavigate }: Props) {
               Space Listing Eligibility & Required Information
             </h1>
             <p className="text-sm text-[#64748B] leading-relaxed mt-1">
-              Ensure your parking facility meets safety, vehicular clearance, and operational criteria prior to marketplace publication. Unapproved legal checks run asynchronously without blocking inventory allocation.
+              Ensure your parking facility meets safety, vehicular clearance, and operational criteria prior to marketplace publication. Eligibility review is pending formal host verification and operational inspection.
             </p>
           </div>
 
@@ -108,7 +108,7 @@ export function HostEligibilityPage({ currentUser, onNavigate }: Props) {
             </div>
             <div className="flex flex-col">
               <span className="text-[10px] uppercase font-bold text-[#64748B]">Bays Ready</span>
-              <span className="text-sm font-bold text-[#0F766E]">24 Verified</span>
+              <span className="text-sm font-bold text-[#0F766E]">Not verified</span>
             </div>
           </div>
         </div>
