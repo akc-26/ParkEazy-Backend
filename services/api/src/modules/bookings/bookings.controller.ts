@@ -169,6 +169,13 @@ export class BookingsController {
     return { success: true, data };
   }
 
+  @Post(':id/extension-requests')
+  public async createExtensionRequest(@Param('id') id: string, @Req() req: any, @Body() body: any) {
+    const user = await this.requireOwnBooking(id, req);
+    const data = await this.bookingsService.createExtensionRequest(id, user.sub, body);
+    return { success: true, data };
+  }
+
   @Get(':id/receipt')
   public async getReceipt(@Param('id') id: string, @Req() req: any) {
     await this.requireOwnBooking(id, req);

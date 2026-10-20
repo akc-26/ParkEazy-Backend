@@ -517,7 +517,7 @@ export class ParkEazyApiClient {
       return res.data || (res as any);
     },
     getExtensionRequests: async (): Promise<any[]> => {
-      const res = await this.get<{ data: any[] }>('/host/operations/extensions');
+      const res = await this.get<{ data: any[] }>('/host/extension-requests');
       return res.data || (res as any);
     },
     getAuditEvents: async (): Promise<any[]> => {
@@ -525,7 +525,7 @@ export class ParkEazyApiClient {
       return res.data || (res as any);
     },
     decideExtensionRequest: async (requestId: string, decision: string): Promise<any> => {
-      const res = await this.post<{ data: any }>(`/host/operations/extensions/${requestId}/decide`, { decision });
+      const res = await this.post<{ data: any }>(`/host/extension-requests/${requestId}/decision`, { decision });
       return res.data || (res as any);
     },
     checkIn: async (bookingId: string): Promise<any> => {

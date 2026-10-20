@@ -47,4 +47,18 @@ export class HostOpsController {
     const data = await this.hostOpsService.requestPayout(user.sub);
     return { success: true, data };
   }
+
+  @Get('extension-requests')
+  public async getExtensionRequests(@Req() req: any) {
+    const user = (req.user as JwtPayload) || { sub: '00000000-0000-4000-a000-000000000002' };
+    const data = await this.hostOpsService.getExtensionRequests(user.sub);
+    return { success: true, data };
+  }
+
+  @Post('extension-requests/:id/decision')
+  public async decideExtensionRequest(@Req() req: any) {
+    const user = (req.user as JwtPayload) || { sub: '00000000-0000-4000-a000-000000000002' };
+    const data = await this.hostOpsService.decideExtensionRequest(req.params.id, req.body?.decision, user.sub);
+    return { success: true, data };
+  }
 }

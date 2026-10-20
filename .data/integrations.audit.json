@@ -1,0 +1,290 @@
+[
+  {
+    "id": "aud-6buxz59",
+    "actorId": "test-actor",
+    "action": "UPDATE_INTEGRATION_CONFIG",
+    "resourceType": "INTEGRATION",
+    "resourceId": "twilio_sms",
+    "provider": "TWILIO_SMS",
+    "details": {
+      "enabled": false,
+      "mode": "test",
+      "status": "NOT_CONFIGURED",
+      "completeness": "FULLY_CONFIGURED",
+      "changedSecretFields": [
+        "secretKey"
+      ],
+      "changedOperationalFields": [
+        "fromNumber"
+      ]
+    },
+    "createdAtUtc": "2026-10-20T14:36:04.773Z"
+  },
+  {
+    "id": "aud-kt4e5jn",
+    "actorId": "test-actor",
+    "action": "UPDATE_INTEGRATION_CONFIG",
+    "resourceType": "INTEGRATION",
+    "resourceId": "twilio_sms",
+    "provider": "TWILIO_SMS",
+    "details": {
+      "enabled": false,
+      "mode": "test",
+      "status": "NOT_CONFIGURED",
+      "completeness": "PARTIALLY_CONFIGURED",
+      "changedSecretFields": [
+        "apiKey"
+      ],
+      "changedOperationalFields": []
+    },
+    "createdAtUtc": "2026-10-20T14:36:04.772Z"
+  },
+  {
+    "id": "aud-7shjjbu",
+    "actorId": "admin-test",
+    "action": "UPDATE_INTEGRATION_CONFIG",
+    "resourceType": "INTEGRATION",
+    "resourceId": "sendgrid_email",
+    "provider": "SENDGRID_EMAIL",
+    "details": {
+      "enabled": true,
+      "mode": "live",
+      "status": "CONNECTED",
+      "completeness": "FULLY_CONFIGURED",
+      "changedSecretFields": [],
+      "changedOperationalFields": [
+        "enabled:true",
+        "mode:live"
+      ]
+    },
+    "createdAtUtc": "2026-10-20T14:36:04.766Z"
+  },
+  {
+    "id": "aud-2947b42",
+    "actorId": "admin-02",
+    "action": "UPDATE_INTEGRATION_CONFIG",
+    "resourceType": "INTEGRATION",
+    "resourceId": "stripe",
+    "provider": "STRIPE",
+    "details": {
+      "enabled": false,
+      "mode": "test",
+      "status": "NOT_CONFIGURED",
+      "completeness": "FULLY_CONFIGURED",
+      "changedSecretFields": [
+        "secretKey"
+      ],
+      "changedOperationalFields": []
+    },
+    "createdAtUtc": "2026-10-20T14:36:04.765Z"
+  },
+  {
+    "id": "aud-kqbxrha",
+    "actorId": "admin-01",
+    "action": "UPDATE_INTEGRATION_CONFIG",
+    "resourceType": "INTEGRATION",
+    "resourceId": "stripe",
+    "provider": "STRIPE",
+    "details": {
+      "enabled": false,
+      "mode": "test",
+      "status": "NOT_CONFIGURED",
+      "completeness": "FULLY_CONFIGURED",
+      "changedSecretFields": [
+        "secretKey"
+      ],
+      "changedOperationalFields": [
+        "mode:test"
+      ]
+    },
+    "createdAtUtc": "2026-10-20T14:36:04.764Z"
+  },
+  {
+    "id": "aud-7aiaie9",
+    "actorId": "usr-admin-super",
+    "action": "UPDATE_INTEGRATION_CONFIG",
+    "resourceType": "INTEGRATION",
+    "resourceId": "twilio_sms",
+    "provider": "TWILIO_SMS",
+    "details": {
+      "enabled": false,
+      "mode": "test",
+      "status": "NOT_CONFIGURED",
+      "completeness": "FULLY_CONFIGURED",
+      "changedSecretFields": [
+        "apiKey",
+        "secretKey"
+      ],
+      "changedOperationalFields": [
+        "fromNumber",
+        "mode:test"
+      ]
+    },
+    "createdAtUtc": "2026-10-20T14:36:04.763Z"
+  },
+  {
+    "id": "aud-itmiw28",
+    "actorId": "usr-admin-test",
+    "action": "UPDATE_INTEGRATION_CONFIG",
+    "resourceType": "INTEGRATION",
+    "resourceId": "sendgrid_email",
+    "provider": "SENDGRID_EMAIL",
+    "details": {
+      "enabled": false,
+      "mode": "test",
+      "status": "NOT_CONFIGURED",
+      "completeness": "FULLY_CONFIGURED",
+      "changedSecretFields": [
+        "apiKey"
+      ],
+      "changedOperationalFields": [
+        "mode:test"
+      ]
+    },
+    "createdAtUtc": "2026-10-20T14:36:04.761Z"
+  },
+  {
+    "id": "aud-3b64nv2",
+    "actorId": "test-actor",
+    "action": "UPDATE_INTEGRATION_CONFIG",
+    "resourceType": "INTEGRATION",
+    "resourceId": "twilio_sms",
+    "provider": "TWILIO_SMS",
+    "details": {
+      "enabled": false,
+      "mode": "test",
+      "status": "NOT_CONFIGURED",
+      "completeness": "FULLY_CONFIGURED",
+      "changedSecretFields": [
+        "secretKey"
+      ],
+      "changedOperationalFields": [
+        "fromNumber"
+      ]
+    },
+    "createdAtUtc": "2026-10-20T14:34:11.573Z"
+  },
+  {
+    "id": "aud-0rw59bd",
+    "actorId": "test-actor",
+    "action": "UPDATE_INTEGRATION_CONFIG",
+    "resourceType": "INTEGRATION",
+    "resourceId": "twilio_sms",
+    "provider": "TWILIO_SMS",
+    "details": {
+      "enabled": false,
+      "mode": "test",
+      "status": "NOT_CONFIGURED",
+      "completeness": "PARTIALLY_CONFIGURED",
+      "changedSecretFields": [
+        "apiKey"
+      ],
+      "changedOperationalFields": []
+    },
+    "createdAtUtc": "2026-10-20T14:34:11.573Z"
+  },
+  {
+    "id": "aud-9rd4g4n",
+    "actorId": "admin-test",
+    "action": "UPDATE_INTEGRATION_CONFIG",
+    "resourceType": "INTEGRATION",
+    "resourceId": "sendgrid_email",
+    "provider": "SENDGRID_EMAIL",
+    "details": {
+      "enabled": true,
+      "mode": "live",
+      "status": "CONNECTED",
+      "completeness": "FULLY_CONFIGURED",
+      "changedSecretFields": [],
+      "changedOperationalFields": [
+        "enabled:true",
+        "mode:live"
+      ]
+    },
+    "createdAtUtc": "2026-10-20T14:34:11.566Z"
+  },
+  {
+    "id": "aud-6px3fy0",
+    "actorId": "admin-02",
+    "action": "UPDATE_INTEGRATION_CONFIG",
+    "resourceType": "INTEGRATION",
+    "resourceId": "stripe",
+    "provider": "STRIPE",
+    "details": {
+      "enabled": false,
+      "mode": "test",
+      "status": "NOT_CONFIGURED",
+      "completeness": "FULLY_CONFIGURED",
+      "changedSecretFields": [
+        "secretKey"
+      ],
+      "changedOperationalFields": []
+    },
+    "createdAtUtc": "2026-10-20T14:34:11.565Z"
+  },
+  {
+    "id": "aud-bwv7nqx",
+    "actorId": "admin-01",
+    "action": "UPDATE_INTEGRATION_CONFIG",
+    "resourceType": "INTEGRATION",
+    "resourceId": "stripe",
+    "provider": "STRIPE",
+    "details": {
+      "enabled": false,
+      "mode": "test",
+      "status": "NOT_CONFIGURED",
+      "completeness": "FULLY_CONFIGURED",
+      "changedSecretFields": [
+        "secretKey"
+      ],
+      "changedOperationalFields": [
+        "mode:test"
+      ]
+    },
+    "createdAtUtc": "2026-10-20T14:34:11.564Z"
+  },
+  {
+    "id": "aud-ekl5zsr",
+    "actorId": "usr-admin-super",
+    "action": "UPDATE_INTEGRATION_CONFIG",
+    "resourceType": "INTEGRATION",
+    "resourceId": "twilio_sms",
+    "provider": "TWILIO_SMS",
+    "details": {
+      "enabled": false,
+      "mode": "test",
+      "status": "NOT_CONFIGURED",
+      "completeness": "FULLY_CONFIGURED",
+      "changedSecretFields": [
+        "apiKey",
+        "secretKey"
+      ],
+      "changedOperationalFields": [
+        "fromNumber",
+        "mode:test"
+      ]
+    },
+    "createdAtUtc": "2026-10-20T14:34:11.563Z"
+  },
+  {
+    "id": "aud-xpwrre3",
+    "actorId": "usr-admin-test",
+    "action": "UPDATE_INTEGRATION_CONFIG",
+    "resourceType": "INTEGRATION",
+    "resourceId": "sendgrid_email",
+    "provider": "SENDGRID_EMAIL",
+    "details": {
+      "enabled": false,
+      "mode": "test",
+      "status": "NOT_CONFIGURED",
+      "completeness": "FULLY_CONFIGURED",
+      "changedSecretFields": [
+        "apiKey"
+      ],
+      "changedOperationalFields": [
+        "mode:test"
+      ]
+    },
+    "createdAtUtc": "2026-10-20T14:34:11.562Z"
+  }
+]

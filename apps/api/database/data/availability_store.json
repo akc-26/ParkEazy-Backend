@@ -1,5 +1,28 @@
 {
-  "recurringSchedules": [],
+  "recurringSchedules": [
+    {
+      "id": "sch-1caebb2a",
+      "hostId": "usr-host-avail-a",
+      "facilityId": "loc-b871bdd0a5d8",
+      "dayOfWeek": 1,
+      "startTime": "08:00",
+      "endTime": "18:00",
+      "isAvailable": true,
+      "createdAtUtc": "2026-10-20T14:35:57.954Z",
+      "updatedAtUtc": "2026-10-20T14:35:57.954Z"
+    },
+    {
+      "id": "sch-b07fa291",
+      "hostId": "usr-host-avail-a",
+      "facilityId": "loc-b871bdd0a5d8",
+      "dayOfWeek": 2,
+      "startTime": "08:00",
+      "endTime": "18:00",
+      "isAvailable": true,
+      "createdAtUtc": "2026-10-20T14:35:57.954Z",
+      "updatedAtUtc": "2026-10-20T14:35:57.954Z"
+    }
+  ],
   "dateOverrides": [],
   "maintenanceBlocks": [
     {
@@ -17,5 +40,5 @@
       "updatedAtUtc": "2026-10-15T10:00:00Z"
     }
   ],
-  "updatedAt": "2026-10-20T11:47:53.321Z"
+  "updatedAt": "2026-10-20T14:35:57.966Z"
 }

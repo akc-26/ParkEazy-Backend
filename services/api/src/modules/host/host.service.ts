@@ -60,7 +60,7 @@ export class HostOpsService {
     const facilities = await this.facilitiesService.listHostFacilities(hostId);
     const hostFacilityIds = new Set(facilities.map((f) => f.id));
 
-    const hostBookings = allBookings.filter((b) => hostFacilityIds.has(b.facilityId) || true);
+    const hostBookings = allBookings.filter((b) => hostFacilityIds.has(b.facilityId));
     return Promise.all(hostBookings.map((b) => this.bookingsService.getBookingById(b.id)));
   }
 

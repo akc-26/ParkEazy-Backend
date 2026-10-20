@@ -9,17 +9,17 @@ export function getAuthenticatedUser(req: Request): User | null {
   const authHeader = req.headers.authorization;
   const customUserId = req.headers['x-user-id'] as string;
 
-  if (customUserId) {
-    const user = db.findUserById(customUserId);
-    if (user) return user;
-  }
-
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.substring(7).trim();
     if (token) {
-      const user = db.findUserById(token) || db.findUserByEmail(token);
+      const user = db.validateSession(token);
       if (user) return user;
     }
+  }
+
+  if (customUserId) {
+    const user = db.validateSession(customUserId);
+    if (user) return user;
   }
 
   // Strict: Unauthenticated requests return null
@@ -74,13 +74,15 @@ apiRouter.post('/auth/login', (req, res) => {
     return res.status(401).json({ error: 'Invalid email or password' });
   }
 
-  if (user.status === 'suspended') {
+  if (user.status === 'suspended' || user.status === 'closed') {
     return res.status(403).json({ error: 'Your account has been suspended by an administrator.' });
   }
 
-  // Token is user ID (or HMAC token in production)
+  // Generate cryptographically secure session
+  const session = db.createSession(user);
+
   return res.json({
-    token: user.id,
+    token: session.token,
     user: {
       id: user.id,
       email: user.email,
@@ -110,8 +112,10 @@ apiRouter.post('/auth/register', (req, res) => {
       businessDetails
     });
 
+    const session = db.createSession(newUser);
+
     return res.status(201).json({
-      token: newUser.id,
+      token: session.token,
       user: newUser
     });
   } catch (err: any) {
@@ -138,25 +142,52 @@ apiRouter.put('/auth/profile', requireAuth, (req, res) => {
 });
 
 apiRouter.post('/auth/logout', (req, res) => {
+  const authHeader = req.headers.authorization;
+  const customUserId = req.headers['x-user-id'] as string;
+  let token = customUserId;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.substring(7).trim();
+  }
+  if (token) {
+    db.revokeSession(token);
+  }
   return res.json({ success: true, message: 'Logged out successfully.' });
 });
 
 apiRouter.post('/auth/forgot-password', (req, res) => {
-  const { email } = req.body;
-  if (!email) {
-    return res.status(400).json({ error: 'Email address is required.' });
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ error: 'Email address is required.' });
+    }
+    const result = db.createPasswordResetToken(email);
+    return res.json(result);
+  } catch (err: any) {
+    return res.status(429).json({ error: err.message });
   }
-  const user = db.findUserByEmail(email);
-  return res.json({
-    success: true,
-    message: user
-      ? `A password recovery link has been dispatched to ${email}.`
-      : 'If an account exists with this email address, password recovery instructions have been sent.'
-  });
+});
+
+apiRouter.post('/auth/reset-password', (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+    if (!token || !newPassword) {
+      return res.status(400).json({ error: 'Reset token and new password are required.' });
+    }
+    const result = db.resetPasswordWithToken(token, newPassword);
+    return res.json(result);
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message });
+  }
 });
 
 // Demo switch route to easily switch test accounts in preview
 apiRouter.get('/auth/demo-users', (req, res) => {
+  const isProduction = process.env.NODE_ENV === 'production';
+  const allowDemo = process.env.ENABLE_DEMO_AUTH !== 'false';
+  if (isProduction || !allowDemo) {
+    return res.status(403).json({ error: 'Demo accounts discovery is disabled in production.' });
+  }
+
   const users = [
     db.findUserById('usr_host1'),
     db.findUserById('usr_host2'),
@@ -419,6 +450,18 @@ apiRouter.get('/bookings/:id', (req, res) => {
   if (!booking) return res.status(404).json({ error: 'Booking not found' });
   const facility = db.getFacilityById(booking.facilityId);
   const bay = db.getBayById(booking.bayId);
+  const user = getAuthenticatedUser(req);
+  if (user) {
+    if (user.role === 'host') {
+      if (facility && facility.hostId !== user.id) {
+        return res.status(403).json({ error: 'You do not have access to view this booking.' });
+      }
+    } else if (user.role === 'customer') {
+      if (booking.customerId !== user.id) {
+        return res.status(403).json({ error: 'You do not have access to view this booking.' });
+      }
+    }
+  }
   return res.json({ ...booking, facility, bay });
 });
 
@@ -477,6 +520,12 @@ apiRouter.post('/bookings', (req, res) => {
 apiRouter.post('/bookings/:id/check-in', requireAuth, (req, res) => {
   try {
     const user = (req as any).user as User;
+    const existing = db.getBookingById(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Booking not found' });
+    const facility = db.getFacilityById(existing.facilityId);
+    if (existing.customerId !== user.id && facility?.hostId !== user.id && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Unauthorized to check in this booking.' });
+    }
     const booking = db.checkInBooking(req.params.id, user);
     return res.json({
       success: true,
@@ -492,6 +541,12 @@ apiRouter.post('/bookings/:id/check-in', requireAuth, (req, res) => {
 apiRouter.post('/bookings/:id/check-out', requireAuth, (req, res) => {
   try {
     const user = (req as any).user as User;
+    const existing = db.getBookingById(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Booking not found' });
+    const facility = db.getFacilityById(existing.facilityId);
+    if (existing.customerId !== user.id && facility?.hostId !== user.id && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Unauthorized to check out this booking.' });
+    }
     const booking = db.checkOutBooking(req.params.id, user);
     return res.json({
       success: true,
@@ -507,6 +562,12 @@ apiRouter.post('/bookings/:id/check-out', requireAuth, (req, res) => {
 apiRouter.post('/bookings/:id/extend', requireAuth, (req, res) => {
   try {
     const user = (req as any).user as User;
+    const existing = db.getBookingById(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Booking not found' });
+    const facility = db.getFacilityById(existing.facilityId);
+    if (existing.customerId !== user.id && facility?.hostId !== user.id && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Unauthorized to extend this booking.' });
+    }
     const { hours } = req.body;
     if (!hours || hours <= 0) return res.status(400).json({ error: 'Valid hours required' });
     const booking = db.extendBooking(req.params.id, Number(hours), user);
@@ -520,6 +581,12 @@ apiRouter.post('/bookings/:id/extend', requireAuth, (req, res) => {
 apiRouter.post('/bookings/:id/cancel', requireAuth, (req, res) => {
   try {
     const user = (req as any).user as User;
+    const existing = db.getBookingById(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Booking not found' });
+    const facility = db.getFacilityById(existing.facilityId);
+    if (existing.customerId !== user.id && facility?.hostId !== user.id && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Unauthorized to cancel this booking.' });
+    }
     const { reason } = req.body;
     const booking = db.cancelBooking(req.params.id, reason || 'Customer requested cancellation', user);
     return res.json(booking);

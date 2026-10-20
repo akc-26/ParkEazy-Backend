@@ -130,6 +130,80 @@
       "publishedAt": "2026-02-01T08:00:00Z",
       "createdAt": "2026-02-01T08:00:00Z",
       "updatedAt": "2026-03-01T16:00:00Z"
+    },
+    {
+      "id": "loc-109fcc858a70",
+      "hostId": "usr-host-facility-a",
+      "name": "Grand Metro Centre Car Park (Updated)",
+      "description": "Prime central business district multi-storey covered parking facility with 24/7 access.",
+      "propertyType": "GARAGE",
+      "address": {
+        "line1": "789 Market Street",
+        "city": "San Francisco",
+        "state": "CA",
+        "postalCode": "94103",
+        "country": "US",
+        "latitude": 37.7879,
+        "longitude": -122.4075
+      },
+      "timezone": "America/Los_Angeles",
+      "accessMethod": "GATE_CODE",
+      "accessInstructions": "Enter code 5849# at the security barrier.",
+      "status": "ACTIVE",
+      "totalBays": 2,
+      "hourlyRateCents": 600,
+      "dailyRateCents": 4000,
+      "securityDepositCents": 1500,
+      "amenities": [
+        "CCTV Security",
+        "Covered Garage",
+        "Elevator Access",
+        "EV Charging",
+        "24/7 Access"
+      ],
+      "imageUrl": "https://images.unsplash.com/photo-1506521781263-d8422e82f27a",
+      "photos": [
+        {
+          "id": "pho-1e098dac",
+          "url": "https://images.unsplash.com/photo-1506521781263-d8422e82f27a",
+          "caption": "Facility exterior",
+          "isPrimary": true,
+          "uploadedAt": "2026-10-20T14:36:09.186Z"
+        }
+      ],
+      "createdAt": "2026-10-20T14:36:09.063Z",
+      "updatedAt": "2026-10-20T14:36:09.237Z",
+      "publishedAt": "2026-10-20T14:36:09.237Z"
+    },
+    {
+      "id": "loc-d2ddbc70940f",
+      "hostId": "usr-host-pricing-a",
+      "name": "Alpha Pricing Tower",
+      "description": "Test facility for pricing and rate engine validation.",
+      "propertyType": "GARAGE",
+      "address": {
+        "line1": "100 Market St",
+        "city": "San Francisco",
+        "state": "CA",
+        "postalCode": "94105",
+        "country": "US",
+        "latitude": 37.79,
+        "longitude": -122.4
+      },
+      "timezone": "America/Los_Angeles",
+      "accessMethod": "GATE_CODE",
+      "status": "DRAFT",
+      "totalBays": 1,
+      "hourlyRateCents": 10049,
+      "dailyRateCents": 100199,
+      "securityDepositCents": 2000,
+      "amenities": [
+        "Covered Garage",
+        "EV Charging"
+      ],
+      "photos": [],
+      "createdAt": "2026-10-20T14:36:10.927Z",
+      "updatedAt": "2026-10-20T14:36:11.110Z"
     }
   ],
   "bays": [
@@ -337,7 +411,71 @@
       "isCovered": true,
       "createdAt": "2026-02-01T08:00:00Z",
       "updatedAt": "2026-03-01T16:00:00Z"
+    },
+    {
+      "id": "bay-e99f26eda1e4",
+      "locationId": "loc-109fcc858a70",
+      "bayNumber": "A-101",
+      "bayType": "STANDARD",
+      "levelOrFloor": "Level 1",
+      "status": "AVAILABLE",
+      "maxVehicleHeightMeters": 2.1,
+      "maxVehicleLengthMeters": 5.2,
+      "maxVehicleWidthMeters": 2.3,
+      "supportedVehicles": [
+        "SEDAN",
+        "COMPACT",
+        "SUV"
+      ],
+      "isEvCharging": false,
+      "hasCctv": true,
+      "isAccessible": false,
+      "isCovered": true,
+      "notes": "Repainting lines",
+      "createdAt": "2026-10-20T14:36:09.098Z",
+      "updatedAt": "2026-10-20T14:36:09.125Z"
+    },
+    {
+      "id": "bay-7f5f35017ea2",
+      "locationId": "loc-109fcc858a70",
+      "bayNumber": "EV-01",
+      "bayType": "EV_CHARGING",
+      "levelOrFloor": "Level 1",
+      "status": "AVAILABLE",
+      "supportedVehicles": [
+        "SEDAN",
+        "COMPACT",
+        "SUV"
+      ],
+      "isEvCharging": true,
+      "evChargerKw": 22,
+      "hasCctv": true,
+      "isAccessible": false,
+      "isCovered": true,
+      "notes": "22kW Level 2 Type 2 connector",
+      "createdAt": "2026-10-20T14:36:09.109Z",
+      "updatedAt": "2026-10-20T14:36:09.109Z"
+    },
+    {
+      "id": "bay-09d2079e7cc3",
+      "locationId": "loc-d2ddbc70940f",
+      "bayNumber": "P1-10",
+      "bayType": "STANDARD",
+      "levelOrFloor": "1",
+      "status": "AVAILABLE",
+      "supportedVehicles": [
+        "SEDAN",
+        "SUV",
+        "COMPACT"
+      ],
+      "isEvCharging": true,
+      "evChargerKw": 11,
+      "hasCctv": false,
+      "isAccessible": false,
+      "isCovered": false,
+      "createdAt": "2026-10-20T14:36:10.928Z",
+      "updatedAt": "2026-10-20T14:36:10.928Z"
     }
   ],
-  "updatedAt": "2026-10-20T11:47:53.171Z"
+  "updatedAt": "2026-10-20T14:36:11.110Z"
 }

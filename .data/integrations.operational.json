@@ -1,0 +1,12 @@
+{
+  "sendgrid_email": {
+    "fromEmail": "noreply@parkeazy.internal",
+    "fromName": "ParkEazy Notifications",
+    "apiUrl": "https://api.sendgrid.com/v3/mail/send",
+    "timeoutMs": 8000
+  },
+  "twilio_sms": {
+    "fromNumber": "+15557275329"
+  },
+  "stripe": {}
+}

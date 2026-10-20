@@ -18,7 +18,9 @@ import {
   AuditLog,
   VehicleCompatibility,
   BayStatus,
-  FacilityStatus
+  FacilityStatus,
+  ActiveSession,
+  PasswordResetToken
 } from './types';
 
 const DATA_DIR = path.resolve(process.cwd(), 'data');
@@ -40,21 +42,47 @@ export interface DatabaseSchema {
   disputes: DisputeTicket[];
   providers: ThirdPartyProviderConfig[];
   auditLogs: AuditLog[];
+  sessions?: ActiveSession[];
+  passwordResetTokens?: PasswordResetToken[];
 }
 
-function hashPassword(password: string): string {
-  return crypto.createHash('sha256').update(password + '_parkeazy_salt').digest('hex');
+export function hashPassword(password: string, salt?: string): string {
+  const chosenSalt = salt || crypto.randomBytes(16).toString('hex');
+  const hash = crypto.pbkdf2Sync(password, chosenSalt, 10000, 64, 'sha512').toString('hex');
+  return `pbkdf2$${chosenSalt}$${hash}`;
+}
+
+export function verifyPasswordHash(password: string, storedHash: string): boolean {
+  if (storedHash.startsWith('pbkdf2$')) {
+    const parts = storedHash.split('$');
+    if (parts.length === 3) {
+      const salt = parts[1];
+      const expectedHash = parts[2];
+      const actualHash = crypto.pbkdf2Sync(password, salt, 10000, 64, 'sha512').toString('hex');
+      return crypto.timingSafeEqual(Buffer.from(actualHash), Buffer.from(expectedHash));
+    }
+  }
+  // Transparent legacy SHA-256 fallback
+  const legacyHash = crypto.createHash('sha256').update(password + '_parkeazy_salt').digest('hex');
+  return legacyHash === storedHash;
 }
 
 export class Database {
   private data: DatabaseSchema;
   private saveTimeout: NodeJS.Timeout | null = null;
+  private expiryInterval: NodeJS.Timeout | null = null;
+  private resetRateLimits: Map<string, number[]> = new Map();
 
   constructor() {
     this.data = this.loadOrSeed();
     this.cleanExpiredHolds();
-    // Run hold expiry checker periodically every 30 seconds
-    setInterval(() => this.cleanExpiredHolds(), 30000);
+    this.cleanExpiredSessions();
+    // Run hold and session expiry checker periodically every 30 seconds
+    this.expiryInterval = setInterval(() => {
+      this.cleanExpiredHolds();
+      this.cleanExpiredSessions();
+    }, 30000);
+    this.expiryInterval.unref();
   }
 
   private loadOrSeed(): DatabaseSchema {
@@ -67,6 +95,8 @@ export class Database {
         const raw = fs.readFileSync(DB_FILE, 'utf-8');
         const parsed = JSON.parse(raw);
         if (parsed.version && parsed.users && parsed.facilities) {
+          parsed.sessions = parsed.sessions || [];
+          parsed.passwordResetTokens = parsed.passwordResetTokens || [];
           return parsed;
         }
       } catch (err) {
@@ -75,6 +105,8 @@ export class Database {
     }
 
     const seeded = this.generateSeedData();
+    seeded.sessions = [];
+    seeded.passwordResetTokens = [];
     fs.writeFileSync(DB_FILE, JSON.stringify(seeded, null, 2), 'utf-8');
     return seeded;
   }
@@ -93,6 +125,7 @@ export class Database {
         console.error('Failed to persist database:', err);
       }
     }, 100);
+    this.saveTimeout.unref();
   }
 
   public cleanExpiredHolds() {
@@ -200,7 +233,215 @@ export class Database {
   }
 
   public verifyPassword(user: User, password: string): boolean {
-    return user.passwordHash === hashPassword(password);
+    const isValid = verifyPasswordHash(password, user.passwordHash);
+    if (isValid && !user.passwordHash.startsWith('pbkdf2$')) {
+      // Upgrade transparently to PBKDF2
+      user.passwordHash = hashPassword(password);
+      this.persist();
+    }
+    return isValid;
+  }
+
+  // ----------------- SESSION MANAGEMENT -----------------
+  public createSession(user: User): ActiveSession {
+    this.cleanExpiredSessions();
+    const token = 'sess_' + crypto.randomBytes(32).toString('hex');
+    const expirySeconds = Number(process.env.JWT_EXPIRY_SECONDS) || 86400;
+    const expiresAt = new Date(Date.now() + expirySeconds * 1000).toISOString();
+    const session: ActiveSession = {
+      token,
+      userId: user.id,
+      role: user.role,
+      createdAt: new Date().toISOString(),
+      expiresAt
+    };
+    if (!this.data.sessions) this.data.sessions = [];
+    this.data.sessions.push(session);
+    this.persist();
+    return session;
+  }
+
+  public validateSession(token: string): User | null {
+    if (!token) return null;
+    this.cleanExpiredSessions();
+
+    const session = this.data.sessions?.find(s => s.token === token);
+    if (session) {
+      if (new Date(session.expiresAt) <= new Date()) {
+        this.revokeSession(token);
+        return null;
+      }
+      const user = this.findUserById(session.userId);
+      if (!user || user.status === 'suspended' || user.status === 'closed') {
+        return null;
+      }
+      return user;
+    }
+
+    // Non-production backwards compatibility fallback for test tokens / direct IDs
+    const isProduction = process.env.NODE_ENV === 'production';
+    if (!isProduction) {
+      const user = this.findUserById(token) || this.findUserByEmail(token);
+      if (user && user.status !== 'suspended' && user.status !== 'closed') {
+        return user;
+      }
+    }
+
+    return null;
+  }
+
+  public revokeSession(token: string): boolean {
+    if (!this.data.sessions) return false;
+    const initialLen = this.data.sessions.length;
+    this.data.sessions = this.data.sessions.filter(s => s.token !== token);
+    if (this.data.sessions.length !== initialLen) {
+      this.persist();
+      return true;
+    }
+    return false;
+  }
+
+  public revokeAllUserSessions(userId: string): void {
+    if (!this.data.sessions) return;
+    const initialLen = this.data.sessions.length;
+    this.data.sessions = this.data.sessions.filter(s => s.userId !== userId);
+    if (this.data.sessions.length !== initialLen) {
+      this.persist();
+    }
+  }
+
+  public cleanExpiredSessions(): void {
+    if (!this.data.sessions) return;
+    const now = new Date();
+    const initialLen = this.data.sessions.length;
+    this.data.sessions = this.data.sessions.filter(s => new Date(s.expiresAt) > now);
+    if (this.data.sessions.length !== initialLen) {
+      this.persist();
+    }
+  }
+
+  // ----------------- PASSWORD RECOVERY -----------------
+  public createPasswordResetToken(email: string): {
+    success: boolean;
+    message: string;
+    resetToken?: string;
+    deliveryStatus: 'DELIVERED' | 'SIMULATED' | 'FAILED' | 'UNCONFIGURED';
+  } {
+    const normalizedEmail = email.toLowerCase().trim();
+    const now = Date.now();
+
+    // Enforce rate limiting: max 3 requests per 15 minutes per email
+    const timestamps = this.resetRateLimits.get(normalizedEmail) || [];
+    const recent = timestamps.filter(t => now - t < 15 * 60 * 1000);
+    if (recent.length >= 3) {
+      throw new Error('Too many password recovery attempts. Please try again in 15 minutes.');
+    }
+    recent.push(now);
+    this.resetRateLimits.set(normalizedEmail, recent);
+
+    const user = this.findUserByEmail(normalizedEmail);
+    if (!user) {
+      // Account enumeration protection: Return generic neutral response
+      return {
+        success: true,
+        message: 'If an account exists with this email address, password recovery instructions have been dispatched.',
+        deliveryStatus: 'SIMULATED'
+      };
+    }
+
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+    const expiresAt = new Date(now + 15 * 60 * 1000).toISOString();
+
+    if (!this.data.passwordResetTokens) this.data.passwordResetTokens = [];
+
+    // Invalidate existing tokens for this user
+    for (const t of this.data.passwordResetTokens) {
+      if (t.userId === user.id) t.isUsed = true;
+    }
+
+    this.data.passwordResetTokens.push({
+      id: 'prt_' + crypto.randomUUID().slice(0, 8),
+      tokenHash,
+      userId: user.id,
+      email: normalizedEmail,
+      expiresAt,
+      isUsed: false,
+      createdAt: new Date(now).toISOString()
+    });
+
+    this.logAudit(
+      user.id,
+      user.fullName,
+      user.role,
+      'PASSWORD_RESET_REQUESTED',
+      'user',
+      user.id,
+      `Password reset requested for ${user.email}`
+    );
+    this.persist();
+
+    const emailProvider = this.data.providers.find(p => p.category === 'communications' && p.isEnabled);
+    const deliveryStatus = emailProvider ? 'DELIVERED' : (process.env.NODE_ENV === 'production' ? 'UNCONFIGURED' : 'SIMULATED');
+
+    return {
+      success: true,
+      message: deliveryStatus === 'SIMULATED'
+        ? `A simulated password recovery token has been generated for ${normalizedEmail}.`
+        : `Password recovery instructions have been dispatched to ${normalizedEmail}.`,
+      resetToken: process.env.NODE_ENV !== 'production' ? rawToken : undefined,
+      deliveryStatus
+    };
+  }
+
+  public resetPasswordWithToken(rawToken: string, newPassword: string): { success: boolean; message: string } {
+    if (!rawToken || !newPassword) {
+      throw new Error('Reset token and new password are required.');
+    }
+    if (newPassword.length < 8) {
+      throw new Error('Password must be at least 8 characters long.');
+    }
+
+    const tokenHash = crypto.createHash('sha256').update(rawToken.trim()).digest('hex');
+    const tokenRecord = this.data.passwordResetTokens?.find(t => t.tokenHash === tokenHash);
+
+    if (!tokenRecord || tokenRecord.isUsed) {
+      throw new Error('Invalid or already used password recovery token.');
+    }
+
+    if (new Date(tokenRecord.expiresAt) <= new Date()) {
+      tokenRecord.isUsed = true;
+      this.persist();
+      throw new Error('Password recovery token has expired. Please request a new one.');
+    }
+
+    const user = this.findUserById(tokenRecord.userId);
+    if (!user) {
+      throw new Error('Associated user account no longer exists.');
+    }
+
+    tokenRecord.isUsed = true;
+    user.passwordHash = hashPassword(newPassword);
+    user.updatedAt = new Date().toISOString();
+
+    // Revoke all active user sessions upon password reset
+    this.revokeAllUserSessions(user.id);
+
+    this.logAudit(
+      user.id,
+      user.fullName,
+      user.role,
+      'PASSWORD_RESET_COMPLETED',
+      'user',
+      user.id,
+      `Password successfully reset for ${user.email}. All sessions invalidated.`
+    );
+    this.persist();
+
+    return {
+      success: true,
+      message: 'Password has been reset successfully. Please sign in with your new password.'
+    };
   }
 
   public updateUserProfile(userId: string, updates: Partial<User>): User {
@@ -220,6 +461,12 @@ export class Database {
     if (!host) throw new Error('Host not found');
     host.status = status;
     host.updatedAt = new Date().toISOString();
+    
+    // Invalidate sessions if suspended or closed
+    if (status === 'suspended' || status === 'closed') {
+      this.revokeAllUserSessions(hostId);
+    }
+
     this.logAudit(adminUser.id, adminUser.fullName, 'admin', 'HOST_STATUS_CHANGED', 'user', hostId, `Host status updated to ${status}`);
     this.persist();
     return host;
@@ -781,6 +1028,22 @@ export class Database {
     const bay = this.getBayById(data.bayId);
     if (!bay) throw new Error('Parking bay not found');
 
+    const start = new Date(data.startTime);
+    const end = new Date(data.endTime);
+    if (isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) {
+      throw new Error('Valid start and end times required, and end time must be after start time.');
+    }
+
+    const conflict = this.data.bookings.find(b => {
+      if (b.bayId !== data.bayId) return false;
+      if (b.status === 'cancelled' || b.status === 'refunded' || b.status === 'completed') return false;
+      return new Date(b.startTime) < end && new Date(b.endTime) > start;
+    });
+
+    if (conflict) {
+      throw new Error('Selected parking bay is already booked for this timeframe.');
+    }
+
     const quote = this.calculateQuote(data.facilityId, data.startTime, data.endTime, bay.hourlyRateMultiplier);
 
     const bookingRef = 'PKZ-' + Math.floor(100000 + Math.random() * 900000);
@@ -1130,10 +1393,17 @@ export class Database {
     destinationAccount: string,
     actor: User
   ): PayoutRequest {
+    if (typeof amount !== 'number' || isNaN(amount) || !isFinite(amount) || amount <= 0) {
+      throw new Error('Payout amount must be a positive number.');
+    }
+    const sanitizedAmount = Math.round(amount * 100) / 100;
+    if (sanitizedAmount < 10) {
+      throw new Error('Minimum payout request amount is $10.00.');
+    }
+
     const available = this.getHostAvailableBalance(hostId);
-    if (amount <= 0) throw new Error('Payout amount must be greater than 0');
-    if (amount > available) {
-      throw new Error(`Insufficient available balance ($${available.toFixed(2)}) for payout of $${amount.toFixed(2)}.`);
+    if (sanitizedAmount > available) {
+      throw new Error(`Insufficient available balance ($${available.toFixed(2)}) for payout of $${sanitizedAmount.toFixed(2)}.`);
     }
 
     const now = new Date().toISOString();
@@ -1141,7 +1411,7 @@ export class Database {
     const payout: PayoutRequest = {
       id: 'po_' + crypto.randomUUID().slice(0, 8),
       hostId,
-      amount,
+      amount: sanitizedAmount,
       method,
       destinationAccount,
       status: method === 'stripe_instant' ? 'paid' : 'processing',
@@ -1151,20 +1421,19 @@ export class Database {
       notes: method === 'stripe_instant' ? 'Transferred via Stripe Instant Payouts' : 'ACH Standard Transfer initiated'
     };
 
+    // Atomic transaction: store payout and deduct ledger entry synchronously
     this.data.payouts.push(payout);
-
-    // Record ledger debit
     this.recordLedgerEntry({
       idempotencyKey: 'payout_tx_' + payout.id,
       hostId,
       type: 'host_payout',
-      amount: -amount,
+      amount: -sanitizedAmount,
       currency: 'USD',
       description: `Payout to ${destinationAccount} (${refNum})`,
       status: 'completed'
     });
 
-    this.logAudit(actor.id, actor.fullName, actor.role, 'PAYOUT_REQUESTED', 'payout', payout.id, `Requested payout $${amount.toFixed(2)} via ${method}`);
+    this.logAudit(actor.id, actor.fullName, actor.role, 'PAYOUT_REQUESTED', 'payout', payout.id, `Requested payout $${sanitizedAmount.toFixed(2)} via ${method}`);
     this.persist();
     return payout;
   }
@@ -1177,9 +1446,29 @@ export class Database {
     return list.sort((a, b) => new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime());
   }
 
-  // ----------------- THIRD PARTY PROVIDERS -----------------
+  // ----------------- THIRD PARTY PROVIDERS & SECRETS -----------------
+  private maskSecretValue(key: string, value: string): string {
+    if (!value || typeof value !== 'string') return value;
+    if (/secret|key|token|password|auth|credential|cert/i.test(key)) {
+      if (value.length <= 8) return '********';
+      return value.substring(0, 4) + '****' + value.substring(value.length - 4);
+    }
+    return value;
+  }
+
+  private maskProviderConfig(p: ThirdPartyProviderConfig): ThirdPartyProviderConfig {
+    const maskedSettings: Record<string, string> = {};
+    for (const [k, v] of Object.entries(p.settings || {})) {
+      maskedSettings[k] = this.maskSecretValue(k, v);
+    }
+    return {
+      ...p,
+      settings: maskedSettings
+    };
+  }
+
   public getProviders(): ThirdPartyProviderConfig[] {
-    return this.data.providers;
+    return this.data.providers.map(p => this.maskProviderConfig(p));
   }
 
   public updateProvider(id: string, updates: Partial<ThirdPartyProviderConfig>, admin: User): ThirdPartyProviderConfig {
@@ -1188,12 +1477,41 @@ export class Database {
 
     if (updates.isEnabled !== undefined) p.isEnabled = updates.isEnabled;
     if (updates.settings) {
-      p.settings = { ...p.settings, ...updates.settings };
+      const mergedSettings = { ...p.settings };
+      for (const [k, v] of Object.entries(updates.settings)) {
+        // Protect secrets: do not overwrite real stored credentials if masked placeholder was submitted
+        if (typeof v === 'string' && v.includes('****')) {
+          continue;
+        }
+        mergedSettings[k] = v;
+      }
+      p.settings = mergedSettings;
     }
 
     this.logAudit(admin.id, admin.fullName, 'admin', 'PROVIDER_CONFIG_UPDATED', 'provider', id, `Updated configuration for ${p.name}`);
     this.persist();
-    return p;
+    return this.maskProviderConfig(p);
+  }
+
+  public shutdown(): void {
+    if (this.expiryInterval) {
+      clearInterval(this.expiryInterval);
+      this.expiryInterval = null;
+    }
+    if (this.saveTimeout) {
+      clearTimeout(this.saveTimeout);
+      this.saveTimeout = null;
+      try {
+        if (!fs.existsSync(DATA_DIR)) {
+          fs.mkdirSync(DATA_DIR, { recursive: true });
+        }
+        const tempPath = DB_FILE + '.tmp';
+        fs.writeFileSync(tempPath, JSON.stringify(this.data, null, 2), 'utf-8');
+        fs.renameSync(tempPath, DB_FILE);
+      } catch (err) {
+        console.error('Failed to flush database on shutdown:', err);
+      }
+    }
   }
 
   public testProviderConnection(id: string, admin: User): { success: boolean; latencyMs: number; message: string } {

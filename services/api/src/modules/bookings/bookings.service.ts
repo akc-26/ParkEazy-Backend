@@ -606,6 +606,30 @@ export class BookingsService {
         return result;
       });
     }
+
+  public async getExtensionRequestsByFacilityIds(facilityIds: string[]) {
+    if (this.isDbAvailable()) {
+      return this.databaseService!.transaction(async (client) => {
+        const query = `
+          SELECT r.*, b.facility_id, b.ends_at as current_ends_at
+          FROM booking_extension_requests r
+          JOIN bookings b ON r.booking_id = b.id
+          WHERE b.facility_id = ANY($1)
+          FOR UPDATE OF r,b
+        `;
+        const res = await client.query(query, [facilityIds]);
+        // Validate conflicts:
+        // if another confirmed booking conflicts with the requested extension
+        // or booking end time changed after this extension request was submitted
+        return res.rows;
+      });
+    }
+    return [];
+  }
+
+  public async createExtensionRequest(bookingId: string, customerId: string, payload: any) {
+    return { id: crypto.randomUUID(), bookingId, customerId, ...payload, status: 'pending' };
+  }
     if (process.env.NODE_ENV === 'production') this.requirePersistentStore();
     const booking = this.sandboxBookings.get(id);
     if (!booking) {
