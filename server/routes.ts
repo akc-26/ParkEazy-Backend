@@ -5,20 +5,20 @@ import { User, VehicleCompatibility } from './types';
 export const apiRouter = Router();
 
 // Middleware to resolve current user from authorization header or session header
-export function getAuthenticatedUser(req: Request): User | null {
+export async function getAuthenticatedUser(req: Request): Promise<User | null> {
   const authHeader = req.headers.authorization;
   const customUserId = req.headers['x-user-id'] as string;
 
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.substring(7).trim();
     if (token) {
-      const user = db.validateSession(token);
+      const user = await db.validateSession(token);
       if (user) return user;
     }
   }
 
   if (customUserId) {
-    const user = db.validateSession(customUserId);
+    const user = await db.validateSession(customUserId);
     if (user) return user;
   }
 
@@ -27,50 +27,62 @@ export function getAuthenticatedUser(req: Request): User | null {
 }
 
 // Auth Middleware guard for any authenticated user
-function requireAuth(req: Request, res: Response, next: NextFunction) {
-  const user = getAuthenticatedUser(req);
-  if (!user) {
-    return res.status(401).json({ error: 'Authentication required. Please sign in.' });
+async function requireAuth(req: Request, res: Response, next: NextFunction) {
+  try {
+    const user = await getAuthenticatedUser(req);
+    if (!user) {
+      return res.status(401).json({ error: 'Authentication required. Please sign in.' });
+    }
+    (req as any).user = user;
+    next();
+  } catch (err) {
+    next(err);
   }
-  (req as any).user = user;
-  next();
 }
 
 // Auth guard specifically for Host accounts
-function requireHost(req: Request, res: Response, next: NextFunction) {
-  const user = getAuthenticatedUser(req);
-  if (!user) {
-    return res.status(401).json({ error: 'Host authentication required. Please sign in to the Host Portal.' });
+async function requireHost(req: Request, res: Response, next: NextFunction) {
+  try {
+    const user = await getAuthenticatedUser(req);
+    if (!user) {
+      return res.status(401).json({ error: 'Host authentication required. Please sign in to the Host Portal.' });
+    }
+    if (user.role !== 'host' && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied: Host account privileges required.' });
+    }
+    (req as any).user = user;
+    next();
+  } catch (err) {
+    next(err);
   }
-  if (user.role !== 'host' && user.role !== 'admin') {
-    return res.status(403).json({ error: 'Access denied: Host account privileges required.' });
-  }
-  (req as any).user = user;
-  next();
 }
 
 // Auth guard specifically for Administrator accounts
-function requireAdmin(req: Request, res: Response, next: NextFunction) {
-  const user = getAuthenticatedUser(req);
-  if (!user) {
-    return res.status(401).json({ error: 'Administrator authentication required. Please sign in to Admin Moderation.' });
+async function requireAdmin(req: Request, res: Response, next: NextFunction) {
+  try {
+    const user = await getAuthenticatedUser(req);
+    if (!user) {
+      return res.status(401).json({ error: 'Administrator authentication required. Please sign in to Admin Moderation.' });
+    }
+    if (user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied: Administrator privileges required.' });
+    }
+    (req as any).user = user;
+    next();
+  } catch (err) {
+    next(err);
   }
-  if (user.role !== 'admin') {
-    return res.status(403).json({ error: 'Access denied: Administrator privileges required.' });
-  }
-  (req as any).user = user;
-  next();
 }
 
 // ----------------- AUTH ROUTES -----------------
-apiRouter.post('/auth/login', (req, res) => {
+apiRouter.post('/auth/login', async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
     return res.status(400).json({ error: 'Email and password are required' });
   }
 
-  const user = db.findUserByEmail(email);
-  if (!user || !db.verifyPassword(user, password)) {
+  const user = await db.findUserByEmail(email);
+  if (!user || !(await db.verifyPassword(user, password))) {
     return res.status(401).json({ error: 'Invalid email or password' });
   }
 
@@ -79,7 +91,7 @@ apiRouter.post('/auth/login', (req, res) => {
   }
 
   // Generate cryptographically secure session
-  const session = db.createSession(user);
+  const session = await db.createSession(user);
 
   return res.json({
     token: session.token,
@@ -96,7 +108,7 @@ apiRouter.post('/auth/login', (req, res) => {
   });
 });
 
-apiRouter.post('/auth/register', (req, res) => {
+apiRouter.post('/auth/register', async (req, res) => {
   try {
     const { email, password, fullName, phone, role, businessDetails } = req.body;
     if (!email || !password || !fullName || !role) {
@@ -115,7 +127,7 @@ apiRouter.post('/auth/register', (req, res) => {
       return res.status(400).json({ error: 'Invalid registration role. Permitted roles are "customer" and "host".' });
     }
 
-    const newUser = db.createUser({
+    const newUser = await db.createUser({
       email,
       password,
       fullName,
@@ -124,7 +136,7 @@ apiRouter.post('/auth/register', (req, res) => {
       businessDetails
     });
 
-    const session = db.createSession(newUser);
+    const session = await db.createSession(newUser);
 
     return res.status(201).json({
       token: session.token,
@@ -135,25 +147,25 @@ apiRouter.post('/auth/register', (req, res) => {
   }
 });
 
-apiRouter.get('/auth/me', (req, res) => {
-  const user = getAuthenticatedUser(req);
+apiRouter.get('/auth/me', async (req, res) => {
+  const user = await getAuthenticatedUser(req);
   if (!user) {
     return res.status(401).json({ error: 'Not authenticated' });
   }
   return res.json({ user });
 });
 
-apiRouter.put('/auth/profile', requireAuth, (req, res) => {
+apiRouter.put('/auth/profile', requireAuth, async (req, res) => {
   try {
     const user = (req as any).user as User;
-    const updated = db.updateUserProfile(user.id, req.body);
+    const updated = await db.updateUserProfile(user.id, req.body);
     return res.json({ user: updated });
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
   }
 });
 
-apiRouter.post('/auth/logout', (req, res) => {
+apiRouter.post('/auth/logout', async (req, res) => {
   const authHeader = req.headers.authorization;
   const customUserId = req.headers['x-user-id'] as string;
   let token = customUserId;
@@ -161,7 +173,7 @@ apiRouter.post('/auth/logout', (req, res) => {
     token = authHeader.substring(7).trim();
   }
   if (token) {
-    db.revokeSession(token);
+    await db.revokeSession(token);
   }
   return res.json({ success: true, message: 'Logged out successfully.' });
 });
@@ -172,20 +184,20 @@ apiRouter.post('/auth/forgot-password', async (req, res) => {
     if (!email) {
       return res.status(400).json({ error: 'Email address is required.' });
     }
-    const result = await db.createPasswordResetToken(email);
+    const result = await db.requestPasswordReset(email);
     return res.json(result);
   } catch (err: any) {
     return res.status(429).json({ error: err.message });
   }
 });
 
-apiRouter.post('/auth/reset-password', (req, res) => {
+apiRouter.post('/auth/reset-password', async (req, res) => {
   try {
     const { token, newPassword } = req.body;
     if (!token || !newPassword) {
       return res.status(400).json({ error: 'Reset token and new password are required.' });
     }
-    const result = db.resetPasswordWithToken(token, newPassword);
+    const result = await db.resetPasswordWithToken(token, newPassword);
     return res.json(result);
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
@@ -193,26 +205,26 @@ apiRouter.post('/auth/reset-password', (req, res) => {
 });
 
 // Demo switch route to easily switch test accounts in preview
-apiRouter.get('/auth/demo-users', (req, res) => {
+apiRouter.get('/auth/demo-users', async (req, res) => {
   const isProduction = process.env.NODE_ENV === 'production';
   const allowDemo = process.env.ENABLE_DEMO_AUTH !== 'false';
   if (isProduction || !allowDemo) {
     return res.status(403).json({ error: 'Demo accounts discovery is disabled in production.' });
   }
 
-  const users = [
+  const users = (await Promise.all([
     db.findUserById('usr_host1'),
     db.findUserById('usr_host2'),
     db.findUserById('usr_cust1'),
     db.findUserById('usr_admin1')
-  ].filter(Boolean);
+  ])).filter(Boolean);
   return res.json(users);
 });
 
 // ----------------- FACILITIES -----------------
-apiRouter.get('/facilities', (req, res) => {
+apiRouter.get('/facilities', async (req, res) => {
   const { hostId, status, city } = req.query;
-  const user = getAuthenticatedUser(req);
+  const user = await getAuthenticatedUser(req);
   let effectiveHostId = hostId as string;
 
   // Enforce host ownership isolation: A host cannot view another host's facilities by swapping hostId
@@ -222,7 +234,7 @@ apiRouter.get('/facilities', (req, res) => {
     }
   }
 
-  const facilities = db.getFacilities({
+  const facilities = await db.getFacilities({
     hostId: effectiveHostId,
     status: status as string,
     city: city as string
@@ -230,81 +242,81 @@ apiRouter.get('/facilities', (req, res) => {
   return res.json(facilities);
 });
 
-apiRouter.get('/facilities/:id', (req, res) => {
-  const facility = db.getFacilityById(req.params.id);
+apiRouter.get('/facilities/:id', async (req, res) => {
+  const facility = await db.getFacilityById(req.params.id);
   if (!facility) return res.status(404).json({ error: 'Facility not found' });
-  const bays = db.getBaysByFacility(facility.id);
-  const pricingRules = db.getPricingRules(facility.id);
-  const reviews = db.getReviews(facility.id);
+  const bays = await db.getBaysByFacility(facility.id);
+  const pricingRules = await db.getPricingRules(facility.id);
+  const reviews = await db.getReviews(facility.id);
   return res.json({ ...facility, bays, pricingRules, reviews });
 });
 
-apiRouter.post('/facilities', requireHost, (req, res) => {
+apiRouter.post('/facilities', requireHost, async (req, res) => {
   try {
     const user = (req as any).user as User;
-    const facility = db.createFacility(user.id, req.body);
+    const facility = await db.createFacility(user.id, req.body);
     return res.status(201).json(facility);
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
   }
 });
 
-apiRouter.put('/facilities/:id', requireHost, (req, res) => {
+apiRouter.put('/facilities/:id', requireHost, async (req, res) => {
   try {
     const user = (req as any).user as User;
-    const existing = db.getFacilityById(req.params.id);
+    const existing = await db.getFacilityById(req.params.id);
     if (!existing) return res.status(404).json({ error: 'Facility not found' });
     if (existing.hostId !== user.id && user.role !== 'admin') {
       return res.status(403).json({ error: 'You do not own this facility' });
     }
-    const facility = db.updateFacility(req.params.id, req.body, user);
+    const facility = await db.updateFacility(req.params.id, req.body, user);
     return res.json(facility);
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
   }
 });
 
-apiRouter.delete('/facilities/:id', requireHost, (req, res) => {
+apiRouter.delete('/facilities/:id', requireHost, async (req, res) => {
   try {
     const user = (req as any).user as User;
-    const existing = db.getFacilityById(req.params.id);
+    const existing = await db.getFacilityById(req.params.id);
     if (!existing) return res.status(404).json({ error: 'Facility not found' });
     if (existing.hostId !== user.id && user.role !== 'admin') {
       return res.status(403).json({ error: 'You do not own this facility' });
     }
-    const success = db.deleteFacility(req.params.id, user);
+    const success = await db.deleteFacility(req.params.id, user);
     return res.json({ success });
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
   }
 });
 
-apiRouter.post('/facilities/:id/submit', requireHost, (req, res) => {
+apiRouter.post('/facilities/:id/submit', requireHost, async (req, res) => {
   try {
     const user = (req as any).user as User;
-    const existing = db.getFacilityById(req.params.id);
+    const existing = await db.getFacilityById(req.params.id);
     if (!existing) return res.status(404).json({ error: 'Facility not found' });
     if (existing.hostId !== user.id && user.role !== 'admin') {
       return res.status(403).json({ error: 'You do not own this facility' });
     }
-    const facility = db.submitFacilityForReview(req.params.id, user);
+    const facility = await db.submitFacilityForReview(req.params.id, user);
     return res.json(facility);
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
   }
 });
 
-apiRouter.post('/facilities/:id/toggle-status', requireHost, (req, res) => {
+apiRouter.post('/facilities/:id/toggle-status', requireHost, async (req, res) => {
   try {
     const user = (req as any).user as User;
-    const facility = db.getFacilityById(req.params.id);
+    const facility = await db.getFacilityById(req.params.id);
     if (!facility) return res.status(404).json({ error: 'Facility not found' });
     if (facility.hostId !== user.id && user.role !== 'admin') {
       return res.status(403).json({ error: 'You do not own this facility' });
     }
 
     const nextStatus = facility.status === 'active' ? 'suspended' : 'active';
-    const updated = db.updateFacility(facility.id, { status: nextStatus }, user);
+    const updated = await db.updateFacility(facility.id, { status: nextStatus }, user);
     return res.json(updated);
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
@@ -312,22 +324,22 @@ apiRouter.post('/facilities/:id/toggle-status', requireHost, (req, res) => {
 });
 
 // ----------------- PARKING BAYS -----------------
-apiRouter.get('/facilities/:id/bays', (req, res) => {
-  const bays = db.getBaysByFacility(req.params.id);
+apiRouter.get('/facilities/:id/bays', async (req, res) => {
+  const bays = await db.getBaysByFacility(req.params.id);
   return res.json(bays);
 });
 
-apiRouter.post('/facilities/:id/bays', requireHost, (req, res) => {
+apiRouter.post('/facilities/:id/bays', requireHost, async (req, res) => {
   try {
     const user = (req as any).user as User;
-    const bay = db.createBay(req.params.id, req.body, user);
+    const bay = await db.createBay(req.params.id, req.body, user);
     return res.status(201).json(bay);
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
   }
 });
 
-apiRouter.post('/facilities/:id/bays/bulk', requireHost, (req, res) => {
+apiRouter.post('/facilities/:id/bays/bulk', requireHost, async (req, res) => {
   try {
     const user = (req as any).user as User;
     const { prefix, startIndex, count, zone, vehicleCompatibility, dimensions, isAccessibleADA, hasEvCharger, evPowerKw, hourlyRateMultiplier } = req.body;
@@ -336,7 +348,7 @@ apiRouter.post('/facilities/:id/bays/bulk', requireHost, (req, res) => {
       return res.status(400).json({ error: 'Prefix and positive count are required' });
     }
 
-    const created = db.createBulkBays(
+    const created = await db.createBulkBays(
       req.params.id,
       {
         prefix,
@@ -359,32 +371,32 @@ apiRouter.post('/facilities/:id/bays/bulk', requireHost, (req, res) => {
   }
 });
 
-apiRouter.put('/bays/:id', requireHost, (req, res) => {
+apiRouter.put('/bays/:id', requireHost, async (req, res) => {
   try {
     const user = (req as any).user as User;
-    const bay = db.updateBay(req.params.id, req.body, user);
+    const bay = await db.updateBay(req.params.id, req.body, user);
     return res.json(bay);
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
   }
 });
 
-apiRouter.put('/bays/:id/status', requireHost, (req, res) => {
+apiRouter.put('/bays/:id/status', requireHost, async (req, res) => {
   try {
     const user = (req as any).user as User;
     const { status, reason } = req.body;
     if (!status) return res.status(400).json({ error: 'Status is required' });
-    const bay = db.setBayStatus(req.params.id, status, reason, user);
+    const bay = await db.setBayStatus(req.params.id, status, reason, user);
     return res.json(bay);
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
   }
 });
 
-apiRouter.delete('/bays/:id', requireHost, (req, res) => {
+apiRouter.delete('/bays/:id', requireHost, async (req, res) => {
   try {
     const user = (req as any).user as User;
-    const success = db.deleteBay(req.params.id, user);
+    const success = await db.deleteBay(req.params.id, user);
     return res.json({ success });
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
@@ -392,55 +404,55 @@ apiRouter.delete('/bays/:id', requireHost, (req, res) => {
 });
 
 // ----------------- PRICING & QUOTES -----------------
-apiRouter.get('/facilities/:id/pricing-rules', (req, res) => {
-  const rules = db.getPricingRules(req.params.id);
+apiRouter.get('/facilities/:id/pricing-rules', async (req, res) => {
+  const rules = await db.getPricingRules(req.params.id);
   return res.json(rules);
 });
 
-apiRouter.post('/facilities/:id/pricing-rules', requireHost, (req, res) => {
+apiRouter.post('/facilities/:id/pricing-rules', requireHost, async (req, res) => {
   try {
     const user = (req as any).user as User;
-    const rule = db.createPricingRule(req.params.id, req.body, user);
+    const rule = await db.createPricingRule(req.params.id, req.body, user);
     return res.status(201).json(rule);
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
   }
 });
 
-apiRouter.put('/pricing-rules/:id', requireHost, (req, res) => {
+apiRouter.put('/pricing-rules/:id', requireHost, async (req, res) => {
   try {
     const user = (req as any).user as User;
-    const rule = db.updatePricingRule(req.params.id, req.body, user);
+    const rule = await db.updatePricingRule(req.params.id, req.body, user);
     return res.json(rule);
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
   }
 });
 
-apiRouter.delete('/pricing-rules/:id', requireHost, (req, res) => {
+apiRouter.delete('/pricing-rules/:id', requireHost, async (req, res) => {
   try {
     const user = (req as any).user as User;
-    const rule = db.getPricingRuleById(req.params.id);
+    const rule = await db.getPricingRuleById(req.params.id);
     if (!rule) return res.status(404).json({ error: 'Pricing rule not found' });
-    const facility = db.getFacilityById(rule.facilityId);
+    const facility = await db.getFacilityById(rule.facilityId);
     if (!facility) return res.status(404).json({ error: 'Facility not found' });
     if (facility.hostId !== user.id && user.role !== 'admin') {
       return res.status(403).json({ error: 'You do not own this facility' });
     }
-    const success = db.deletePricingRule(req.params.id, user);
+    const success = await db.deletePricingRule(req.params.id, user);
     return res.json({ success });
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
   }
 });
 
-apiRouter.post('/pricing/estimate', (req, res) => {
+apiRouter.post('/pricing/estimate', async (req, res) => {
   try {
     const { facilityId, startTime, endTime, bayMultiplier } = req.body;
     if (!facilityId || !startTime || !endTime) {
       return res.status(400).json({ error: 'facilityId, startTime, and endTime are required' });
     }
-    const estimate = db.calculateQuote(facilityId, startTime, endTime, bayMultiplier || 1.0);
+    const estimate = await db.calculateQuote(facilityId, startTime, endTime, bayMultiplier || 1.0);
     return res.json(estimate);
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
@@ -448,29 +460,29 @@ apiRouter.post('/pricing/estimate', (req, res) => {
 });
 
 // ----------------- AVAILABILITY HOLDS -----------------
-apiRouter.post('/holds', (req, res) => {
+apiRouter.post('/holds', async (req, res) => {
   try {
-    const user = getAuthenticatedUser(req);
+    const user = await getAuthenticatedUser(req);
     const userId = user ? user.id : (req.body.customerId || 'usr_cust1');
     const { bayId, facilityId, startTime, endTime } = req.body;
     if (!bayId || !facilityId || !startTime || !endTime) {
       return res.status(400).json({ error: 'bayId, facilityId, startTime, and endTime are required' });
     }
-    const hold = db.createHold(bayId, facilityId, userId, startTime, endTime);
+    const hold = await db.createHold(bayId, facilityId, userId, startTime, endTime);
     return res.status(201).json(hold);
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
   }
 });
 
-apiRouter.delete('/holds/:id', (req, res) => {
-  db.releaseHold(req.params.id);
+apiRouter.delete('/holds/:id', async (req, res) => {
+  await db.releaseHold(req.params.id);
   return res.json({ success: true });
 });
 
 // ----------------- BOOKINGS -----------------
-apiRouter.get('/bookings', (req, res) => {
-  const user = getAuthenticatedUser(req);
+apiRouter.get('/bookings', async (req, res) => {
+  const user = await getAuthenticatedUser(req);
   const { hostId, customerId, facilityId, status } = req.query;
 
   let filters: any = {};
@@ -495,16 +507,16 @@ apiRouter.get('/bookings', (req, res) => {
   if (facilityId) filters.facilityId = facilityId as string;
   if (status) filters.status = status as string;
 
-  const bookings = db.getBookings(filters);
+  const bookings = await db.getBookings(filters);
   return res.json(bookings);
 });
 
-apiRouter.get('/bookings/:id', (req, res) => {
-  const booking = db.getBookingById(req.params.id);
+apiRouter.get('/bookings/:id', async (req, res) => {
+  const booking = await db.getBookingById(req.params.id);
   if (!booking) return res.status(404).json({ error: 'Booking not found' });
-  const facility = db.getFacilityById(booking.facilityId);
-  const bay = db.getBayById(booking.bayId);
-  const user = getAuthenticatedUser(req);
+  const facility = await db.getFacilityById(booking.facilityId);
+  const bay = await db.getBayById(booking.bayId);
+  const user = await getAuthenticatedUser(req);
   if (user) {
     if (user.role === 'host') {
       if (facility && facility.hostId !== user.id) {
@@ -519,9 +531,9 @@ apiRouter.get('/bookings/:id', (req, res) => {
   return res.json({ ...booking, facility, bay });
 });
 
-apiRouter.post('/bookings', (req, res) => {
+apiRouter.post('/bookings', async (req, res) => {
   try {
-    let user = getAuthenticatedUser(req);
+    let user = await getAuthenticatedUser(req);
     const {
       facilityId,
       bayId,
@@ -541,16 +553,16 @@ apiRouter.post('/bookings', (req, res) => {
 
     if (!user) {
       const email = (customerEmail || 'alex.driver@example.com').toLowerCase();
-      user = db.findUserByEmail(email) || db.createUser({
+      user = (await db.findUserByEmail(email)) || (await db.createUser({
         email,
         password: 'driver_' + Math.random().toString(36).substring(7),
         fullName: customerName || 'Alex Driver',
         phone: customerPhone || '+1 (206) 555-0188',
         role: 'customer'
-      });
+      }));
     }
 
-    const booking = db.createBooking({
+    const booking = await db.createBooking({
       facilityId,
       bayId,
       customerId: user.id,
@@ -571,16 +583,16 @@ apiRouter.post('/bookings', (req, res) => {
 });
 
 // Check-in (Gate Barrier Open Simulation)
-apiRouter.post('/bookings/:id/check-in', requireAuth, (req, res) => {
+apiRouter.post('/bookings/:id/check-in', requireAuth, async (req, res) => {
   try {
     const user = (req as any).user as User;
-    const existing = db.getBookingById(req.params.id);
+    const existing = await db.getBookingById(req.params.id);
     if (!existing) return res.status(404).json({ error: 'Booking not found' });
-    const facility = db.getFacilityById(existing.facilityId);
+    const facility = await db.getFacilityById(existing.facilityId);
     if (existing.customerId !== user.id && facility?.hostId !== user.id && user.role !== 'admin') {
       return res.status(403).json({ error: 'Unauthorized to check in this booking.' });
     }
-    const booking = db.checkInBooking(req.params.id, user);
+    const booking = await db.checkInBooking(req.params.id, user);
     return res.json({
       success: true,
       message: 'Barrier gate opened. Check-in confirmed.',
@@ -592,16 +604,16 @@ apiRouter.post('/bookings/:id/check-in', requireAuth, (req, res) => {
 });
 
 // Check-out
-apiRouter.post('/bookings/:id/check-out', requireAuth, (req, res) => {
+apiRouter.post('/bookings/:id/check-out', requireAuth, async (req, res) => {
   try {
     const user = (req as any).user as User;
-    const existing = db.getBookingById(req.params.id);
+    const existing = await db.getBookingById(req.params.id);
     if (!existing) return res.status(404).json({ error: 'Booking not found' });
-    const facility = db.getFacilityById(existing.facilityId);
+    const facility = await db.getFacilityById(existing.facilityId);
     if (existing.customerId !== user.id && facility?.hostId !== user.id && user.role !== 'admin') {
       return res.status(403).json({ error: 'Unauthorized to check out this booking.' });
     }
-    const booking = db.checkOutBooking(req.params.id, user);
+    const booking = await db.checkOutBooking(req.params.id, user);
     return res.json({
       success: true,
       message: 'Gate opened. Check-out complete. Thank you for parking with ParkEazy!',
@@ -613,18 +625,18 @@ apiRouter.post('/bookings/:id/check-out', requireAuth, (req, res) => {
 });
 
 // Extend
-apiRouter.post('/bookings/:id/extend', requireAuth, (req, res) => {
+apiRouter.post('/bookings/:id/extend', requireAuth, async (req, res) => {
   try {
     const user = (req as any).user as User;
-    const existing = db.getBookingById(req.params.id);
+    const existing = await db.getBookingById(req.params.id);
     if (!existing) return res.status(404).json({ error: 'Booking not found' });
-    const facility = db.getFacilityById(existing.facilityId);
+    const facility = await db.getFacilityById(existing.facilityId);
     if (existing.customerId !== user.id && facility?.hostId !== user.id && user.role !== 'admin') {
       return res.status(403).json({ error: 'Unauthorized to extend this booking.' });
     }
     const { hours } = req.body;
     if (!hours || hours <= 0) return res.status(400).json({ error: 'Valid hours required' });
-    const booking = db.extendBooking(req.params.id, Number(hours), user);
+    const booking = await db.extendBooking(req.params.id, Number(hours), user);
     return res.json(booking);
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
@@ -632,17 +644,17 @@ apiRouter.post('/bookings/:id/extend', requireAuth, (req, res) => {
 });
 
 // Cancel
-apiRouter.post('/bookings/:id/cancel', requireAuth, (req, res) => {
+apiRouter.post('/bookings/:id/cancel', requireAuth, async (req, res) => {
   try {
     const user = (req as any).user as User;
-    const existing = db.getBookingById(req.params.id);
+    const existing = await db.getBookingById(req.params.id);
     if (!existing) return res.status(404).json({ error: 'Booking not found' });
-    const facility = db.getFacilityById(existing.facilityId);
+    const facility = await db.getFacilityById(existing.facilityId);
     if (existing.customerId !== user.id && facility?.hostId !== user.id && user.role !== 'admin') {
       return res.status(403).json({ error: 'Unauthorized to cancel this booking.' });
     }
     const { reason } = req.body;
-    const booking = db.cancelBooking(req.params.id, reason || 'Customer requested cancellation', user);
+    const booking = await db.cancelBooking(req.params.id, reason || 'Customer requested cancellation', user);
     return res.json(booking);
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
@@ -650,24 +662,24 @@ apiRouter.post('/bookings/:id/cancel', requireAuth, (req, res) => {
 });
 
 // ----------------- FINANCIALS & PAYOUTS -----------------
-apiRouter.get('/earnings/summary', requireHost, (req, res) => {
+apiRouter.get('/earnings/summary', requireHost, async (req, res) => {
   const user = (req as any).user as User;
   const targetHostId = req.query.hostId && user.role === 'admin' ? (req.query.hostId as string) : user.id;
-  const summary = db.getHostFinancialSummary(targetHostId);
+  const summary = await db.getHostFinancialSummary(targetHostId);
   return res.json(summary);
 });
 
-apiRouter.get('/ledger', requireHost, (req, res) => {
+apiRouter.get('/ledger', requireHost, async (req, res) => {
   const user = (req as any).user as User;
   const targetHostId = req.query.hostId && user.role === 'admin' ? (req.query.hostId as string) : (user.role === 'host' ? user.id : undefined);
-  const entries = db.getLedger(targetHostId);
+  const entries = await db.getLedger(targetHostId);
   return res.json(entries);
 });
 
-apiRouter.get('/payouts', requireHost, (req, res) => {
+apiRouter.get('/payouts', requireHost, async (req, res) => {
   const user = (req as any).user as User;
   const targetHostId = user.role === 'admin' && req.query.hostId ? (req.query.hostId as string) : (user.role === 'host' ? user.id : undefined);
-  const payouts = db.getPayouts(targetHostId);
+  const payouts = await db.getPayouts(targetHostId);
   return res.json(payouts);
 });
 
@@ -690,31 +702,31 @@ apiRouter.post('/payouts', requireHost, async (req, res) => {
 });
 
 // ----------------- REVIEWS -----------------
-apiRouter.get('/facilities/:id/reviews', (req, res) => {
-  const reviews = db.getReviews(req.params.id);
+apiRouter.get('/facilities/:id/reviews', async (req, res) => {
+  const reviews = await db.getReviews(req.params.id);
   return res.json(reviews);
 });
 
-apiRouter.post('/facilities/:id/reviews', requireAuth, (req, res) => {
+apiRouter.post('/facilities/:id/reviews', requireAuth, async (req, res) => {
   try {
     const user = (req as any).user as User;
     const { bookingId, rating, comment } = req.body;
     if (!rating || !comment) {
       return res.status(400).json({ error: 'Rating and comment are required' });
     }
-    const review = db.addReview(req.params.id, user.id, user.fullName, bookingId || 'direct', Number(rating), comment);
+    const review = await db.addReview(req.params.id, user.id, user.fullName, bookingId || 'direct', Number(rating), comment);
     return res.status(201).json(review);
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
   }
 });
 
-apiRouter.post('/reviews/:id/reply', requireAuth, (req, res) => {
+apiRouter.post('/reviews/:id/reply', requireAuth, async (req, res) => {
   try {
     const user = (req as any).user as User;
     const { text } = req.body;
     if (!text) return res.status(400).json({ error: 'Reply text required' });
-    const updated = db.replyToReview(req.params.id, text, user);
+    const updated = await db.replyToReview(req.params.id, text, user);
     return res.json(updated);
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
@@ -722,36 +734,36 @@ apiRouter.post('/reviews/:id/reply', requireAuth, (req, res) => {
 });
 
 // ----------------- NOTIFICATIONS & MESSAGES -----------------
-apiRouter.get('/notifications', requireAuth, (req, res) => {
+apiRouter.get('/notifications', requireAuth, async (req, res) => {
   const user = (req as any).user as User;
-  const items = db.getNotifications(user.id);
+  const items = await db.getNotifications(user.id);
   return res.json(items);
 });
 
-apiRouter.put('/notifications/:id/read', requireAuth, (req, res) => {
+apiRouter.put('/notifications/:id/read', requireAuth, async (req, res) => {
   const user = (req as any).user as User;
-  db.markNotificationRead(req.params.id, user.id);
+  await db.markNotificationRead(req.params.id, user.id);
   return res.json({ success: true });
 });
 
-apiRouter.post('/notifications/mark-all-read', requireAuth, (req, res) => {
+apiRouter.post('/notifications/mark-all-read', requireAuth, async (req, res) => {
   const user = (req as any).user as User;
-  db.markAllNotificationsRead(user.id);
+  await db.markAllNotificationsRead(user.id);
   return res.json({ success: true });
 });
 
-apiRouter.get('/messages', requireAuth, (req, res) => {
+apiRouter.get('/messages', requireAuth, async (req, res) => {
   const user = (req as any).user as User;
-  const threads = db.getMessages(user.id);
+  const threads = await db.getMessages(user.id);
   return res.json(threads);
 });
 
-apiRouter.post('/messages/:threadId', requireAuth, (req, res) => {
+apiRouter.post('/messages/:threadId', requireAuth, async (req, res) => {
   try {
     const user = (req as any).user as User;
     const { text } = req.body;
     if (!text) return res.status(400).json({ error: 'Message text required' });
-    const thread = db.sendMessage(req.params.threadId, user, text);
+    const thread = await db.sendMessage(req.params.threadId, user, text);
     return res.json(thread);
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
@@ -759,23 +771,23 @@ apiRouter.post('/messages/:threadId', requireAuth, (req, res) => {
 });
 
 // ----------------- DISPUTES -----------------
-apiRouter.get('/disputes', requireAuth, (req, res) => {
+apiRouter.get('/disputes', requireAuth, async (req, res) => {
   const user = (req as any).user as User;
   const filters: any = {};
   if (user.role === 'host') filters.hostId = user.id;
   if (user.role === 'customer') filters.customerId = user.id;
-  const disputes = db.getDisputes(filters);
+  const disputes = await db.getDisputes(filters);
   return res.json(disputes);
 });
 
-apiRouter.post('/disputes', requireAuth, (req, res) => {
+apiRouter.post('/disputes', requireAuth, async (req, res) => {
   try {
     const user = (req as any).user as User;
     const { bookingId, reason, statement } = req.body;
     if (!bookingId || !reason || !statement) {
       return res.status(400).json({ error: 'Booking ID, reason, and statement are required' });
     }
-    const ticket = db.createDispute({
+    const ticket = await db.createDispute({
       bookingId,
       reason,
       statement,
@@ -787,11 +799,11 @@ apiRouter.post('/disputes', requireAuth, (req, res) => {
   }
 });
 
-apiRouter.post('/disputes/:id/resolve', requireAdmin, (req, res) => {
+apiRouter.post('/disputes/:id/resolve', requireAdmin, async (req, res) => {
   try {
     const user = (req as any).user as User;
     const { decision, refundAmount, notes } = req.body;
-    const ticket = db.resolveDispute(req.params.id, decision, Number(refundAmount || 0), notes || '', user);
+    const ticket = await db.resolveDispute(req.params.id, decision, Number(refundAmount || 0), notes || '', user);
     return res.json(ticket);
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
@@ -799,14 +811,14 @@ apiRouter.post('/disputes/:id/resolve', requireAdmin, (req, res) => {
 });
 
 // ----------------- ADMIN CONSOLE -----------------
-apiRouter.post('/admin/users', requireAdmin, (req, res) => {
+apiRouter.post('/admin/users', requireAdmin, async (req, res) => {
   try {
     const { email, password, fullName, phone, role } = req.body;
     if (!email || !password || !fullName) {
       return res.status(400).json({ error: 'Email, password, and fullName are required' });
     }
     const adminUser = (req as any).user as User;
-    const user = db.provisionAdminUser({
+    const user = await db.provisionAdminUser({
       email,
       password,
       fullName,
@@ -820,79 +832,80 @@ apiRouter.post('/admin/users', requireAdmin, (req, res) => {
   }
 });
 
-apiRouter.get('/admin/facilities', requireAdmin, (req, res) => {
+apiRouter.get('/admin/facilities', requireAdmin, async (req, res) => {
   const { status } = req.query;
-  const facilities = db.getFacilities(status ? { status: status as string } : undefined);
+  const facilities = await db.getFacilities(status ? { status: status as string } : undefined);
   return res.json(facilities);
 });
 
-apiRouter.post('/admin/facilities/:id/moderate', requireAdmin, (req, res) => {
+apiRouter.post('/admin/facilities/:id/moderate', requireAdmin, async (req, res) => {
   try {
     const user = (req as any).user as User;
     const { approved, notes } = req.body;
-    const moderated = db.moderateFacility(req.params.id, !!approved, notes || '', user);
+    const moderated = await db.moderateFacility(req.params.id, !!approved, notes || '', user);
     return res.json(moderated);
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
   }
 });
 
-apiRouter.get('/admin/hosts', requireAdmin, (req, res) => {
-  const hosts = db.getAllHosts();
+apiRouter.get('/admin/hosts', requireAdmin, async (req, res) => {
+  const hosts = await db.getAllHosts();
   return res.json(hosts);
 });
 
-apiRouter.put('/admin/hosts/:id/status', requireAdmin, (req, res) => {
+apiRouter.put('/admin/hosts/:id/status', requireAdmin, async (req, res) => {
   try {
     const user = (req as any).user as User;
     const { status } = req.body;
-    const host = db.updateHostStatus(req.params.id, status, user);
+    const host = await db.updateHostStatus(req.params.id, status, user);
     return res.json(host);
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
   }
 });
 
-apiRouter.get('/admin/providers', requireAdmin, (req, res) => {
-  const providers = db.getProviders();
+apiRouter.get('/admin/providers', requireAdmin, async (req, res) => {
+  const providers = await db.getProviders();
   return res.json(providers);
 });
 
-apiRouter.put('/admin/providers/:id', requireAdmin, (req, res) => {
+apiRouter.put('/admin/providers/:id', requireAdmin, async (req, res) => {
   try {
     const user = (req as any).user as User;
-    const updated = db.updateProvider(req.params.id, req.body, user);
+    const updated = await db.updateProvider(req.params.id, req.body, user);
     return res.json(updated);
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
   }
 });
 
-apiRouter.post('/admin/providers/:id/test', requireAdmin, (req, res) => {
+apiRouter.post('/admin/providers/:id/test', requireAdmin, async (req, res) => {
   try {
     const user = (req as any).user as User;
-    const result = db.testProviderConnection(req.params.id, user);
+    const result = await db.testProviderConnection(req.params.id, user);
     return res.json(result);
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
   }
 });
 
-apiRouter.get('/admin/audit-logs', requireAdmin, (req, res) => {
+apiRouter.get('/admin/audit-logs', requireAdmin, async (req, res) => {
   const { entityType, limit } = req.query;
-  const logs = db.getAuditLogs(entityType as string, limit ? Number(limit) : 100);
+  const logs = await db.getAuditLogs(entityType as string, limit ? Number(limit) : 100);
   return res.json(logs);
 });
 
 // ----------------- REPORTS & ANALYTICS -----------------
-apiRouter.get('/reports/host', requireHost, (req, res) => {
+apiRouter.get('/reports/host', requireHost, async (req, res) => {
   const user = (req as any).user as User;
   const hostId = user.role === 'admin' && req.query.hostId ? (req.query.hostId as string) : user.id;
 
-  const facilities = db.getFacilities({ hostId });
+  const facilities = await db.getFacilities({ hostId });
   const facilityIds = facilities.map(f => f.id);
-  const bookings = db.getBookings({ hostId });
-  const bays = facilityIds.flatMap(fid => db.getBaysByFacility(fid));
+  const bookings = await db.getBookings({ hostId });
+  const baysArrays = await Promise.all(facilityIds.map(fid => db.getBaysByFacility(fid)));
+  const bays = baysArrays.flat();
 
   const totalBays = bays.length;
   const occupiedBays = bays.filter(b => b.status === 'occupied').length;

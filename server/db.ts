@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { PoolClient } from 'pg';
 import { dbManager } from '../apps/api/database/connection';
 import { NotificationAdapterFactory } from '../apps/api/services/notification-adapter';
 import { appConfig } from '../apps/api/config/env';
@@ -82,12 +83,12 @@ export class Database {
 
   constructor() {
     this.data = this.loadOrSeed();
-    this.cleanExpiredHolds();
-    this.cleanExpiredSessions();
+    this.cleanExpiredHolds().catch(() => {});
+    this.cleanExpiredSessions().catch(() => {});
     // Run hold and session expiry checker periodically every 30 seconds
     this.expiryInterval = setInterval(() => {
-      this.cleanExpiredHolds();
-      this.cleanExpiredSessions();
+      this.cleanExpiredHolds().catch(() => {});
+      this.cleanExpiredSessions().catch(() => {});
     }, 30000);
     this.expiryInterval.unref();
   }
@@ -237,6 +238,9 @@ export class Database {
       }
 
       for (const booking of schema.bookings || []) {
+        const facility = schema.facilities?.find(f => f.id === booking.facilityId);
+        const hostId = (booking as any).hostId || facility?.hostId || 'usr_host1';
+        const userId = (booking as any).customerId || (booking as any).userId || 'usr_cust1';
         await client.query(
           `INSERT INTO bookings (id, bay_id, location_id, user_id, host_id, start_time_utc, end_time_utc, status, base_amount_cents, security_deposit_cents, platform_fee_cents, taxes_cents, total_payable_cents, currency, license_plate, booking_reference, metadata, created_at, updated_at)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
@@ -246,19 +250,19 @@ export class Database {
             booking.id,
             booking.bayId,
             booking.facilityId,
-            booking.userId,
-            booking.hostId,
+            userId,
+            hostId,
             booking.startTime,
             booking.endTime,
             booking.status ? booking.status.toUpperCase() : 'CONFIRMED',
-            Math.round((booking.totalAmount || 0) * 100),
+            Math.round(((booking as any).grossAmount || (booking as any).totalAmount || 0) * 100),
             0,
-            0,
-            0,
-            Math.round((booking.totalAmount || 0) * 100),
+            Math.round(((booking as any).platformFee || 0) * 100),
+            Math.round(((booking as any).taxAmount || 0) * 100),
+            Math.round(((booking as any).grossAmount || (booking as any).totalAmount || 0) * 100),
             'USD',
             booking.licensePlate || null,
-            booking.reference || ('BK-' + booking.id),
+            (booking as any).bookingReference || (booking as any).reference || ('BK-' + booking.id),
             JSON.stringify(booking),
             booking.createdAt || new Date().toISOString(),
             booking.updatedAt || new Date().toISOString()
@@ -284,9 +288,9 @@ export class Database {
             null,
             entry.description || 'Ledger transaction',
             (entry as any).idempotencyKey || ('ledger_' + entry.id),
-            entry.referenceId || null,
+            (entry as any).referenceId || (entry as any).referenceNumber || null,
             entry.status || 'completed',
-            entry.timestamp || new Date().toISOString()
+            entry.createdAt || (entry as any).timestamp || new Date().toISOString()
           ]
         );
       }
@@ -322,9 +326,9 @@ export class Database {
             prov.name,
             prov.category,
             Boolean(prov.isEnabled),
-            prov.mode || 'test',
+            (prov as any).mode || 'test',
             JSON.stringify(prov.settings || {}),
-            JSON.stringify(prov.credentials || {})
+            JSON.stringify((prov as any).credentials || {})
           ]
         );
       }
@@ -337,9 +341,9 @@ export class Database {
           [
             audit.id,
             audit.timestamp,
-            audit.userId || null,
-            audit.userName || null,
-            audit.userRole || null,
+            (audit as any).actorId || (audit as any).userId || null,
+            (audit as any).actorName || (audit as any).userName || null,
+            (audit as any).actorRole || (audit as any).userRole || null,
             audit.action,
             audit.entityType,
             audit.entityId,
@@ -388,37 +392,379 @@ export class Database {
     };
   }
 
-  private async persistToPostgres(): Promise<void> {
-    if (!this.isPostgresActive) return;
-    const collections: (keyof DatabaseSchema)[] = [
-      'users', 'facilities', 'bays', 'pricingRules', 'holds', 'bookings',
-      'ledger', 'payouts', 'reviews', 'messages', 'notifications', 'disputes',
-      'providers', 'auditLogs', 'sessions', 'passwordResetTokens'
-    ];
-
-    const client = await dbManager.getClient();
-    try {
-      await client.query('BEGIN');
-      for (const col of collections) {
-        const items = (this.data[col] || []) as any[];
-        for (const item of items) {
-          const id = item.id || item.token;
-          if (!id) continue;
-          await client.query(
-            `INSERT INTO app_store_entities (collection, id, data, updated_at)
-             VALUES ($1, $2, $3, NOW())
-             ON CONFLICT (collection, id) DO UPDATE SET data = $3, updated_at = NOW()`,
-            [col, id, JSON.stringify(item)]
-          );
-        }
-      }
-      await client.query('COMMIT');
-    } catch (err: any) {
-      await client.query('ROLLBACK');
-      console.error('[ParkEazy-Store] Batch persist to PostgreSQL failed:', err.message);
-    } finally {
-      client.release();
+  private checkPersistenceAvailable(): void {
+    const isProduction = appConfig.nodeEnv === 'production' || appConfig.database.isRequired;
+    if (isProduction && (!this.isPostgresActive || !dbManager.isPostgresConnected())) {
+      throw new Error('Durable PostgreSQL database is required in production but currently unavailable.');
     }
+  }
+
+  public async withTransaction<T>(operation: (client: PoolClient) => Promise<T>): Promise<T> {
+    this.checkPersistenceAvailable();
+    if (this.isPostgresActive) {
+      const client = await dbManager.getClient();
+      try {
+        await client.query('BEGIN');
+        const result = await operation(client);
+        await client.query('COMMIT');
+        return result;
+      } catch (err: any) {
+        await client.query('ROLLBACK').catch(() => {});
+        console.error('[ParkEazy-Store] Transaction aborted:', err.message);
+        throw err;
+      } finally {
+        client.release();
+      }
+    }
+    return await operation(null as any);
+  }
+
+  public async syncEntityToRelationalTable(client: PoolClient, collection: string, id: string, entity: any): Promise<void> {
+    if (!client) return;
+    try {
+      if (collection === 'users') {
+        const nameParts = (entity.fullName || '').split(' ');
+        const firstName = nameParts[0] || 'User';
+        const lastName = nameParts.slice(1).join(' ') || 'User';
+        await client.query(
+          `INSERT INTO users (id, email, first_name, last_name, phone_number, roles, full_name, password_hash, role, status, avatar_url, business_details, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+           ON CONFLICT (id) DO UPDATE SET
+             email = EXCLUDED.email, full_name = EXCLUDED.full_name, password_hash = EXCLUDED.password_hash,
+             role = EXCLUDED.role, status = EXCLUDED.status, avatar_url = EXCLUDED.avatar_url,
+             business_details = EXCLUDED.business_details, updated_at = NOW()`,
+          [
+            entity.id,
+            entity.email,
+            firstName,
+            lastName,
+            entity.phone || '+1 555-0000',
+            entity.role === 'admin' ? ['ADMIN'] : (entity.role === 'host' ? ['HOST', 'CUSTOMER'] : ['CUSTOMER']),
+            entity.fullName,
+            entity.passwordHash,
+            entity.role,
+            entity.status || 'active',
+            entity.avatarUrl || null,
+            entity.businessDetails ? JSON.stringify(entity.businessDetails) : null,
+            entity.createdAt || new Date().toISOString(),
+            entity.updatedAt || new Date().toISOString()
+          ]
+        );
+      } else if (collection === 'facilities') {
+        await client.query(
+          `INSERT INTO parking_locations (id, host_id, name, description, address_line1, city, state, postal_code, country, latitude, longitude, status, hourly_rate_cents, daily_rate_cents, metadata, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+           ON CONFLICT (id) DO UPDATE SET
+             name = EXCLUDED.name, description = EXCLUDED.description, address_line1 = EXCLUDED.address_line1,
+             city = EXCLUDED.city, state = EXCLUDED.state, postal_code = EXCLUDED.postal_code,
+             status = EXCLUDED.status, hourly_rate_cents = EXCLUDED.hourly_rate_cents,
+             daily_rate_cents = EXCLUDED.daily_rate_cents, metadata = EXCLUDED.metadata, updated_at = NOW()`,
+          [
+            entity.id,
+            entity.hostId,
+            entity.name,
+            entity.description || '',
+            entity.address || '',
+            entity.city || '',
+            entity.state || '',
+            entity.postalCode || '',
+            entity.country || 'USA',
+            entity.latitude || 0,
+            entity.longitude || 0,
+            (entity.status || 'draft').toUpperCase(),
+            Math.round(((entity as any).baseHourlyRate || 5) * 100),
+            Math.round(((entity as any).dailyMaxRate || 35) * 100),
+            JSON.stringify(entity),
+            entity.createdAt || new Date().toISOString(),
+            entity.updatedAt || new Date().toISOString()
+          ]
+        );
+      } else if (collection === 'bays') {
+        await client.query(
+          `INSERT INTO parking_bays (id, location_id, bay_number, status, metadata, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           ON CONFLICT (id) DO UPDATE SET
+             status = EXCLUDED.status, metadata = EXCLUDED.metadata, updated_at = NOW()`,
+          [
+            entity.id,
+            entity.facilityId,
+            entity.identifier,
+            (entity.status || 'available').toUpperCase(),
+            JSON.stringify(entity),
+            entity.createdAt || new Date().toISOString(),
+            entity.updatedAt || new Date().toISOString()
+          ]
+        );
+      } else if (collection === 'pricingRules') {
+        await client.query(
+          `INSERT INTO facility_pricing_rules (id, facility_id, data, created_at)
+           VALUES ($1, $2, $3, NOW())
+           ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data`,
+          [entity.id, entity.facilityId, JSON.stringify(entity)]
+        );
+      } else if (collection === 'bookings') {
+        const facility = this.data.facilities?.find(f => f.id === entity.facilityId);
+        const hostId = entity.hostId || facility?.hostId || 'usr_host1';
+        const userId = entity.customerId || entity.userId || 'usr_cust1';
+        await client.query(
+          `INSERT INTO bookings (id, bay_id, location_id, user_id, host_id, start_time_utc, end_time_utc, status, base_amount_cents, security_deposit_cents, platform_fee_cents, taxes_cents, total_payable_cents, currency, license_plate, booking_reference, metadata, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+           ON CONFLICT (id) DO UPDATE SET
+             status = EXCLUDED.status, metadata = EXCLUDED.metadata, updated_at = NOW()`,
+          [
+            entity.id,
+            entity.bayId,
+            entity.facilityId,
+            userId,
+            hostId,
+            entity.startTime,
+            entity.endTime,
+            (entity.status || 'confirmed').toUpperCase(),
+            Math.round(((entity as any).grossAmount || (entity as any).totalAmount || 0) * 100),
+            0,
+            Math.round(((entity as any).platformFee || 0) * 100),
+            Math.round(((entity as any).taxAmount || 0) * 100),
+            Math.round(((entity as any).grossAmount || (entity as any).totalAmount || 0) * 100),
+            'USD',
+            entity.licensePlate || null,
+            (entity as any).bookingReference || (entity as any).reference || ('BK-' + entity.id),
+            JSON.stringify(entity),
+            entity.createdAt || new Date().toISOString(),
+            entity.updatedAt || new Date().toISOString()
+          ]
+        );
+      } else if (collection === 'ledger') {
+        await client.query(
+          `INSERT INTO financial_ledger (id, host_id, booking_id, entry_type, debit_account, credit_account, amount_cents, currency, payment_provider, provider_transaction_id, description, idempotency_key, reference_number, status, created_at_utc)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+           ON CONFLICT (idempotency_key) DO NOTHING`,
+          [
+            entity.id,
+            (entity as any).hostId || null,
+            (entity as any).bookingId || null,
+            entity.type ? entity.type.toUpperCase() : 'GENERAL',
+            'ACCOUNTS_RECEIVABLE',
+            'OPERATING_REVENUE',
+            Math.round(entity.amount * 100),
+            entity.currency || 'USD',
+            'STRIPE',
+            null,
+            entity.description || 'Ledger transaction',
+            (entity as any).idempotencyKey || ('ledger_' + entity.id),
+            (entity as any).referenceId || (entity as any).referenceNumber || null,
+            entity.status || 'completed',
+            entity.createdAt || (entity as any).timestamp || new Date().toISOString()
+          ]
+        );
+      } else if (collection === 'payouts') {
+        await client.query(
+          `INSERT INTO host_payout_records (id, host_id, amount_cents, currency, status, method, destination_account, reference_or_utr, requested_at_utc, notes, idempotency_key)
+           VALUES ($1, $2, $3, 'USD', $4, $5, $6, $7, $8, $9, $10)
+           ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, notes = EXCLUDED.notes`,
+          [
+            entity.id,
+            entity.hostId,
+            Math.round(entity.amount * 100),
+            (entity.status || 'pending').toUpperCase(),
+            entity.method || 'ach_bank_transfer',
+            entity.destinationAccount || '',
+            entity.referenceNumber || '',
+            entity.requestedAt || new Date().toISOString(),
+            entity.notes || null,
+            (entity as any).idempotencyKey || ('payout_' + entity.id)
+          ]
+        );
+      } else if (collection === 'sessions') {
+        await client.query(
+          `INSERT INTO active_sessions (token, user_id, expires_at, created_at)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (token) DO UPDATE SET expires_at = EXCLUDED.expires_at`,
+          [
+            entity.token,
+            entity.userId,
+            entity.expiresAt,
+            entity.createdAt || new Date().toISOString()
+          ]
+        );
+      } else if (collection === 'auditLogs') {
+        await client.query(
+          `INSERT INTO system_audit_logs (id, timestamp, user_id, user_name, user_role, action, entity_type, entity_id, details)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           ON CONFLICT (id) DO NOTHING`,
+          [
+            entity.id,
+            entity.timestamp || new Date().toISOString(),
+            entity.actorId || entity.userId || null,
+            entity.actorName || entity.userName || null,
+            entity.actorRole || entity.userRole || null,
+            entity.action,
+            entity.entityType,
+            entity.entityId,
+            entity.details || null
+          ]
+        );
+      } else if (collection === 'providers') {
+        await client.query(
+          `INSERT INTO provider_configs (id, name, category, is_enabled, mode, operational_settings, credentials, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+           ON CONFLICT (id) DO UPDATE SET
+             is_enabled = EXCLUDED.is_enabled, mode = EXCLUDED.mode,
+             operational_settings = EXCLUDED.operational_settings, credentials = EXCLUDED.credentials, updated_at = NOW()`,
+          [
+            entity.id,
+            entity.name,
+            entity.category,
+            Boolean(entity.isEnabled),
+            entity.mode || 'test',
+            JSON.stringify(entity.settings || {}),
+            JSON.stringify(entity.credentials || {})
+          ]
+        );
+      } else if (collection === 'messages') {
+        await client.query(
+          `INSERT INTO message_threads (id, booking_id, facility_id, customer_id, host_id, data, last_message_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, last_message_at = EXCLUDED.last_message_at`,
+          [
+            entity.id,
+            entity.bookingId || null,
+            entity.facilityId || null,
+            entity.customerId || null,
+            entity.hostId || null,
+            JSON.stringify(entity),
+            entity.lastMessageAt || entity.updatedAt || new Date().toISOString()
+          ]
+        );
+      }
+    } catch (err: any) {
+      console.warn(`[ParkEazy-Store] Relational sync warning for ${collection}:${id}:`, err.message);
+      if (appConfig.nodeEnv === 'production' || appConfig.database.isRequired) {
+        throw err;
+      }
+    }
+  }
+
+  public async persistEntity(collection: string, id: string, entity: any, externalClient?: PoolClient): Promise<void> {
+    this.checkPersistenceAvailable();
+    if (this.isPostgresActive) {
+      const client = externalClient || await dbManager.getClient();
+      const isInternalTx = !externalClient;
+      try {
+        if (isInternalTx) await client.query('BEGIN');
+        await client.query(
+          `INSERT INTO app_store_entities (collection, id, data, updated_at)
+           VALUES ($1, $2, $3, NOW())
+           ON CONFLICT (collection, id) DO UPDATE SET data = $3, updated_at = NOW()`,
+          [collection, id, JSON.stringify(entity)]
+        );
+        await this.syncEntityToRelationalTable(client, collection, id, entity);
+        if (isInternalTx) await client.query('COMMIT');
+      } catch (err: any) {
+        if (isInternalTx) await client.query('ROLLBACK').catch(() => {});
+        console.error(`[ParkEazy-Store] Persistent write error for ${collection}:${id}:`, err.message);
+        throw err;
+      } finally {
+        if (isInternalTx) client.release();
+      }
+    }
+
+    // Sync in-memory collection cache
+    const arr = (this.data as any)[collection] as any[];
+    if (Array.isArray(arr)) {
+      const idx = arr.findIndex((x: any) => (x.id === id || x.token === id));
+      if (idx >= 0) {
+        arr[idx] = entity;
+      } else {
+        arr.push(entity);
+      }
+    }
+  }
+
+  public async deleteEntity(collection: string, id: string, externalClient?: PoolClient): Promise<void> {
+    this.checkPersistenceAvailable();
+    if (this.isPostgresActive) {
+      const client = externalClient || await dbManager.getClient();
+      const isInternalTx = !externalClient;
+      try {
+        if (isInternalTx) await client.query('BEGIN');
+        await client.query(`DELETE FROM app_store_entities WHERE collection = $1 AND id = $2`, [collection, id]);
+        if (collection === 'facilities') {
+          await client.query(`DELETE FROM parking_locations WHERE id = $1`, [id]).catch(() => {});
+        } else if (collection === 'bays') {
+          await client.query(`DELETE FROM parking_bays WHERE id = $1`, [id]).catch(() => {});
+        } else if (collection === 'pricingRules') {
+          await client.query(`DELETE FROM facility_pricing_rules WHERE id = $1`, [id]).catch(() => {});
+        } else if (collection === 'sessions') {
+          await client.query(`DELETE FROM active_sessions WHERE token = $1`, [id]).catch(() => {});
+        }
+        if (isInternalTx) await client.query('COMMIT');
+      } catch (err: any) {
+        if (isInternalTx) await client.query('ROLLBACK').catch(() => {});
+        console.error(`[ParkEazy-Store] Persistent delete error for ${collection}:${id}:`, err.message);
+        throw err;
+      } finally {
+        if (isInternalTx) client.release();
+      }
+    }
+
+    // In-memory removal
+    const arr = (this.data as any)[collection] as any[];
+    if (Array.isArray(arr)) {
+      const idx = arr.findIndex((x: any) => (x.id === id || x.token === id));
+      if (idx >= 0) {
+        arr.splice(idx, 1);
+      }
+    }
+  }
+
+  public async getCollectionFromDb<T>(collection: string): Promise<T[]> {
+    this.checkPersistenceAvailable();
+    if (this.isPostgresActive) {
+      try {
+        const res = await dbManager.query(
+          'SELECT data FROM app_store_entities WHERE collection = $1 ORDER BY updated_at DESC',
+          [collection]
+        );
+        const items = res.rows.map(row => typeof row.data === 'string' ? JSON.parse(row.data) : row.data);
+        (this.data as any)[collection] = items;
+        return items;
+      } catch (err: any) {
+        if (appConfig.nodeEnv === 'production' || appConfig.database.isRequired) {
+          throw new Error(`Production database read failed for ${collection}: ${err.message}`);
+        }
+        console.warn(`[ParkEazy-Store] Database read error for collection ${collection}:`, err.message);
+      }
+    }
+    if (appConfig.nodeEnv === 'production' || appConfig.database.isRequired) {
+      throw new Error('Production database is unavailable.');
+    }
+    return ((this.data as any)[collection] || []) as T[];
+  }
+
+  public async getEntityFromDb<T>(collection: string, id: string): Promise<T | null> {
+    this.checkPersistenceAvailable();
+    if (this.isPostgresActive) {
+      try {
+        const res = await dbManager.query(
+          'SELECT data FROM app_store_entities WHERE collection = $1 AND id = $2',
+          [collection, id]
+        );
+        if (res.rows.length === 0) return null;
+        const data = res.rows[0].data;
+        const parsed = typeof data === 'string' ? JSON.parse(data) : data;
+        return parsed as T;
+      } catch (err: any) {
+        if (appConfig.nodeEnv === 'production' || appConfig.database.isRequired) {
+          throw new Error(`Production database read failed for ${collection}:${id}: ${err.message}`);
+        }
+        console.warn(`[ParkEazy-Store] Database read error for ${collection}:${id}:`, err.message);
+      }
+    }
+    if (appConfig.nodeEnv === 'production' || appConfig.database.isRequired) {
+      throw new Error('Production database is unavailable.');
+    }
+    const items = ((this.data as any)[collection] || []) as any[];
+    return (items.find((x: any) => x.id === id || x.token === id) as T) || null;
   }
 
   private loadOrSeed(): DatabaseSchema {
@@ -449,64 +795,36 @@ export class Database {
     return seeded;
   }
 
-  private persist() {
-    if (this.isPostgresActive) {
-      this.persistToPostgres().catch(err => {
-        console.error('[ParkEazy-Store] Error persisting to PostgreSQL:', err.message);
-        if (appConfig.nodeEnv === 'production') {
-          console.error('[ParkEazy-Store] CRITICAL: PostgreSQL persistence write failure in production');
+  public async cleanExpiredHolds(): Promise<void> {
+    const now = new Date().toISOString();
+    const holds = await this.getCollectionFromDb<AvailabilityHold>('holds');
+    const expired = holds.filter(h => h.expiresAt < now);
+    if (expired.length > 0) {
+      await this.withTransaction(async (client) => {
+        for (const hold of expired) {
+          await this.deleteEntity('holds', hold.id, client);
+          const bay = await this.getEntityFromDb<ParkingBay>('bays', hold.bayId);
+          if (bay && bay.status === 'held') {
+            bay.status = 'available';
+            bay.updatedAt = new Date().toISOString();
+            await this.persistEntity('bays', bay.id, bay, client);
+          }
         }
       });
-    }
-
-    // In production, never use the JSON store as the production source of truth
-    if (appConfig.nodeEnv === 'production') {
-      return;
-    }
-
-    if (this.saveTimeout) clearTimeout(this.saveTimeout);
-    this.saveTimeout = setTimeout(() => {
-      try {
-        if (!fs.existsSync(DATA_DIR)) {
-          fs.mkdirSync(DATA_DIR, { recursive: true });
-        }
-        const tempPath = DB_FILE + '.tmp';
-        fs.writeFileSync(tempPath, JSON.stringify(this.data, null, 2), 'utf-8');
-        fs.renameSync(tempPath, DB_FILE);
-      } catch (err) {
-        console.error('Failed to persist database:', err);
-      }
-    }, 100);
-    this.saveTimeout.unref();
-  }
-
-  public cleanExpiredHolds() {
-    const now = new Date().toISOString();
-    const expired = this.data.holds.filter(h => h.expiresAt < now);
-    if (expired.length > 0) {
-      this.data.holds = this.data.holds.filter(h => h.expiresAt >= now);
-      // Revert bay status if held and no active booking
-      for (const hold of expired) {
-        const bay = this.data.bays.find(b => b.id === hold.bayId);
-        if (bay && bay.status === 'held') {
-          bay.status = 'available';
-          bay.updatedAt = new Date().toISOString();
-        }
-      }
-      this.persist();
     }
   }
 
   // ----------------- AUDIT LOGGING -----------------
-  public logAudit(
+  public async logAudit(
     actorId: string,
     actorName: string,
     actorRole: User['role'],
     action: string,
     entityType: AuditLog['entityType'],
     entityId: string,
-    details: string
-  ) {
+    details: string,
+    client?: PoolClient
+  ): Promise<AuditLog> {
     const log: AuditLog = {
       id: 'aud_' + crypto.randomUUID().slice(0, 10),
       timestamp: new Date().toISOString(),
@@ -518,37 +836,37 @@ export class Database {
       entityId,
       details
     };
-    this.data.auditLogs.unshift(log);
-    if (this.data.auditLogs.length > 500) {
-      this.data.auditLogs = this.data.auditLogs.slice(0, 500);
-    }
-    this.persist();
+    await this.persistEntity('auditLogs', log.id, log, client);
+    return log;
   }
 
-  public getAuditLogs(entityType?: string, limit = 100): AuditLog[] {
+  public async getAuditLogs(entityType?: string, limit = 100): Promise<AuditLog[]> {
+    let list = await this.getCollectionFromDb<AuditLog>('auditLogs');
     if (entityType && entityType !== 'all') {
-      return this.data.auditLogs.filter(a => a.entityType === entityType).slice(0, limit);
+      list = list.filter(a => a.entityType === entityType);
     }
-    return this.data.auditLogs.slice(0, limit);
+    return list.slice(0, limit);
   }
 
   // ----------------- USER & AUTH -----------------
-  public findUserByEmail(email: string): User | undefined {
-    return this.data.users.find(u => u.email.toLowerCase() === email.toLowerCase());
+  public async findUserByEmail(email: string): Promise<User | undefined> {
+    const users = await this.getCollectionFromDb<User>('users');
+    return users.find(u => u.email.toLowerCase() === email.toLowerCase());
   }
 
-  public findUserById(id: string): User | undefined {
-    return this.data.users.find(u => u.id === id);
+  public async findUserById(id: string): Promise<User | undefined> {
+    const user = await this.getEntityFromDb<User>('users', id);
+    return user || undefined;
   }
 
-  public createUser(userData: {
+  public async createUser(userData: {
     email: string;
     password: string;
     fullName: string;
     phone: string;
     role: User['role'];
     businessDetails?: User['businessDetails'];
-  }): User {
+  }): Promise<User> {
     const requestedRole = (userData.role || 'customer').toLowerCase().trim() as UserRole;
     if (requestedRole === 'admin') {
       throw new Error('Administrative accounts cannot be registered publicly. Privileged accounts must be provisioned through an authorized administrative mechanism.');
@@ -557,7 +875,7 @@ export class Database {
       throw new Error('Invalid registration role. Permitted public registration roles are "customer" and "host".');
     }
 
-    const existing = this.findUserByEmail(userData.email);
+    const existing = await this.findUserByEmail(userData.email);
     if (existing) {
       throw new Error('A user with this email already exists.');
     }
@@ -586,24 +904,26 @@ export class Database {
       } : undefined)
     };
 
-    this.data.users.push(newUser);
-    this.logAudit(newUser.id, newUser.fullName, newUser.role, 'USER_REGISTERED', 'user', newUser.id, `User registered as ${newUser.role}`);
-    this.persist();
+    await this.withTransaction(async (client) => {
+      await this.persistEntity('users', newUser.id, newUser, client);
+      await this.logAudit(newUser.id, newUser.fullName, newUser.role, 'USER_REGISTERED', 'user', newUser.id, `User registered as ${newUser.role}`, client);
+    });
+
     return newUser;
   }
 
-  public provisionAdminUser(data: {
+  public async provisionAdminUser(data: {
     email: string;
     password: string;
     fullName: string;
     phone?: string;
     role: User['role'];
     actor: User;
-  }): User {
+  }): Promise<User> {
     if (data.actor.role !== 'admin') {
       throw new Error('Access denied: Administrator privileges required to provision privileged accounts.');
     }
-    const existing = this.findUserByEmail(data.email);
+    const existing = await this.findUserByEmail(data.email);
     if (existing) {
       throw new Error('A user with this email already exists.');
     }
@@ -622,33 +942,35 @@ export class Database {
       updatedAt: now
     };
 
-    this.data.users.push(newUser);
-    this.logAudit(
-      data.actor.id,
-      data.actor.fullName,
-      data.actor.role,
-      'ADMIN_USER_PROVISIONED',
-      'user',
-      newUser.id,
-      `Administrator ${data.actor.fullName} provisioned account for ${newUser.email} with role ${newUser.role}`
-    );
-    this.persist();
+    await this.withTransaction(async (client) => {
+      await this.persistEntity('users', newUser.id, newUser, client);
+      await this.logAudit(
+        data.actor.id,
+        data.actor.fullName,
+        data.actor.role,
+        'ADMIN_USER_PROVISIONED',
+        'user',
+        newUser.id,
+        `Administrator ${data.actor.fullName} provisioned account for ${newUser.email} with role ${newUser.role}`,
+        client
+      );
+    });
+
     return newUser;
   }
 
-  public verifyPassword(user: User, password: string): boolean {
+  public async verifyPassword(user: User, password: string): Promise<boolean> {
     const isValid = verifyPasswordHash(password, user.passwordHash);
     if (isValid && !user.passwordHash.startsWith('pbkdf2$')) {
-      // Upgrade transparently to PBKDF2
       user.passwordHash = hashPassword(password);
-      this.persist();
+      await this.persistEntity('users', user.id, user);
     }
     return isValid;
   }
 
   // ----------------- SESSION MANAGEMENT -----------------
-  public createSession(user: User): ActiveSession {
-    this.cleanExpiredSessions();
+  public async createSession(user: User): Promise<ActiveSession> {
+    await this.cleanExpiredSessions();
     const token = 'sess_' + crypto.randomBytes(32).toString('hex');
     const expirySeconds = Number(process.env.JWT_EXPIRY_SECONDS) || 86400;
     const expiresAt = new Date(Date.now() + expirySeconds * 1000).toISOString();
@@ -659,33 +981,30 @@ export class Database {
       createdAt: new Date().toISOString(),
       expiresAt
     };
-    if (!this.data.sessions) this.data.sessions = [];
-    this.data.sessions.push(session);
-    this.persist();
+    await this.persistEntity('sessions', session.token, session);
     return session;
   }
 
-  public validateSession(token: string): User | null {
+  public async validateSession(token: string): Promise<User | null> {
     if (!token) return null;
-    this.cleanExpiredSessions();
+    await this.cleanExpiredSessions();
 
-    const session = this.data.sessions?.find(s => s.token === token);
+    const session = await this.getEntityFromDb<ActiveSession>('sessions', token);
     if (session) {
       if (new Date(session.expiresAt) <= new Date()) {
-        this.revokeSession(token);
+        await this.revokeSession(token);
         return null;
       }
-      const user = this.findUserById(session.userId);
+      const user = await this.findUserById(session.userId);
       if (!user || user.status === 'suspended' || user.status === 'closed') {
         return null;
       }
       return user;
     }
 
-    // Non-production backwards compatibility fallback for test tokens / direct IDs
     const isProduction = process.env.NODE_ENV === 'production';
     if (!isProduction) {
-      const user = this.findUserById(token) || this.findUserByEmail(token);
+      const user = (await this.findUserById(token)) || (await this.findUserByEmail(token));
       if (user && user.status !== 'suspended' && user.status !== 'closed') {
         return user;
       }
@@ -694,33 +1013,25 @@ export class Database {
     return null;
   }
 
-  public revokeSession(token: string): boolean {
-    if (!this.data.sessions) return false;
-    const initialLen = this.data.sessions.length;
-    this.data.sessions = this.data.sessions.filter(s => s.token !== token);
-    if (this.data.sessions.length !== initialLen) {
-      this.persist();
-      return true;
-    }
-    return false;
+  public async revokeSession(token: string): Promise<boolean> {
+    await this.deleteEntity('sessions', token);
+    return true;
   }
 
-  public revokeAllUserSessions(userId: string): void {
-    if (!this.data.sessions) return;
-    const initialLen = this.data.sessions.length;
-    this.data.sessions = this.data.sessions.filter(s => s.userId !== userId);
-    if (this.data.sessions.length !== initialLen) {
-      this.persist();
+  public async revokeAllUserSessions(userId: string): Promise<void> {
+    const sessions = await this.getCollectionFromDb<ActiveSession>('sessions');
+    const userSessions = sessions.filter(s => s.userId === userId);
+    for (const s of userSessions) {
+      await this.deleteEntity('sessions', s.token);
     }
   }
 
-  public cleanExpiredSessions(): void {
-    if (!this.data.sessions) return;
+  public async cleanExpiredSessions(): Promise<void> {
     const now = new Date();
-    const initialLen = this.data.sessions.length;
-    this.data.sessions = this.data.sessions.filter(s => new Date(s.expiresAt) > now);
-    if (this.data.sessions.length !== initialLen) {
-      this.persist();
+    const sessions = await this.getCollectionFromDb<ActiveSession>('sessions');
+    const expired = sessions.filter(s => new Date(s.expiresAt) <= now);
+    for (const s of expired) {
+      await this.deleteEntity('sessions', s.token);
     }
   }
 
@@ -734,7 +1045,6 @@ export class Database {
     const normalizedEmail = email.toLowerCase().trim();
     const now = Date.now();
 
-    // Enforce rate limiting: max 3 requests per 15 minutes per email
     const timestamps = this.resetRateLimits.get(normalizedEmail) || [];
     const recent = timestamps.filter(t => now - t < 15 * 60 * 1000);
     if (recent.length >= 3) {
@@ -743,9 +1053,8 @@ export class Database {
     recent.push(now);
     this.resetRateLimits.set(normalizedEmail, recent);
 
-    const user = this.findUserByEmail(normalizedEmail);
+    const user = await this.findUserByEmail(normalizedEmail);
     if (!user) {
-      // Account enumeration protection: Return generic neutral response
       return {
         success: true,
         message: 'If an account exists with this email address, password recovery instructions have been dispatched.',
@@ -757,14 +1066,15 @@ export class Database {
     const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
     const expiresAt = new Date(now + 15 * 60 * 1000).toISOString();
 
-    if (!this.data.passwordResetTokens) this.data.passwordResetTokens = [];
-
-    // Invalidate existing tokens for this user
-    for (const t of this.data.passwordResetTokens) {
-      if (t.userId === user.id) t.isUsed = true;
+    const existingTokens = await this.getCollectionFromDb<PasswordResetToken>('passwordResetTokens');
+    for (const t of existingTokens) {
+      if (t.userId === user.id && !t.isUsed) {
+        t.isUsed = true;
+        await this.persistEntity('passwordResetTokens', t.id, t);
+      }
     }
 
-    this.data.passwordResetTokens.push({
+    const resetRecord: PasswordResetToken = {
       id: 'prt_' + crypto.randomUUID().slice(0, 8),
       tokenHash,
       userId: user.id,
@@ -772,20 +1082,13 @@ export class Database {
       expiresAt,
       isUsed: false,
       createdAt: new Date(now).toISOString()
+    };
+
+    await this.withTransaction(async (client) => {
+      await this.persistEntity('passwordResetTokens', resetRecord.id, resetRecord, client);
+      await this.logAudit(user.id, user.fullName, user.role, 'PASSWORD_RESET_REQUESTED', 'user', user.id, `Password reset requested for ${user.email}`, client);
     });
 
-    this.logAudit(
-      user.id,
-      user.fullName,
-      user.role,
-      'PASSWORD_RESET_REQUESTED',
-      'user',
-      user.id,
-      `Password reset requested for ${user.email}`
-    );
-    this.persist();
-
-    // CONNECT TO REAL EMAIL/NOTIFICATION ADAPTER
     let deliveryStatus: 'DELIVERED' | 'SIMULATED' | 'FAILED' | 'UNCONFIGURED' = 'SIMULATED';
     try {
       const emailAdapter = NotificationAdapterFactory.getAdapter('EMAIL');
@@ -824,7 +1127,7 @@ export class Database {
     };
   }
 
-  public resetPasswordWithToken(rawToken: string, newPassword: string): { success: boolean; message: string } {
+  public async resetPasswordWithToken(rawToken: string, newPassword: string): Promise<{ success: boolean; message: string }> {
     if (!rawToken || !newPassword) {
       throw new Error('Reset token and new password are required.');
     }
@@ -833,7 +1136,8 @@ export class Database {
     }
 
     const tokenHash = crypto.createHash('sha256').update(rawToken.trim()).digest('hex');
-    const tokenRecord = this.data.passwordResetTokens?.find(t => t.tokenHash === tokenHash);
+    const tokens = await this.getCollectionFromDb<PasswordResetToken>('passwordResetTokens');
+    const tokenRecord = tokens.find(t => t.tokenHash === tokenHash);
 
     if (!tokenRecord || tokenRecord.isUsed) {
       throw new Error('Invalid or already used password recovery token.');
@@ -841,11 +1145,11 @@ export class Database {
 
     if (new Date(tokenRecord.expiresAt) <= new Date()) {
       tokenRecord.isUsed = true;
-      this.persist();
+      await this.persistEntity('passwordResetTokens', tokenRecord.id, tokenRecord);
       throw new Error('Password recovery token has expired. Please request a new one.');
     }
 
-    const user = this.findUserById(tokenRecord.userId);
+    const user = await this.findUserById(tokenRecord.userId);
     if (!user) {
       throw new Error('Associated user account no longer exists.');
     }
@@ -854,19 +1158,22 @@ export class Database {
     user.passwordHash = hashPassword(newPassword);
     user.updatedAt = new Date().toISOString();
 
-    // Revoke all active user sessions upon password reset
-    this.revokeAllUserSessions(user.id);
+    await this.withTransaction(async (client) => {
+      await this.persistEntity('passwordResetTokens', tokenRecord.id, tokenRecord, client);
+      await this.persistEntity('users', user.id, user, client);
+      await this.logAudit(
+        user.id,
+        user.fullName,
+        user.role,
+        'PASSWORD_RESET_COMPLETED',
+        'user',
+        user.id,
+        `Password successfully reset for ${user.email}. All sessions invalidated.`,
+        client
+      );
+    });
 
-    this.logAudit(
-      user.id,
-      user.fullName,
-      user.role,
-      'PASSWORD_RESET_COMPLETED',
-      'user',
-      user.id,
-      `Password successfully reset for ${user.email}. All sessions invalidated.`
-    );
-    this.persist();
+    await this.revokeAllUserSessions(user.id);
 
     return {
       success: true,
@@ -874,37 +1181,44 @@ export class Database {
     };
   }
 
-  public updateUserProfile(userId: string, updates: Partial<User>): User {
-    const user = this.findUserById(userId);
+  public async updateUserProfile(userId: string, updates: Partial<User>): Promise<User> {
+    const user = await this.findUserById(userId);
     if (!user) throw new Error('User not found');
+    const forbiddenUpdates = ['id', 'email', 'role', 'passwordHash', 'createdAt'];
+    for (const key of forbiddenUpdates) {
+      delete (updates as any)[key];
+    }
     Object.assign(user, updates, { updatedAt: new Date().toISOString() });
-    this.persist();
+    await this.persistEntity('users', user.id, user);
     return user;
   }
 
-  public getAllHosts(): User[] {
-    return this.data.users.filter(u => u.role === 'host');
+  public async getAllHosts(): Promise<User[]> {
+    const users = await this.getCollectionFromDb<User>('users');
+    return users.filter(u => u.role === 'host');
   }
 
-  public updateHostStatus(hostId: string, status: User['status'], adminUser: User): User {
-    const host = this.findUserById(hostId);
+  public async updateHostStatus(hostId: string, status: User['status'], adminUser: User): Promise<User> {
+    const host = await this.findUserById(hostId);
     if (!host) throw new Error('Host not found');
     host.status = status;
     host.updatedAt = new Date().toISOString();
     
     // Invalidate sessions if suspended or closed
     if (status === 'suspended' || status === 'closed') {
-      this.revokeAllUserSessions(hostId);
+      await this.revokeAllUserSessions(hostId);
     }
 
-    this.logAudit(adminUser.id, adminUser.fullName, 'admin', 'HOST_STATUS_CHANGED', 'user', hostId, `Host status updated to ${status}`);
-    this.persist();
+    await this.withTransaction(async (client) => {
+      await this.persistEntity('users', hostId, host, client);
+      await this.logAudit(adminUser.id, adminUser.fullName, 'admin', 'HOST_STATUS_CHANGED', 'user', hostId, `Host status updated to ${status}`, client);
+    });
     return host;
   }
 
   // ----------------- FACILITIES -----------------
-  public getFacilities(filters?: { hostId?: string; status?: string; city?: string }): Facility[] {
-    let result = this.data.facilities;
+  public async getFacilities(filters?: { hostId?: string; status?: string; city?: string }): Promise<Facility[]> {
+    let result = await this.getCollectionFromDb<Facility>('facilities');
     if (filters?.hostId) {
       result = result.filter(f => f.hostId === filters.hostId);
     }
@@ -917,12 +1231,13 @@ export class Database {
     return result;
   }
 
-  public getFacilityById(id: string): Facility | undefined {
-    return this.data.facilities.find(f => f.id === id);
+  public async getFacilityById(id: string): Promise<Facility | undefined> {
+    const facility = await this.getEntityFromDb<Facility>('facilities', id);
+    return facility || undefined;
   }
 
-  public createFacility(hostId: string, data: Partial<Facility>): Facility {
-    const host = this.findUserById(hostId);
+  public async createFacility(hostId: string, data: Partial<Facility>): Promise<Facility> {
+    const host = await this.findUserById(hostId);
     if (!host) throw new Error('Host not found');
 
     const now = new Date().toISOString();
@@ -974,9 +1289,6 @@ export class Database {
       updatedAt: now
     };
 
-    this.data.facilities.push(newFacility);
-
-    // Create default pricing rule for facility
     const defaultPricingRule: PricingRule = {
       id: 'prc_' + crypto.randomUUID().slice(0, 8),
       facilityId,
@@ -999,119 +1311,140 @@ export class Database {
       createdAt: now,
       updatedAt: now
     };
-    this.data.pricingRules.push(defaultPricingRule);
 
-    this.logAudit(hostId, host.fullName, 'host', 'FACILITY_CREATED', 'facility', facilityId, `Facility created: ${newFacility.name}`);
-    this.persist();
+    await this.withTransaction(async (client) => {
+      await this.persistEntity('facilities', newFacility.id, newFacility, client);
+      await this.persistEntity('pricingRules', defaultPricingRule.id, defaultPricingRule, client);
+      await this.logAudit(hostId, host.fullName, 'host', 'FACILITY_CREATED', 'facility', facilityId, `Facility created: ${newFacility.name}`, client);
+    });
+
     return newFacility;
   }
 
-  public updateFacility(facilityId: string, updates: Partial<Facility>, actor: User): Facility {
-    const facility = this.getFacilityById(facilityId);
+  public async updateFacility(facilityId: string, updates: Partial<Facility>, actor: User): Promise<Facility> {
+    const facility = await this.getFacilityById(facilityId);
     if (!facility) throw new Error('Facility not found');
     if (actor.role === 'host' && facility.hostId !== actor.id) {
       throw new Error('Unauthorized to update this facility');
     }
 
-    // Refresh bay counts
-    const facilityBays = this.data.bays.filter(b => b.facilityId === facilityId);
+    const allBays = await this.getCollectionFromDb<ParkingBay>('bays');
+    const facilityBays = allBays.filter(b => b.facilityId === facilityId);
     facility.totalBays = facilityBays.length;
     facility.activeBays = facilityBays.filter(b => b.status === 'available' || b.status === 'occupied').length;
 
     Object.assign(facility, updates, { updatedAt: new Date().toISOString() });
-    this.logAudit(actor.id, actor.fullName, actor.role, 'FACILITY_UPDATED', 'facility', facilityId, `Facility updated: ${facility.name}`);
-    this.persist();
+    await this.withTransaction(async (client) => {
+      await this.persistEntity('facilities', facilityId, facility, client);
+      await this.logAudit(actor.id, actor.fullName, actor.role, 'FACILITY_UPDATED', 'facility', facilityId, `Facility updated: ${facility.name}`, client);
+    });
     return facility;
   }
 
-  public deleteFacility(facilityId: string, actor: User): boolean {
-    const index = this.data.facilities.findIndex(f => f.id === facilityId);
-    if (index === -1) return false;
-    const facility = this.data.facilities[index];
+  public async deleteFacility(facilityId: string, actor: User): Promise<boolean> {
+    const facility = await this.getFacilityById(facilityId);
+    if (!facility) return false;
     if (actor.role === 'host' && facility.hostId !== actor.id) {
       throw new Error('Unauthorized: You do not own this facility.');
     }
 
     // Check for active or confirmed bookings
-    const activeBooking = this.data.bookings.find(
+    const bookings = await this.getCollectionFromDb<Booking>('bookings');
+    const activeBooking = bookings.find(
       b => b.facilityId === facilityId && (b.status === 'confirmed' || b.status === 'checked_in')
     );
     if (activeBooking) {
       throw new Error('Cannot delete facility with active or confirmed customer reservations. Please suspend the facility instead.');
     }
 
-    this.data.facilities.splice(index, 1);
-    this.data.bays = this.data.bays.filter(b => b.facilityId !== facilityId);
-    this.data.pricingRules = this.data.pricingRules.filter(r => r.facilityId !== facilityId);
-    this.logAudit(actor.id, actor.fullName, actor.role, 'FACILITY_DELETED', 'facility', facilityId, `Deleted facility "${facility.name}"`);
-    this.persist();
+    const allBays = await this.getCollectionFromDb<ParkingBay>('bays');
+    const facilityBays = allBays.filter(b => b.facilityId === facilityId);
+    const allRules = await this.getCollectionFromDb<PricingRule>('pricingRules');
+    const facilityRules = allRules.filter(r => r.facilityId === facilityId);
+
+    await this.withTransaction(async (client) => {
+      await this.deleteEntity('facilities', facilityId, client);
+      for (const bay of facilityBays) {
+        await this.deleteEntity('bays', bay.id, client);
+      }
+      for (const rule of facilityRules) {
+        await this.deleteEntity('pricingRules', rule.id, client);
+      }
+      await this.logAudit(actor.id, actor.fullName, actor.role, 'FACILITY_DELETED', 'facility', facilityId, `Deleted facility "${facility.name}"`, client);
+    });
     return true;
   }
 
-  public submitFacilityForReview(facilityId: string, host: User): Facility {
-    const facility = this.getFacilityById(facilityId);
+  public async submitFacilityForReview(facilityId: string, host: User): Promise<Facility> {
+    const facility = await this.getFacilityById(facilityId);
     if (!facility) throw new Error('Facility not found');
     if (facility.hostId !== host.id) throw new Error('Unauthorized');
 
     facility.status = 'under_review';
     facility.updatedAt = new Date().toISOString();
 
-    // Create admin notification
-    this.createNotification(
-      'usr_admin1',
-      'Facility Submitted for Review',
-      `Host ${host.fullName} submitted "${facility.name}" for review.`,
-      'moderation',
-      `/admin/facilities/${facilityId}`
-    );
-
-    this.logAudit(host.id, host.fullName, 'host', 'FACILITY_SUBMITTED', 'facility', facilityId, `Facility submitted for moderation`);
-    this.persist();
+    await this.withTransaction(async (client) => {
+      await this.persistEntity('facilities', facilityId, facility, client);
+      await this.createNotification(
+        'usr_admin1',
+        'Facility Submitted for Review',
+        `Host ${host.fullName} submitted "${facility.name}" for review.`,
+        'moderation',
+        `/admin/facilities/${facilityId}`,
+        client
+      );
+      await this.logAudit(host.id, host.fullName, 'host', 'FACILITY_SUBMITTED', 'facility', facilityId, `Facility submitted for moderation`, client);
+    });
     return facility;
   }
 
-  public moderateFacility(facilityId: string, approved: boolean, notes: string, admin: User): Facility {
-    const facility = this.getFacilityById(facilityId);
+  public async moderateFacility(facilityId: string, approved: boolean, notes: string, admin: User): Promise<Facility> {
+    const facility = await this.getFacilityById(facilityId);
     if (!facility) throw new Error('Facility not found');
 
     facility.status = approved ? 'approved' : 'rejected';
     facility.moderationNotes = notes;
     facility.updatedAt = new Date().toISOString();
 
-    // Notify host
-    this.createNotification(
-      facility.hostId,
-      approved ? 'Facility Approved!' : 'Facility Submission Update',
-      approved
-        ? `Your facility "${facility.name}" has been approved and is now active.`
-        : `Your facility "${facility.name}" was not approved. Feedback: ${notes}`,
-      'moderation'
-    );
-
-    this.logAudit(admin.id, admin.fullName, 'admin', approved ? 'FACILITY_APPROVED' : 'FACILITY_REJECTED', 'facility', facilityId, `Moderation decision: ${facility.status}. Notes: ${notes}`);
-    this.persist();
+    await this.withTransaction(async (client) => {
+      await this.persistEntity('facilities', facilityId, facility, client);
+      await this.createNotification(
+        facility.hostId,
+        approved ? 'Facility Approved!' : 'Facility Submission Update',
+        approved
+          ? `Your facility "${facility.name}" has been approved and is now active.`
+          : `Your facility "${facility.name}" was not approved. Feedback: ${notes}`,
+        'moderation',
+        undefined,
+        client
+      );
+      await this.logAudit(admin.id, admin.fullName, 'admin', approved ? 'FACILITY_APPROVED' : 'FACILITY_REJECTED', 'facility', facilityId, `Moderation decision: ${facility.status}. Notes: ${notes}`, client);
+    });
     return facility;
   }
 
   // ----------------- PARKING BAYS -----------------
-  public getBaysByFacility(facilityId: string): ParkingBay[] {
-    return this.data.bays.filter(b => b.facilityId === facilityId);
+  public async getBaysByFacility(facilityId: string): Promise<ParkingBay[]> {
+    const bays = await this.getCollectionFromDb<ParkingBay>('bays');
+    return bays.filter(b => b.facilityId === facilityId);
   }
 
-  public getBayById(bayId: string): ParkingBay | undefined {
-    return this.data.bays.find(b => b.id === bayId);
+  public async getBayById(bayId: string): Promise<ParkingBay | undefined> {
+    const bay = await this.getEntityFromDb<ParkingBay>('bays', bayId);
+    return bay || undefined;
   }
 
-  public createBay(facilityId: string, bayData: Partial<ParkingBay>, actor: User): ParkingBay {
-    const facility = this.getFacilityById(facilityId);
+  public async createBay(facilityId: string, bayData: Partial<ParkingBay>, actor: User): Promise<ParkingBay> {
+    const facility = await this.getFacilityById(facilityId);
     if (!facility) throw new Error('Facility not found');
     if (actor.role === 'host' && facility.hostId !== actor.id) throw new Error('Unauthorized');
 
+    const existingBays = await this.getBaysByFacility(facilityId);
     const now = new Date().toISOString();
     const newBay: ParkingBay = {
       id: 'bay_' + crypto.randomUUID().slice(0, 8),
       facilityId,
-      identifier: bayData.identifier || 'Bay-' + (this.getBaysByFacility(facilityId).length + 1),
+      identifier: bayData.identifier || 'Bay-' + (existingBays.length + 1),
       zone: bayData.zone || 'Level 1',
       vehicleCompatibility: bayData.vehicleCompatibility || ['sedan', 'suv'],
       dimensions: bayData.dimensions || { lengthMeters: 5.0, widthMeters: 2.5, heightMeters: 2.2 },
@@ -1125,14 +1458,15 @@ export class Database {
       updatedAt: now
     };
 
-    this.data.bays.push(newBay);
-    this.syncFacilityBayCount(facilityId);
-    this.logAudit(actor.id, actor.fullName, actor.role, 'BAY_CREATED', 'bay', newBay.id, `Created bay ${newBay.identifier} in ${facility.name}`);
-    this.persist();
+    await this.withTransaction(async (client) => {
+      await this.persistEntity('bays', newBay.id, newBay, client);
+      await this.syncFacilityBayCount(facilityId, client);
+      await this.logAudit(actor.id, actor.fullName, actor.role, 'BAY_CREATED', 'bay', newBay.id, `Created bay ${newBay.identifier} in ${facility.name}`, client);
+    });
     return newBay;
   }
 
-  public createBulkBays(
+  public async createBulkBays(
     facilityId: string,
     config: {
       prefix: string; // e.g. "A-"
@@ -1147,8 +1481,8 @@ export class Database {
       hourlyRateMultiplier?: number;
     },
     actor: User
-  ): ParkingBay[] {
-    const facility = this.getFacilityById(facilityId);
+  ): Promise<ParkingBay[]> {
+    const facility = await this.getFacilityById(facilityId);
     if (!facility) throw new Error('Facility not found');
     if (actor.role === 'host' && facility.hostId !== actor.id) throw new Error('Unauthorized');
 
@@ -1176,97 +1510,109 @@ export class Database {
         createdAt: now,
         updatedAt: now
       };
-
-      this.data.bays.push(bay);
       created.push(bay);
     }
 
-    this.syncFacilityBayCount(facilityId);
-    this.logAudit(actor.id, actor.fullName, actor.role, 'BULK_BAYS_CREATED', 'bay', facilityId, `Created ${created.length} bays (${config.prefix}${config.startIndex}..${config.prefix}${config.startIndex + config.count - 1})`);
-    this.persist();
+    await this.withTransaction(async (client) => {
+      for (const bay of created) {
+        await this.persistEntity('bays', bay.id, bay, client);
+      }
+      await this.syncFacilityBayCount(facilityId, client);
+      await this.logAudit(actor.id, actor.fullName, actor.role, 'BULK_BAYS_CREATED', 'bay', facilityId, `Created ${created.length} bays (${config.prefix}${config.startIndex}..${config.prefix}${config.startIndex + config.count - 1})`, client);
+    });
     return created;
   }
 
-  public updateBay(bayId: string, updates: Partial<ParkingBay>, actor: User): ParkingBay {
-    const bay = this.getBayById(bayId);
+  public async updateBay(bayId: string, updates: Partial<ParkingBay>, actor: User): Promise<ParkingBay> {
+    const bay = await this.getBayById(bayId);
     if (!bay) throw new Error('Bay not found');
-    const facility = this.getFacilityById(bay.facilityId);
+    const facility = await this.getFacilityById(bay.facilityId);
     if (!facility) throw new Error('Facility not found');
     if (actor.role === 'host' && facility.hostId !== actor.id) throw new Error('Unauthorized');
 
     Object.assign(bay, updates, { updatedAt: new Date().toISOString() });
-    this.syncFacilityBayCount(facility.id);
-    this.logAudit(actor.id, actor.fullName, actor.role, 'BAY_UPDATED', 'bay', bayId, `Updated bay ${bay.identifier}`);
-    this.persist();
+    await this.withTransaction(async (client) => {
+      await this.persistEntity('bays', bayId, bay, client);
+      await this.syncFacilityBayCount(facility.id, client);
+      await this.logAudit(actor.id, actor.fullName, actor.role, 'BAY_UPDATED', 'bay', bayId, `Updated bay ${bay.identifier}`, client);
+    });
     return bay;
   }
 
-  public setBayStatus(bayId: string, status: BayStatus, reason: string | undefined, actor: User): ParkingBay {
-    const bay = this.getBayById(bayId);
+  public async setBayStatus(bayId: string, status: BayStatus, reason: string | undefined, actor: User): Promise<ParkingBay> {
+    const bay = await this.getBayById(bayId);
     if (!bay) throw new Error('Bay not found');
-    const facility = this.getFacilityById(bay.facilityId);
+    const facility = await this.getFacilityById(bay.facilityId);
     if (!facility) throw new Error('Facility not found');
     if (actor.role === 'host' && facility.hostId !== actor.id) throw new Error('Unauthorized');
 
     bay.status = status;
     bay.statusReason = reason;
     bay.updatedAt = new Date().toISOString();
-    this.syncFacilityBayCount(facility.id);
-    this.logAudit(actor.id, actor.fullName, actor.role, 'BAY_STATUS_CHANGE', 'bay', bayId, `Bay ${bay.identifier} status set to ${status} (${reason || 'no reason'})`);
-    this.persist();
+    await this.withTransaction(async (client) => {
+      await this.persistEntity('bays', bayId, bay, client);
+      await this.syncFacilityBayCount(facility.id, client);
+      await this.logAudit(actor.id, actor.fullName, actor.role, 'BAY_STATUS_CHANGE', 'bay', bayId, `Bay ${bay.identifier} status set to ${status} (${reason || 'no reason'})`, client);
+    });
     return bay;
   }
 
-  public deleteBay(bayId: string, actor: User): boolean {
-    const bay = this.getBayById(bayId);
+  public async deleteBay(bayId: string, actor: User): Promise<boolean> {
+    const bay = await this.getBayById(bayId);
     if (!bay) return false;
-    const facility = this.getFacilityById(bay.facilityId);
+    const facility = await this.getFacilityById(bay.facilityId);
     if (!facility) throw new Error('Facility not found');
     if (actor.role === 'host' && facility.hostId !== actor.id) throw new Error('Unauthorized');
 
-    // Check if bay has active bookings
-    const activeBooking = this.data.bookings.find(
+    const bookings = await this.getCollectionFromDb<Booking>('bookings');
+    const activeBooking = bookings.find(
       b => b.bayId === bayId && (b.status === 'confirmed' || b.status === 'checked_in')
     );
     if (activeBooking) {
       throw new Error('Cannot delete bay with an active or confirmed booking. Retire the bay instead.');
     }
 
-    this.data.bays = this.data.bays.filter(b => b.id !== bayId);
-    this.syncFacilityBayCount(facility.id);
-    this.logAudit(actor.id, actor.fullName, actor.role, 'BAY_DELETED', 'bay', bayId, `Bay ${bay.identifier} was deleted`);
-    this.persist();
+    await this.withTransaction(async (client) => {
+      await this.deleteEntity('bays', bayId, client);
+      await this.syncFacilityBayCount(facility.id, client);
+      await this.logAudit(actor.id, actor.fullName, actor.role, 'BAY_DELETED', 'bay', bayId, `Bay ${bay.identifier} was deleted`, client);
+    });
     return true;
   }
 
-  private syncFacilityBayCount(facilityId: string) {
-    const facility = this.getFacilityById(facilityId);
+  private async syncFacilityBayCount(facilityId: string, client?: PoolClient): Promise<void> {
+    const facility = await this.getFacilityById(facilityId);
     if (!facility) return;
-    const bays = this.data.bays.filter(b => b.facilityId === facilityId && b.status !== 'retired');
-    facility.totalBays = bays.length;
-    facility.activeBays = bays.filter(b => b.status === 'available' || b.status === 'occupied').length;
+    const bays = await this.getCollectionFromDb<ParkingBay>('bays');
+    const facilityBays = bays.filter(b => b.facilityId === facilityId && b.status !== 'retired');
+    facility.totalBays = facilityBays.length;
+    facility.activeBays = facilityBays.filter(b => b.status === 'available' || b.status === 'occupied').length;
+    await this.persistEntity('facilities', facility.id, facility, client);
   }
 
   // ----------------- PRICING & QUOTES -----------------
-  public getPricingRules(facilityId: string): PricingRule[] {
-    return this.data.pricingRules.filter(r => r.facilityId === facilityId);
+  public async getPricingRules(facilityId: string): Promise<PricingRule[]> {
+    const rules = await this.getCollectionFromDb<PricingRule>('pricingRules');
+    return rules.filter(r => r.facilityId === facilityId);
   }
 
-  public updatePricingRule(ruleId: string, updates: Partial<PricingRule>, actor: User): PricingRule {
-    const rule = this.data.pricingRules.find(r => r.id === ruleId);
+  public async updatePricingRule(ruleId: string, updates: Partial<PricingRule>, actor: User): Promise<PricingRule> {
+    const rule = await this.getEntityFromDb<PricingRule>('pricingRules', ruleId);
     if (!rule) throw new Error('Pricing rule not found');
-    const facility = this.getFacilityById(rule.facilityId);
+    const facility = await this.getFacilityById(rule.facilityId);
     if (!facility) throw new Error('Facility not found');
     if (actor.role === 'host' && facility.hostId !== actor.id) throw new Error('Unauthorized');
 
     Object.assign(rule, updates, { updatedAt: new Date().toISOString() });
-    this.logAudit(actor.id, actor.fullName, actor.role, 'PRICING_UPDATED', 'pricing', ruleId, `Updated pricing rule for ${facility.name}`);
-    this.persist();
+    await this.withTransaction(async (client) => {
+      await this.persistEntity('pricingRules', ruleId, rule, client);
+      await this.logAudit(actor.id, actor.fullName, actor.role, 'PRICING_UPDATED', 'pricing', ruleId, `Updated pricing rule for ${facility.name}`, client);
+    });
     return rule;
   }
 
-  public createPricingRule(facilityId: string, ruleData: Partial<PricingRule>, actor: User): PricingRule {
-    const facility = this.getFacilityById(facilityId);
+  public async createPricingRule(facilityId: string, ruleData: Partial<PricingRule>, actor: User): Promise<PricingRule> {
+    const facility = await this.getFacilityById(facilityId);
     if (!facility) throw new Error('Facility not found');
     if (actor.role === 'host' && facility.hostId !== actor.id) throw new Error('Unauthorized');
 
@@ -1288,32 +1634,34 @@ export class Database {
       updatedAt: now
     };
 
-    this.data.pricingRules.push(newRule);
-    this.logAudit(actor.id, actor.fullName, actor.role, 'PRICING_CREATED', 'pricing', newRule.id, `Created pricing rule "${newRule.name}"`);
-    this.persist();
+    await this.withTransaction(async (client) => {
+      await this.persistEntity('pricingRules', newRule.id, newRule, client);
+      await this.logAudit(actor.id, actor.fullName, actor.role, 'PRICING_CREATED', 'pricing', newRule.id, `Created pricing rule "${newRule.name}"`, client);
+    });
     return newRule;
   }
 
-  public getPricingRuleById(ruleId: string): PricingRule | undefined {
-    return this.data.pricingRules.find(r => r.id === ruleId);
+  public async getPricingRuleById(ruleId: string): Promise<PricingRule | undefined> {
+    const rule = await this.getEntityFromDb<PricingRule>('pricingRules', ruleId);
+    return rule || undefined;
   }
 
-  public deletePricingRule(ruleId: string, actor: User): boolean {
-    const index = this.data.pricingRules.findIndex(r => r.id === ruleId);
-    if (index === -1) return false;
-    const rule = this.data.pricingRules[index];
-    const facility = this.getFacilityById(rule.facilityId);
+  public async deletePricingRule(ruleId: string, actor: User): Promise<boolean> {
+    const rule = await this.getEntityFromDb<PricingRule>('pricingRules', ruleId);
+    if (!rule) return false;
+    const facility = await this.getFacilityById(rule.facilityId);
     if (facility && actor.role === 'host' && facility.hostId !== actor.id) {
       throw new Error('Unauthorized: You do not own this facility.');
     }
-    this.data.pricingRules.splice(index, 1);
-    this.logAudit(actor.id, actor.fullName, actor.role, 'PRICING_DELETED', 'pricing', ruleId, `Deleted pricing rule "${rule.name}"`);
-    this.persist();
+    await this.withTransaction(async (client) => {
+      await this.deleteEntity('pricingRules', ruleId, client);
+      await this.logAudit(actor.id, actor.fullName, actor.role, 'PRICING_DELETED', 'pricing', ruleId, `Deleted pricing rule "${rule.name}"`, client);
+    });
     return true;
   }
 
-  public calculateQuote(facilityId: string, startTimeIso: string, endTimeIso: string, bayMultiplier = 1.0) {
-    const rules = this.getPricingRules(facilityId);
+  public async calculateQuote(facilityId: string, startTimeIso: string, endTimeIso: string, bayMultiplier = 1.0) {
+    const rules = await this.getPricingRules(facilityId);
     const activeRule = rules.find(r => r.isActive) || {
       baseHourlyRate: 5.0,
       dailyMaxRate: 35.0,
@@ -1406,24 +1754,23 @@ export class Database {
   }
 
   // ----------------- AVAILABILITY & HOLDS -----------------
-  public createHold(bayId: string, facilityId: string, userId: string, startTime: string, endTime: string): AvailabilityHold {
-    this.cleanExpiredHolds();
+  public async createHold(bayId: string, facilityId: string, userId: string, startTime: string, endTime: string): Promise<AvailabilityHold> {
+    await this.cleanExpiredHolds();
 
-    // Check if bay is occupied, maintenance, or held
-    const bay = this.getBayById(bayId);
+    const bay = await this.getBayById(bayId);
     if (!bay) throw new Error('Parking bay not found');
     if (bay.status === 'maintenance' || bay.status === 'retired') {
       throw new Error(`Bay is currently marked as ${bay.status}.`);
     }
 
-    // Check active conflicting hold
-    const existingHold = this.data.holds.find(h => h.bayId === bayId && h.expiresAt > new Date().toISOString());
+    const holds = await this.getCollectionFromDb<AvailabilityHold>('holds');
+    const existingHold = holds.find(h => h.bayId === bayId && h.expiresAt > new Date().toISOString());
     if (existingHold && existingHold.userId !== userId) {
       throw new Error('This bay is temporarily held by another customer. Please choose another bay or wait 15 minutes.');
     }
 
-    // Check overlapping confirmed bookings
-    const hasOverlap = this.data.bookings.some(b => {
+    const bookings = await this.getCollectionFromDb<Booking>('bookings');
+    const hasOverlap = bookings.some(b => {
       if (b.bayId !== bayId) return false;
       if (b.status === 'cancelled' || b.status === 'refunded' || b.status === 'completed') return false;
       return new Date(b.startTime) < new Date(endTime) && new Date(b.endTime) > new Date(startTime);
@@ -1433,11 +1780,8 @@ export class Database {
       throw new Error('This bay is already booked for the selected time window.');
     }
 
-    // Remove any previous hold for this user on this bay
-    this.data.holds = this.data.holds.filter(h => !(h.bayId === bayId && h.userId === userId));
-
     const now = new Date();
-    const expiresAt = new Date(now.getTime() + 15 * 60 * 1000).toISOString(); // 15 mins
+    const expiresAt = new Date(now.getTime() + 15 * 60 * 1000).toISOString();
 
     const hold: AvailabilityHold = {
       id: 'hld_' + crypto.randomUUID().slice(0, 8),
@@ -1450,29 +1794,37 @@ export class Database {
       expiresAt
     };
 
-    this.data.holds.push(hold);
-    bay.status = 'held';
-    bay.updatedAt = now.toISOString();
+    await this.withTransaction(async (client) => {
+      const userPrevHolds = holds.filter(h => h.bayId === bayId && h.userId === userId);
+      for (const h of userPrevHolds) {
+        await this.deleteEntity('holds', h.id, client);
+      }
+      await this.persistEntity('holds', hold.id, hold, client);
+      bay.status = 'held';
+      bay.updatedAt = now.toISOString();
+      await this.persistEntity('bays', bay.id, bay, client);
+    });
 
-    this.persist();
     return hold;
   }
 
-  public releaseHold(holdId: string) {
-    const hold = this.data.holds.find(h => h.id === holdId);
+  public async releaseHold(holdId: string): Promise<void> {
+    const hold = await this.getEntityFromDb<AvailabilityHold>('holds', holdId);
     if (hold) {
-      this.data.holds = this.data.holds.filter(h => h.id !== holdId);
-      const bay = this.getBayById(hold.bayId);
-      if (bay && bay.status === 'held') {
-        bay.status = 'available';
-        bay.updatedAt = new Date().toISOString();
-      }
-      this.persist();
+      await this.withTransaction(async (client) => {
+        await this.deleteEntity('holds', holdId, client);
+        const bay = await this.getBayById(hold.bayId);
+        if (bay && bay.status === 'held') {
+          bay.status = 'available';
+          bay.updatedAt = new Date().toISOString();
+          await this.persistEntity('bays', bay.id, bay, client);
+        }
+      });
     }
   }
 
   // ----------------- BOOKINGS & GATE ACCESS -----------------
-  public createBooking(data: {
+  public async createBooking(data: {
     facilityId: string;
     bayId: string;
     customerId: string;
@@ -1484,20 +1836,20 @@ export class Database {
     startTime: string;
     endTime: string;
     idempotencyKey?: string;
-  }): Booking {
-    this.cleanExpiredHolds();
+  }): Promise<Booking> {
+    await this.cleanExpiredHolds();
 
-    // Idempotency check: prevent duplicate billing
     if (data.idempotencyKey) {
-      const existing = this.data.bookings.find(b => b.idempotencyKey === data.idempotencyKey);
+      const bookings = await this.getCollectionFromDb<Booking>('bookings');
+      const existing = bookings.find(b => b.idempotencyKey === data.idempotencyKey);
       if (existing) {
         return existing;
       }
     }
 
-    const facility = this.getFacilityById(data.facilityId);
+    const facility = await this.getFacilityById(data.facilityId);
     if (!facility) throw new Error('Facility not found');
-    const bay = this.getBayById(data.bayId);
+    const bay = await this.getBayById(data.bayId);
     if (!bay) throw new Error('Parking bay not found');
 
     const start = new Date(data.startTime);
@@ -1506,7 +1858,8 @@ export class Database {
       throw new Error('Valid start and end times required, and end time must be after start time.');
     }
 
-    const conflict = this.data.bookings.find(b => {
+    const bookings = await this.getCollectionFromDb<Booking>('bookings');
+    const conflict = bookings.find(b => {
       if (b.bayId !== data.bayId) return false;
       if (b.status === 'cancelled' || b.status === 'refunded' || b.status === 'completed') return false;
       return new Date(b.startTime) < end && new Date(b.endTime) > start;
@@ -1516,7 +1869,7 @@ export class Database {
       throw new Error('Selected parking bay is already booked for this timeframe.');
     }
 
-    const quote = this.calculateQuote(data.facilityId, data.startTime, data.endTime, bay.hourlyRateMultiplier);
+    const quote = await this.calculateQuote(data.facilityId, data.startTime, data.endTime, bay.hourlyRateMultiplier);
 
     const bookingRef = 'PKZ-' + Math.floor(100000 + Math.random() * 900000);
     const qrToken = 'PKZ_QR_' + crypto.randomBytes(16).toString('hex');
@@ -1548,64 +1901,66 @@ export class Database {
       updatedAt: now
     };
 
-    // Remove any temporary hold on this bay
-    this.data.holds = this.data.holds.filter(h => h.bayId === data.bayId);
+    await this.withTransaction(async (client) => {
+      const holds = await this.getCollectionFromDb<AvailabilityHold>('holds');
+      for (const h of holds.filter(h => h.bayId === data.bayId)) {
+        await this.deleteEntity('holds', h.id, client);
+      }
 
-    // Update bay status
-    bay.status = 'reserved';
-    bay.updatedAt = now;
+      bay.status = 'reserved';
+      bay.updatedAt = now;
+      await this.persistEntity('bays', bay.id, bay, client);
+      await this.persistEntity('bookings', booking.id, booking, client);
 
-    this.data.bookings.push(booking);
+      await this.recordLedgerEntry({
+        idempotencyKey: 'ledg_' + (data.idempotencyKey || booking.id),
+        hostId: facility.hostId,
+        facilityId: facility.id,
+        bookingId: booking.id,
+        type: 'booking_income',
+        amount: booking.hostNetEarnings,
+        currency: 'USD',
+        description: `Net earnings for booking ${booking.bookingReference} (${bay.identifier})`,
+        status: 'completed'
+      }, client);
 
-    // Double-entry Ledger transaction for host net earnings
-    this.recordLedgerEntry({
-      idempotencyKey: 'ledg_' + (data.idempotencyKey || booking.id),
-      hostId: facility.hostId,
-      facilityId: facility.id,
-      bookingId: booking.id,
-      type: 'booking_income',
-      amount: booking.hostNetEarnings,
-      currency: 'USD',
-      description: `Net earnings for booking ${booking.bookingReference} (${bay.identifier})`,
-      status: 'completed'
+      await this.createNotification(
+        facility.hostId,
+        'New Booking Received',
+        `${data.customerName} booked ${bay.identifier} at ${facility.name} for $${booking.grossAmount.toFixed(2)}.`,
+        'booking',
+        `/host/bookings`,
+        client
+      );
+
+      await this.createNotification(
+        data.customerId,
+        'Booking Confirmed!',
+        `Your reservation ${booking.bookingReference} is confirmed. Gate code: ${gatePin}`,
+        'booking',
+        `/customer/bookings`,
+        client
+      );
+
+      await this.logAudit(
+        data.customerId,
+        data.customerName,
+        'customer',
+        'BOOKING_CREATED',
+        'booking',
+        booking.id,
+        `Created booking ${booking.bookingReference} for ${quote.grossAmount} USD`,
+        client
+      );
     });
 
-    // Notify host
-    this.createNotification(
-      facility.hostId,
-      'New Booking Received',
-      `${data.customerName} booked ${bay.identifier} at ${facility.name} for $${booking.grossAmount.toFixed(2)}.`,
-      'booking',
-      `/host/bookings`
-    );
-
-    // Notify customer
-    this.createNotification(
-      data.customerId,
-      'Booking Confirmed!',
-      `Your reservation ${booking.bookingReference} is confirmed. Gate code: ${gatePin}`,
-      'booking',
-      `/customer/bookings`
-    );
-
-    this.logAudit(
-      data.customerId,
-      data.customerName,
-      'customer',
-      'BOOKING_CREATED',
-      'booking',
-      booking.id,
-      `Created booking ${booking.bookingReference} for ${quote.grossAmount} USD`
-    );
-
-    this.persist();
     return booking;
   }
 
-  public getBookings(filters?: { hostId?: string; customerId?: string; facilityId?: string; status?: string }): Booking[] {
-    let list = this.data.bookings;
+  public async getBookings(filters?: { hostId?: string; customerId?: string; facilityId?: string; status?: string }): Promise<Booking[]> {
+    let list = await this.getCollectionFromDb<Booking>('bookings');
     if (filters?.hostId) {
-      const hostFacilities = this.getFacilities({ hostId: filters.hostId }).map(f => f.id);
+      const hostFacilities = (await this.getFacilities({ hostId: filters.hostId })).map(f => f.id);
       list = list.filter(b => hostFacilities.includes(b.facilityId));
     }
     if (filters?.customerId) {
@@ -1620,12 +1975,13 @@ export class Database {
     return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 
-  public getBookingById(bookingId: string): Booking | undefined {
-    return this.data.bookings.find(b => b.id === bookingId);
+  public async getBookingById(bookingId: string): Promise<Booking | undefined> {
+    const booking = await this.getEntityFromDb<Booking>('bookings', bookingId);
+    return booking || undefined;
   }
 
-  public checkInBooking(bookingId: string, actor: User): Booking {
-    const booking = this.getBookingById(bookingId);
+  public async checkInBooking(bookingId: string, actor: User): Promise<Booking> {
+    const booking = await this.getBookingById(bookingId);
     if (!booking) throw new Error('Booking not found');
     if (booking.status !== 'confirmed') {
       throw new Error(`Cannot check in. Booking is already ${booking.status}`);
@@ -1636,19 +1992,23 @@ export class Database {
     booking.actualCheckInTime = now;
     booking.updatedAt = now;
 
-    const bay = this.getBayById(booking.bayId);
+    const bay = await this.getBayById(booking.bayId);
     if (bay) {
       bay.status = 'occupied';
       bay.updatedAt = now;
     }
 
-    this.logAudit(actor.id, actor.fullName, actor.role, 'GATE_CHECK_IN', 'booking', bookingId, `Customer checked in to bay ${bay?.identifier || ''}`);
-    this.persist();
+    await this.withTransaction(async (client) => {
+      await this.persistEntity('bookings', booking.id, booking, client);
+      if (bay) await this.persistEntity('bays', bay.id, bay, client);
+      await this.logAudit(actor.id, actor.fullName, actor.role, 'GATE_CHECK_IN', 'booking', bookingId, `Customer checked in to bay ${bay?.identifier || ''}`, client);
+    });
+
     return booking;
   }
 
-  public checkOutBooking(bookingId: string, actor: User): Booking {
-    const booking = this.getBookingById(bookingId);
+  public async checkOutBooking(bookingId: string, actor: User): Promise<Booking> {
+    const booking = await this.getBookingById(bookingId);
     if (!booking) throw new Error('Booking not found');
     if (booking.status !== 'checked_in') {
       throw new Error(`Cannot check out. Booking is ${booking.status}`);
@@ -1659,19 +2019,23 @@ export class Database {
     booking.actualCheckOutTime = now;
     booking.updatedAt = now;
 
-    const bay = this.getBayById(booking.bayId);
+    const bay = await this.getBayById(booking.bayId);
     if (bay) {
       bay.status = 'available';
       bay.updatedAt = now;
     }
 
-    this.logAudit(actor.id, actor.fullName, actor.role, 'GATE_CHECK_OUT', 'booking', bookingId, `Customer checked out from bay ${bay?.identifier || ''}`);
-    this.persist();
+    await this.withTransaction(async (client) => {
+      await this.persistEntity('bookings', booking.id, booking, client);
+      if (bay) await this.persistEntity('bays', bay.id, bay, client);
+      await this.logAudit(actor.id, actor.fullName, actor.role, 'GATE_CHECK_OUT', 'booking', bookingId, `Customer checked out from bay ${bay?.identifier || ''}`, client);
+    });
+
     return booking;
   }
 
-  public extendBooking(bookingId: string, additionalHours: number, actor: User): Booking {
-    const booking = this.getBookingById(bookingId);
+  public async extendBooking(bookingId: string, additionalHours: number, actor: User): Promise<Booking> {
+    const booking = await this.getBookingById(bookingId);
     if (!booking) throw new Error('Booking not found');
     if (booking.status !== 'confirmed' && booking.status !== 'checked_in') {
       throw new Error('Only active or confirmed bookings can be extended.');
@@ -1680,8 +2044,8 @@ export class Database {
     const currentEnd = new Date(booking.endTime);
     const newEnd = new Date(currentEnd.getTime() + additionalHours * 60 * 60 * 1000);
 
-    // Check conflict
-    const conflict = this.data.bookings.some(b => {
+    const bookings = await this.getCollectionFromDb<Booking>('bookings');
+    const conflict = bookings.some(b => {
       if (b.id === bookingId || b.bayId !== booking.bayId) return false;
       if (b.status === 'cancelled' || b.status === 'refunded' || b.status === 'completed') return false;
       return new Date(b.startTime) < newEnd && new Date(b.endTime) > currentEnd;
@@ -1691,7 +2055,7 @@ export class Database {
       throw new Error('Cannot extend booking: bay is booked by another customer immediately afterwards.');
     }
 
-    const quote = this.calculateQuote(booking.facilityId, currentEnd.toISOString(), newEnd.toISOString());
+    const quote = await this.calculateQuote(booking.facilityId, currentEnd.toISOString(), newEnd.toISOString());
 
     booking.endTime = newEnd.toISOString();
     booking.grossAmount += quote.grossAmount;
@@ -1700,28 +2064,31 @@ export class Database {
     booking.taxAmount += quote.taxAmount;
     booking.updatedAt = new Date().toISOString();
 
-    const facility = this.getFacilityById(booking.facilityId);
-    if (facility) {
-      this.recordLedgerEntry({
-        idempotencyKey: 'ext_' + crypto.randomUUID().slice(0, 8),
-        hostId: facility.hostId,
-        facilityId: facility.id,
-        bookingId: booking.id,
-        type: 'booking_income',
-        amount: quote.hostNetEarnings,
-        currency: 'USD',
-        description: `Extension +${additionalHours}h for ${booking.bookingReference}`,
-        status: 'completed'
-      });
-    }
+    const facility = await this.getFacilityById(booking.facilityId);
 
-    this.logAudit(actor.id, actor.fullName, actor.role, 'BOOKING_EXTENDED', 'booking', bookingId, `Extended booking by ${additionalHours}h`);
-    this.persist();
+    await this.withTransaction(async (client) => {
+      await this.persistEntity('bookings', booking.id, booking, client);
+      if (facility) {
+        await this.recordLedgerEntry({
+          idempotencyKey: 'ext_' + crypto.randomUUID().slice(0, 8),
+          hostId: facility.hostId,
+          facilityId: facility.id,
+          bookingId: booking.id,
+          type: 'booking_income',
+          amount: quote.hostNetEarnings,
+          currency: 'USD',
+          description: `Extension +${additionalHours}h for ${booking.bookingReference}`,
+          status: 'completed'
+        }, client);
+      }
+      await this.logAudit(actor.id, actor.fullName, actor.role, 'BOOKING_EXTENDED', 'booking', bookingId, `Extended booking by ${additionalHours}h`, client);
+    });
+
     return booking;
   }
 
-  public cancelBooking(bookingId: string, reason: string, actor: User): Booking {
-    const booking = this.getBookingById(bookingId);
+  public async cancelBooking(bookingId: string, reason: string, actor: User): Promise<Booking> {
+    const booking = await this.getBookingById(bookingId);
     if (!booking) throw new Error('Booking not found');
     if (booking.status === 'cancelled' || booking.status === 'refunded') {
       throw new Error('Booking is already cancelled');
@@ -1734,7 +2101,6 @@ export class Database {
     const startTime = new Date(booking.startTime);
     const hoursUntilStart = (startTime.getTime() - now.getTime()) / (1000 * 60 * 60);
 
-    // Policy: free cancellation (100% refund) if >= 2 hours before start, else 50% refund
     let refundPercent = 100;
     if (hoursUntilStart < 2 && hoursUntilStart > 0) {
       refundPercent = 50;
@@ -1751,34 +2117,38 @@ export class Database {
     booking.refundAmount = refundAmount;
     booking.updatedAt = now.toISOString();
 
-    const bay = this.getBayById(booking.bayId);
+    const bay = await this.getBayById(booking.bayId);
     if (bay) {
       bay.status = 'available';
       bay.updatedAt = now.toISOString();
     }
 
-    const facility = this.getFacilityById(booking.facilityId);
-    if (facility && hostDebit > 0) {
-      this.recordLedgerEntry({
-        idempotencyKey: 'ref_' + crypto.randomUUID().slice(0, 8),
-        hostId: facility.hostId,
-        facilityId: facility.id,
-        bookingId: booking.id,
-        type: 'booking_refund',
-        amount: -hostDebit,
-        currency: 'USD',
-        description: `Refund debit for cancelled booking ${booking.bookingReference} (${refundPercent}% refund)`,
-        status: 'completed'
-      });
-    }
+    const facility = await this.getFacilityById(booking.facilityId);
 
-    this.logAudit(actor.id, actor.fullName, actor.role, 'BOOKING_CANCELLED', 'booking', bookingId, `Cancelled with ${refundPercent}% refund ($${refundAmount})`);
-    this.persist();
+    await this.withTransaction(async (client) => {
+      await this.persistEntity('bookings', booking.id, booking, client);
+      if (bay) await this.persistEntity('bays', bay.id, bay, client);
+      if (facility && hostDebit > 0) {
+        await this.recordLedgerEntry({
+          idempotencyKey: 'ref_' + crypto.randomUUID().slice(0, 8),
+          hostId: facility.hostId,
+          facilityId: facility.id,
+          bookingId: booking.id,
+          type: 'booking_refund',
+          amount: -hostDebit,
+          currency: 'USD',
+          description: `Refund debit for cancelled booking ${booking.bookingReference} (${refundPercent}% refund)`,
+          status: 'completed'
+        }, client);
+      }
+      await this.logAudit(actor.id, actor.fullName, actor.role, 'BOOKING_CANCELLED', 'booking', bookingId, `Cancelled with ${refundPercent}% refund ($${refundAmount})`, client);
+    });
+
     return booking;
   }
 
   // ----------------- FINANCIALS & LEDGER -----------------
-  public recordLedgerEntry(entry: {
+  public async recordLedgerEntry(entry: {
     idempotencyKey: string;
     hostId: string;
     facilityId?: string;
@@ -1788,11 +2158,12 @@ export class Database {
     currency: string;
     description: string;
     status: LedgerEntry['status'];
-  }): LedgerEntry {
-    const existing = this.data.ledger.find(l => l.idempotencyKey === entry.idempotencyKey);
+  }, client?: PoolClient): Promise<LedgerEntry> {
+    const ledger = await this.getCollectionFromDb<LedgerEntry>('ledger');
+    const existing = ledger.find(l => l.idempotencyKey === entry.idempotencyKey);
     if (existing) return existing;
 
-    const currentBalance = this.getHostAvailableBalance(entry.hostId);
+    const currentBalance = await this.getHostAvailableBalance(entry.hostId);
     const balanceAfter = Math.round((currentBalance + entry.amount) * 100) / 100;
 
     const ledgerItem: LedgerEntry = {
@@ -1810,20 +2181,21 @@ export class Database {
       createdAt: new Date().toISOString()
     };
 
-    this.data.ledger.push(ledgerItem);
-    this.persist();
+    await this.persistEntity('ledger', ledgerItem.id, ledgerItem, client);
     return ledgerItem;
   }
 
-  public getHostAvailableBalance(hostId: string): number {
-    const completedTransactions = this.data.ledger.filter(l => l.hostId === hostId && l.status === 'completed');
+  public async getHostAvailableBalance(hostId: string): Promise<number> {
+    const ledger = await this.getCollectionFromDb<LedgerEntry>('ledger');
+    const completedTransactions = ledger.filter(l => l.hostId === hostId && l.status === 'completed');
     const total = completedTransactions.reduce((acc, t) => acc + t.amount, 0);
     return Math.max(0, Math.round(total * 100) / 100);
   }
 
-  public getHostFinancialSummary(hostId: string) {
-    const hostTransactions = this.data.ledger.filter(l => l.hostId === hostId);
-    const availableBalance = this.getHostAvailableBalance(hostId);
+  public async getHostFinancialSummary(hostId: string) {
+    const ledger = await this.getCollectionFromDb<LedgerEntry>('ledger');
+    const hostTransactions = ledger.filter(l => l.hostId === hostId);
+    const availableBalance = await this.getHostAvailableBalance(hostId);
 
     const lifetimeEarnings = hostTransactions
       .filter(l => l.type === 'booking_income')
@@ -1837,7 +2209,8 @@ export class Database {
       .filter(l => l.type === 'booking_refund')
       .reduce((acc, t) => acc + Math.abs(t.amount), 0);
 
-    const pendingPayouts = this.data.payouts
+    const payouts = await this.getPayouts(hostId);
+    const pendingPayouts = payouts
       .filter(p => p.hostId === hostId && (p.status === 'pending' || p.status === 'processing'))
       .reduce((acc, p) => acc + p.amount, 0);
 
@@ -1850,8 +2223,8 @@ export class Database {
     };
   }
 
-  public getLedger(hostId?: string): LedgerEntry[] {
-    let list = this.data.ledger;
+  public async getLedger(hostId?: string): Promise<LedgerEntry[]> {
+    let list = await this.getCollectionFromDb<LedgerEntry>('ledger');
     if (hostId) {
       list = list.filter(l => l.hostId === hostId);
     }
@@ -1884,7 +2257,8 @@ export class Database {
 
     // 2. Prevent duplicate payouts via Idempotency protection
     const resolvedIdempotencyKey = idempotencyKey || `payout_${hostId}_${sanitizedAmount}_${destinationAccount}_${Math.floor(Date.now() / 60000)}`;
-    const existingPayout = this.data.payouts.find(p => (p as any).idempotencyKey === resolvedIdempotencyKey);
+    const payouts = await this.getCollectionFromDb<PayoutRequest>('payouts');
+    const existingPayout = payouts.find(p => (p as any).idempotencyKey === resolvedIdempotencyKey);
     if (existingPayout) {
       return existingPayout;
     }
@@ -1896,7 +2270,7 @@ export class Database {
     this.payoutLock = true;
 
     try {
-      const available = this.getHostAvailableBalance(hostId);
+      const available = await this.getHostAvailableBalance(hostId);
       if (sanitizedAmount > available) {
         throw new Error(`Insufficient available balance ($${available.toFixed(2)}) for payout of $${sanitizedAmount.toFixed(2)}.`);
       }
@@ -1921,98 +2295,67 @@ export class Database {
       (payout as any).idempotencyKey = resolvedIdempotencyKey;
 
       const ledgerId = 'led_' + crypto.randomUUID().slice(0, 8);
-      const ledgerEntry: LedgerEntry = {
-        id: ledgerId,
-        timestamp: now,
-        type: 'host_payout',
-        amount: -sanitizedAmount,
-        currency: 'USD',
-        description: `Payout disbursement (${method === 'stripe_instant' ? 'Stripe Instant' : 'ACH Bank Transfer'}) to ${destinationAccount} (${refNum})`,
-        referenceId: payout.id,
-        status: 'pending'
-      };
-      (ledgerEntry as any).hostId = hostId;
-      (ledgerEntry as any).idempotencyKey = 'payout_tx_' + payout.id;
+      const ledgerDescription = `Payout disbursement (${method === 'stripe_instant' ? 'Stripe Instant' : 'ACH Bank Transfer'}) to ${destinationAccount} (${refNum})`;
 
-      // 4. PostgreSQL Atomic Transaction Execution
-      if (this.isPostgresActive) {
-        const client = await dbManager.getClient();
-        try {
-          await client.query('BEGIN');
-
-          // Idempotency check inside transaction
-          const checkRes = await client.query(
-            'SELECT id FROM host_payout_records WHERE idempotency_key = $1',
-            [resolvedIdempotencyKey]
-          );
-          if (checkRes.rows.length > 0) {
-            await client.query('ROLLBACK');
-            return existingPayout || payout;
-          }
-
-          // Atomic insert into host_payout_records
-          await client.query(
-            `INSERT INTO host_payout_records (id, host_id, amount_cents, currency, status, method, destination_account, reference_or_utr, requested_at_utc, notes, idempotency_key)
-             VALUES ($1, $2, $3, 'USD', 'PROCESSING', $4, $5, $6, NOW(), $7, $8)`,
-            [payout.id, hostId, Math.round(sanitizedAmount * 100), method, destinationAccount, refNum, payout.notes, resolvedIdempotencyKey]
-          );
-
-          // Atomic insert into financial_ledger
-          await client.query(
-            `INSERT INTO financial_ledger (id, host_id, entry_type, debit_account, credit_account, amount_cents, currency, payment_provider, description, idempotency_key, reference_number, status, created_at_utc)
-             VALUES ($1, $2, 'HOST_PAYOUT', 'ACCOUNTS_PAYABLE', 'BANK_ACCOUNT', $3, 'USD', $4, $5, $6, $7, 'PENDING', NOW())`,
-            [ledgerEntry.id, hostId, Math.round(sanitizedAmount * 100), method === 'stripe_instant' ? 'STRIPE' : 'ACH', ledgerEntry.description, (ledgerEntry as any).idempotencyKey, refNum]
-          );
-
-          // Atomic insert into system_audit_logs
-          await client.query(
-            `INSERT INTO system_audit_logs (id, timestamp, user_id, user_name, user_role, action, entity_type, entity_id, details)
-             VALUES ($1, NOW(), $2, $3, $4, 'PAYOUT_REQUESTED', 'payout', $5, $6)`,
-            [crypto.randomUUID(), actor.id, actor.fullName, actor.role, payout.id, `Requested payout $${sanitizedAmount.toFixed(2)} via ${method} (Reference: ${refNum}, Status: processing)`]
-          );
-
-          // Atomic persistence of entities
-          await client.query(
-            `INSERT INTO app_store_entities (collection, id, data, updated_at) VALUES ($1, $2, $3, NOW())`,
-            ['payouts', payout.id, JSON.stringify(payout)]
-          );
-          await client.query(
-            `INSERT INTO app_store_entities (collection, id, data, updated_at) VALUES ($1, $2, $3, NOW())`,
-            ['ledger', ledgerEntry.id, JSON.stringify(ledgerEntry)]
-          );
-
-          await client.query('COMMIT');
-        } catch (dbErr: any) {
-          await client.query('ROLLBACK');
-          console.error('[ParkEazy-Store] Atomic payout transaction in PostgreSQL failed:', dbErr.message);
-          throw new Error('Database transaction failed while processing payout request: ' + dbErr.message);
-        } finally {
-          client.release();
+      return await this.withTransaction(async (client) => {
+        // Idempotency check inside transaction
+        const checkRes = await client.query(
+          'SELECT id FROM host_payout_records WHERE idempotency_key = $1',
+          [resolvedIdempotencyKey]
+        );
+        if (checkRes.rows.length > 0) {
+          return existingPayout || payout;
         }
-      }
 
-      // Deduct ledger balance with processing status
-      this.data.payouts.push(payout);
-      this.recordLedgerEntry(ledgerEntry);
+        // Atomic insert into host_payout_records
+        await client.query(
+          `INSERT INTO host_payout_records (id, host_id, amount_cents, currency, status, method, destination_account, reference_or_utr, requested_at_utc, notes, idempotency_key)
+           VALUES ($1, $2, $3, 'USD', 'PROCESSING', $4, $5, $6, NOW(), $7, $8)`,
+          [payout.id, hostId, Math.round(sanitizedAmount * 100), method, destinationAccount, refNum, payout.notes, resolvedIdempotencyKey]
+        );
 
-      this.logAudit(
-        actor.id,
-        actor.fullName,
-        actor.role,
-        'PAYOUT_REQUESTED',
-        'payout',
-        payout.id,
-        `Requested payout $${sanitizedAmount.toFixed(2)} via ${method} (Reference: ${refNum}, Status: processing)`
-      );
-      this.persist();
-      return payout;
+        // Atomic insert into financial_ledger
+        await client.query(
+          `INSERT INTO financial_ledger (id, host_id, entry_type, debit_account, credit_account, amount_cents, currency, payment_provider, description, idempotency_key, reference_number, status, created_at_utc)
+           VALUES ($1, $2, 'HOST_PAYOUT', 'ACCOUNTS_PAYABLE', 'BANK_ACCOUNT', $3, 'USD', $4, $5, $6, $7, 'PENDING', NOW())`,
+          [ledgerId, hostId, Math.round(sanitizedAmount * 100), method === 'stripe_instant' ? 'STRIPE' : 'ACH', ledgerDescription, resolvedIdempotencyKey, refNum]
+        );
+
+        await this.persistEntity('payouts', payout.id, payout, client);
+        await this.recordLedgerEntry({
+          idempotencyKey: 'payout_tx_' + payout.id,
+          hostId,
+          type: 'host_payout',
+          amount: -sanitizedAmount,
+          currency: 'USD',
+          description: ledgerDescription,
+          status: 'pending'
+        }, client);
+
+        await this.logAudit(
+          actor.id,
+          actor.fullName,
+          actor.role,
+          'PAYOUT_REQUESTED',
+          'payout',
+          payout.id,
+          `Requested payout $${sanitizedAmount.toFixed(2)} via ${method} (Reference: ${refNum}, Status: processing)`,
+          client
+        );
+
+        return payout;
+      });
     } finally {
       this.payoutLock = false;
     }
   }
 
-  public getPayouts(hostId?: string): PayoutRequest[] {
-    let list = this.data.payouts;
+  public async requestPasswordReset(email: string) {
+    return this.createPasswordResetToken(email);
+  }
+
+  public async getPayouts(hostId?: string): Promise<PayoutRequest[]> {
+    let list = await this.getCollectionFromDb<PayoutRequest>('payouts');
     if (hostId) {
       list = list.filter(p => p.hostId === hostId);
     }
@@ -2040,19 +2383,20 @@ export class Database {
     };
   }
 
-  public getProviders(): ThirdPartyProviderConfig[] {
-    return this.data.providers.map(p => this.maskProviderConfig(p));
+  public async getProviders(): Promise<ThirdPartyProviderConfig[]> {
+    const providers = await this.getCollectionFromDb<ThirdPartyProviderConfig>('providers');
+    return providers.map(p => this.maskProviderConfig(p));
   }
 
-  public updateProvider(id: string, updates: Partial<ThirdPartyProviderConfig>, admin: User): ThirdPartyProviderConfig {
-    const p = this.data.providers.find(prov => prov.id === id);
+  public async updateProvider(id: string, updates: Partial<ThirdPartyProviderConfig>, admin: User): Promise<ThirdPartyProviderConfig> {
+    const providers = await this.getCollectionFromDb<ThirdPartyProviderConfig>('providers');
+    const p = providers.find(prov => prov.id === id);
     if (!p) throw new Error('Provider not found');
 
     if (updates.isEnabled !== undefined) p.isEnabled = updates.isEnabled;
     if (updates.settings) {
       const mergedSettings = { ...p.settings };
       for (const [k, v] of Object.entries(updates.settings)) {
-        // Protect secrets: do not overwrite real stored credentials if masked placeholder was submitted
         if (typeof v === 'string' && v.includes('****')) {
           continue;
         }
@@ -2061,8 +2405,10 @@ export class Database {
       p.settings = mergedSettings;
     }
 
-    this.logAudit(admin.id, admin.fullName, 'admin', 'PROVIDER_CONFIG_UPDATED', 'provider', id, `Updated configuration for ${p.name}`);
-    this.persist();
+    await this.withTransaction(async (client) => {
+      await this.persistEntity('providers', id, p, client);
+      await this.logAudit(admin.id, admin.fullName, 'admin', 'PROVIDER_CONFIG_UPDATED', 'provider', id, `Updated configuration for ${p.name}`, client);
+    });
     return this.maskProviderConfig(p);
   }
 
@@ -2087,8 +2433,9 @@ export class Database {
     }
   }
 
-  public testProviderConnection(id: string, admin: User): { success: boolean; latencyMs: number; message: string } {
-    const p = this.data.providers.find(prov => prov.id === id);
+  public async testProviderConnection(id: string, admin: User): Promise<{ success: boolean; latencyMs: number; message: string }> {
+    const providers = await this.getCollectionFromDb<ThirdPartyProviderConfig>('providers');
+    const p = providers.find(prov => prov.id === id);
     if (!p) throw new Error('Provider not found');
 
     const latencyMs = Math.floor(45 + Math.random() * 85);
@@ -2098,7 +2445,7 @@ export class Database {
       p.lastTestedAt = now;
       p.testStatus = 'degraded';
       p.testMessage = 'Provider is disabled in configuration.';
-      this.persist();
+      await this.persistEntity('providers', id, p);
       return { success: false, latencyMs, message: 'Provider is disabled.' };
     }
 
@@ -2106,21 +2453,23 @@ export class Database {
     p.testStatus = 'healthy';
     p.testMessage = `Connected successfully (HTTP 200 OK, latency: ${latencyMs}ms)`;
 
-    this.logAudit(admin.id, admin.fullName, 'admin', 'PROVIDER_TEST_PING', 'provider', id, `Test ping succeeded: ${latencyMs}ms`);
-    this.persist();
+    await this.withTransaction(async (client) => {
+      await this.persistEntity('providers', id, p, client);
+      await this.logAudit(admin.id, admin.fullName, 'admin', 'PROVIDER_TEST_PING', 'provider', id, `Test ping succeeded: ${latencyMs}ms`, client);
+    });
     return { success: true, latencyMs, message: p.testMessage };
   }
 
   // ----------------- REVIEWS & RATINGS -----------------
-  public getReviews(facilityId?: string): Review[] {
-    let list = this.data.reviews;
+  public async getReviews(facilityId?: string): Promise<Review[]> {
+    let list = await this.getCollectionFromDb<Review>('reviews');
     if (facilityId) {
       list = list.filter(r => r.facilityId === facilityId);
     }
     return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 
-  public addReview(facilityId: string, customerId: string, customerName: string, bookingId: string, rating: number, comment: string): Review {
+  public async addReview(facilityId: string, customerId: string, customerName: string, bookingId: string, rating: number, comment: string): Promise<Review> {
     const review: Review = {
       id: 'rev_' + crypto.randomUUID().slice(0, 8),
       facilityId,
@@ -2131,26 +2480,27 @@ export class Database {
       comment,
       createdAt: new Date().toISOString()
     };
-    this.data.reviews.unshift(review);
-    this.persist();
+    await this.persistEntity('reviews', review.id, review);
     return review;
   }
 
-  public replyToReview(reviewId: string, replyText: string, host: User): Review {
-    const rev = this.data.reviews.find(r => r.id === reviewId);
+  public async replyToReview(reviewId: string, replyText: string, host: User): Promise<Review> {
+    const rev = await this.getEntityFromDb<Review>('reviews', reviewId);
     if (!rev) throw new Error('Review not found');
 
     rev.hostResponse = {
       text: replyText,
       respondedAt: new Date().toISOString()
     };
-    this.logAudit(host.id, host.fullName, 'host', 'REVIEW_REPLIED', 'facility', rev.facilityId, `Host replied to review ${reviewId}`);
-    this.persist();
+    await this.withTransaction(async (client) => {
+      await this.persistEntity('reviews', reviewId, rev, client);
+      await this.logAudit(host.id, host.fullName, 'host', 'REVIEW_REPLIED', 'facility', rev.facilityId, `Host replied to review ${reviewId}`, client);
+    });
     return rev;
   }
 
   // ----------------- NOTIFICATIONS & MESSAGES -----------------
-  public createNotification(userId: string, title: string, message: string, type: NotificationItem['type'], link?: string): NotificationItem {
+  public async createNotification(userId: string, title: string, message: string, type: NotificationItem['type'], link?: string, client?: PoolClient): Promise<NotificationItem> {
     const item: NotificationItem = {
       id: 'notif_' + crypto.randomUUID().slice(0, 8),
       userId,
@@ -2161,44 +2511,43 @@ export class Database {
       createdAt: new Date().toISOString(),
       link
     };
-    this.data.notifications.unshift(item);
-    if (this.data.notifications.length > 200) {
-      this.data.notifications = this.data.notifications.slice(0, 200);
-    }
-    this.persist();
+    await this.persistEntity('notifications', item.id, item, client);
     return item;
   }
 
-  public getNotifications(userId: string): NotificationItem[] {
-    return this.data.notifications
+  public async getNotifications(userId: string): Promise<NotificationItem[]> {
+    const list = await this.getCollectionFromDb<NotificationItem>('notifications');
+    return list
       .filter(n => n.userId === userId)
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 
-  public markNotificationRead(id: string, userId: string) {
-    const n = this.data.notifications.find(item => item.id === id && item.userId === userId);
-    if (n) {
+  public async markNotificationRead(id: string, userId: string): Promise<void> {
+    const n = await this.getEntityFromDb<NotificationItem>('notifications', id);
+    if (n && n.userId === userId) {
       n.isRead = true;
-      this.persist();
+      await this.persistEntity('notifications', id, n);
     }
   }
 
-  public markAllNotificationsRead(userId: string) {
-    for (const n of this.data.notifications) {
-      if (n.userId === userId) {
+  public async markAllNotificationsRead(userId: string): Promise<void> {
+    const list = await this.getCollectionFromDb<NotificationItem>('notifications');
+    for (const n of list) {
+      if (n.userId === userId && !n.isRead) {
         n.isRead = true;
+        await this.persistEntity('notifications', n.id, n);
       }
     }
-    this.persist();
   }
 
   // Messages
-  public getMessages(userId: string): MessageThread[] {
-    return this.data.messages.filter(m => m.hostId === userId || m.customerId === userId);
+  public async getMessages(userId: string): Promise<MessageThread[]> {
+    const list = await this.getCollectionFromDb<MessageThread>('messages');
+    return list.filter(m => m.hostId === userId || m.customerId === userId);
   }
 
-  public sendMessage(threadId: string, sender: User, text: string): MessageThread {
-    const thread = this.data.messages.find(m => m.id === threadId);
+  public async sendMessage(threadId: string, sender: User, text: string): Promise<MessageThread> {
+    const thread = await this.getEntityFromDb<MessageThread>('messages', threadId);
     if (!thread) throw new Error('Message thread not found');
 
     const msg = {
@@ -2213,36 +2562,38 @@ export class Database {
     thread.messages.push(msg);
     thread.lastMessageAt = msg.timestamp;
 
-    // Notify receiver
     const recipientId = sender.id === thread.hostId ? thread.customerId : thread.hostId;
-    this.createNotification(
-      recipientId,
-      `New Message from ${sender.fullName}`,
-      text.slice(0, 60) + (text.length > 60 ? '...' : ''),
-      'alert'
-    );
-
-    this.persist();
+    await this.withTransaction(async (client) => {
+      await this.persistEntity('messages', threadId, thread, client);
+      await this.createNotification(
+        recipientId,
+        `New Message from ${sender.fullName}`,
+        text.slice(0, 60) + (text.length > 60 ? '...' : ''),
+        'alert',
+        undefined,
+        client
+      );
+    });
     return thread;
   }
 
   // ----------------- DISPUTES & SUPPORT -----------------
-  public getDisputes(filters?: { hostId?: string; customerId?: string }): DisputeTicket[] {
-    let list = this.data.disputes;
+  public async getDisputes(filters?: { hostId?: string; customerId?: string }): Promise<DisputeTicket[]> {
+    let list = await this.getCollectionFromDb<DisputeTicket>('disputes');
     if (filters?.hostId) list = list.filter(d => d.hostId === filters.hostId);
     if (filters?.customerId) list = list.filter(d => d.customerId === filters.customerId);
     return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 
-  public createDispute(data: {
+  public async createDispute(data: {
     bookingId: string;
     reason: DisputeTicket['reason'];
     statement: string;
     customer: User;
-  }): DisputeTicket {
-    const booking = this.getBookingById(data.bookingId);
+  }): Promise<DisputeTicket> {
+    const booking = await this.getBookingById(data.bookingId);
     if (!booking) throw new Error('Booking not found');
-    const facility = this.getFacilityById(booking.facilityId);
+    const facility = await this.getFacilityById(booking.facilityId);
     if (!facility) throw new Error('Facility not found');
 
     const ticket: DisputeTicket = {
@@ -2259,20 +2610,21 @@ export class Database {
       updatedAt: new Date().toISOString()
     };
 
-    this.data.disputes.unshift(ticket);
-    this.createNotification(facility.hostId, 'Dispute Filed', `Customer opened dispute ${ticket.ticketNumber}`, 'dispute');
-    this.persist();
+    await this.withTransaction(async (client) => {
+      await this.persistEntity('disputes', ticket.id, ticket, client);
+      await this.createNotification(facility.hostId, 'Dispute Filed', `Customer opened dispute ${ticket.ticketNumber}`, 'dispute', undefined, client);
+    });
     return ticket;
   }
 
-  public resolveDispute(
+  public async resolveDispute(
     ticketId: string,
     decision: 'resolved_refunded' | 'resolved_dismissed',
     refundAmount: number,
     notes: string,
     admin: User
-  ): DisputeTicket {
-    const ticket = this.data.disputes.find(d => d.id === ticketId);
+  ): Promise<DisputeTicket> {
+    const ticket = await this.getEntityFromDb<DisputeTicket>('disputes', ticketId);
     if (!ticket) throw new Error('Dispute not found');
 
     ticket.status = decision;
@@ -2280,26 +2632,29 @@ export class Database {
     ticket.refundAmount = refundAmount;
     ticket.updatedAt = new Date().toISOString();
 
-    if (decision === 'resolved_refunded' && refundAmount > 0) {
-      const booking = this.getBookingById(ticket.bookingId);
-      if (booking) {
-        booking.refundAmount = (booking.refundAmount || 0) + refundAmount;
+    await this.withTransaction(async (client) => {
+      if (decision === 'resolved_refunded' && refundAmount > 0) {
+        const booking = await this.getBookingById(ticket.bookingId);
+        if (booking) {
+          booking.refundAmount = (booking.refundAmount || 0) + refundAmount;
+          await this.persistEntity('bookings', booking.id, booking, client);
+        }
+        await this.recordLedgerEntry({
+          idempotencyKey: 'disp_ref_' + ticket.id,
+          hostId: ticket.hostId,
+          facilityId: ticket.facilityId,
+          bookingId: ticket.bookingId,
+          type: 'booking_refund',
+          amount: -refundAmount,
+          currency: 'USD',
+          description: `Dispute ${ticket.ticketNumber} resolution refund`,
+          status: 'completed'
+        }, client);
       }
-      this.recordLedgerEntry({
-        idempotencyKey: 'disp_ref_' + ticket.id,
-        hostId: ticket.hostId,
-        facilityId: ticket.facilityId,
-        bookingId: ticket.bookingId,
-        type: 'booking_refund',
-        amount: -refundAmount,
-        currency: 'USD',
-        description: `Dispute ${ticket.ticketNumber} resolution refund`,
-        status: 'completed'
-      });
-    }
 
-    this.logAudit(admin.id, admin.fullName, 'admin', 'DISPUTE_RESOLVED', 'dispute', ticketId, `Dispute ${ticket.ticketNumber} set to ${decision}`);
-    this.persist();
+      await this.persistEntity('disputes', ticketId, ticket, client);
+      await this.logAudit(admin.id, admin.fullName, 'admin', 'DISPUTE_RESOLVED', 'dispute', ticketId, `Dispute ${ticket.ticketNumber} set to ${decision}`, client);
+    });
     return ticket;
   }
 
