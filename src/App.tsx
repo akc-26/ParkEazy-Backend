@@ -1,178 +1,407 @@
-import { useCallback, useEffect, useState } from 'react';
-import { UserWebsiteApp } from '../apps/user-website/UserWebsiteApp';
-import { HostPortalApp } from '../apps/host-portal/HostPortalApp';
-import { AdminPanelApp } from '../apps/admin-panel/AdminPanelApp';
+import React, { useState, useEffect } from 'react';
+import { CustomerHeader } from './components/customer/CustomerHeader';
+import { HostHeader } from './components/host/HostHeader';
+import { AdminHeader } from './components/admin/AdminHeader';
+import { HostLogin } from './components/host/HostLogin';
+import { AdminLogin } from './components/admin/AdminLogin';
+import { HostSidebar } from './components/host/HostSidebar';
+import { HostDashboard } from './components/host/HostDashboard';
+import { HostFacilities } from './components/host/HostFacilities';
+import { HostBays } from './components/host/HostBays';
+import { HostPricing } from './components/host/HostPricing';
+import { HostBookings } from './components/host/HostBookings';
+import { HostEarnings } from './components/host/HostEarnings';
+import { HostReviews } from './components/host/HostReviews';
+import { HostReports } from './components/host/HostReports';
+import { HostProfile } from './components/host/HostProfile';
+import { CustomerHome } from './components/customer/CustomerHome';
+import { CustomerBookings } from './components/customer/CustomerBookings';
+import { UserFooter } from './components/customer/UserFooter';
+import { AdminConsole } from './components/admin/AdminConsole';
+import { User, Facility, Booking } from './types';
+import { api } from './api';
 
-function normalizePath(path: string): string {
-  if (!path || path === '/index.html') {
-    return '/';
-  }
-  // Strip query string and hash for path matching
-  const [cleanPath] = path.split(/[?#]/);
-  const withoutTrailingSlashes = cleanPath.replace(/\/+$/, '');
-  return withoutTrailingSlashes || '/';
-}
+type AppRoute = 'customer' | 'host' | 'admin';
 
-function getFullUrlPath(path: string): string {
-  if (!path || path === '/index.html') {
-    return '/';
-  }
-  return path;
-}
+export default function App() {
+  // Current route resolved from window.location.pathname
+  const [currentRoute, setCurrentRoute] = useState<AppRoute>(() => {
+    const path = window.location.pathname;
+    if (path.startsWith('/admin')) return 'admin';
+    if (path.startsWith('/host')) return 'host';
+    return 'customer';
+  });
 
-interface NotFoundPageProps {
-  currentPath: string;
-  onNavigate: (path: string) => void;
-}
+  // Host state
+  const [hostUser, setHostUser] = useState<User | null>(null);
+  const [hostLoading, setHostLoading] = useState(false);
+  const [hostTab, setHostTab] = useState<string>('dashboard');
+  const [facilities, setFacilities] = useState<Facility[]>([]);
+  const [selectedFacilityId, setSelectedFacilityId] = useState<string | null>(null);
+  const [triggerBulkCreateBays, setTriggerBulkCreateBays] = useState(false);
 
-function NotFoundPage({
-  currentPath,
-  onNavigate,
-}: NotFoundPageProps) {
-  return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-[#F4F8F7] px-4 py-12 text-center text-[#162A2D]">
-      <p className="text-sm font-semibold uppercase tracking-wider text-[#087E8A]">
-        ParkEazy Marketplace
-      </p>
-      <h1 className="text-3xl font-extrabold tracking-tight">
-        Page not found
-      </h1>
-      <p className="max-w-md text-slate-600 text-sm">
-        The requested route{' '}
-        <code className="break-all rounded bg-white px-2 py-1 font-mono font-medium border border-slate-200">
-          {currentPath}
-        </code>{' '}
-        does not exist or may have been moved.
-      </p>
-      <div className="flex items-center gap-3 mt-2">
-        <button
-          type="button"
-          onClick={() => onNavigate('/')}
-          className="rounded-lg bg-[#087E8A] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#075762] focus:outline-none focus:ring-2 focus:ring-[#087E8A] focus:ring-offset-2"
-        >
-          Return to ParkEazy Homepage
-        </button>
-        <button
-          type="button"
-          onClick={() => onNavigate('/search')}
-          className="rounded-lg bg-white border border-slate-300 px-5 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-[#087E8A] focus:ring-offset-2"
-        >
-          Search Spaces
-        </button>
-      </div>
-    </main>
-  );
-}
+  // Admin state
+  const [adminUser, setAdminUser] = useState<User | null>(null);
+  const [adminLoading, setAdminLoading] = useState(false);
 
-interface AppProps {
-  initialPath?: string;
-}
+  // Customer state
+  const [customerUser, setCustomerUser] = useState<User | null>(null);
+  const [customerTab, setCustomerTab] = useState<'home' | 'my_bookings'>('home');
 
-export default function App({ initialPath }: AppProps = {}) {
-  const [currentPath, setCurrentPath] = useState(() =>
-    initialPath ||
-    (typeof window !== 'undefined'
-      ? getFullUrlPath(window.location.pathname + window.location.search)
-      : '/')
-  );
+  // Fallback demo customer for unauthenticated browsing
+  const defaultDemoCustomer: User = {
+    id: 'usr_cust1',
+    email: 'alex.driver@example.com',
+    fullName: 'Alex Driver',
+    phone: '+1 (206) 555-0188',
+    role: 'customer',
+    status: 'active',
+    isEmailVerified: true,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
 
+  // Sync route with browser history
   useEffect(() => {
-    if (typeof window === 'undefined') return;
     const handlePopState = () => {
-      setCurrentPath(getFullUrlPath(window.location.pathname + window.location.search));
-    };
-    window.addEventListener('popstate', handlePopState);
-    return () => {
-      window.removeEventListener('popstate', handlePopState);
-    };
-  }, []);
-
-  const navigate = useCallback((path: string) => {
-    const nextClean = getFullUrlPath(path);
-    if (typeof window !== 'undefined') {
-      const currentBrowserClean = getFullUrlPath(window.location.pathname + window.location.search);
-      if (nextClean !== currentBrowserClean) {
-        window.history.pushState({}, '', nextClean);
+      const path = window.location.pathname;
+      if (path.startsWith('/admin')) {
+        setCurrentRoute('admin');
+      } else if (path.startsWith('/host')) {
+        setCurrentRoute('host');
+      } else {
+        setCurrentRoute('customer');
       }
-      window.scrollTo({ top: 0, behavior: 'auto' });
-    }
-    setCurrentPath(nextClean);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  const normalized = normalizePath(currentPath);
+  // Route-specific session initialization
+  useEffect(() => {
+    if (currentRoute === 'host') {
+      api.setActiveContext('host');
+      initHostSession();
+    } else if (currentRoute === 'admin') {
+      api.setActiveContext('admin');
+      initAdminSession();
+    } else {
+      api.setActiveContext('customer');
+      initCustomerSession();
+    }
+  }, [currentRoute]);
 
-  // Host Portal routes
-  const isHostRoute =
-    normalized === '/host' || normalized.startsWith('/host/');
-  const isKnownHostRoute =
-    isHostRoute && !normalized.startsWith('/host/api/');
+  const navigate = (path: string) => {
+    window.history.pushState({}, '', path);
+    if (path.startsWith('/admin')) {
+      setCurrentRoute('admin');
+    } else if (path.startsWith('/host')) {
+      setCurrentRoute('host');
+    } else {
+      setCurrentRoute('customer');
+    }
+  };
 
-  // Admin Panel routes
-  const isAdminRoute =
-    normalized === '/admin' || normalized.startsWith('/admin/');
-  const isKnownAdminRoute =
-    isAdminRoute && !normalized.startsWith('/admin/api/');
+  // ----------------- HOST SESSION -----------------
+  const initHostSession = async () => {
+    try {
+      setHostLoading(true);
+      const host = await api.getHostUser();
+      setHostUser(host);
+      if (host) {
+        await loadHostFacilities(host.id);
+      }
+    } catch (err) {
+      console.error('Error verifying host session:', err);
+      setHostUser(null);
+    } finally {
+      setHostLoading(false);
+    }
+  };
 
-  // User Website routes:
-  // - /
-  // - /search
-  // - /spaces/:id
-  // - /booking/review
-  // - /checkout
-  // - /booking/confirmation/:id
-  // - /bookings
-  // - /profile
-  // - /login
-  // - /register
-  const isSpacesRoute = /^\/spaces\/[^/]+$/.test(normalized);
-  const isBookingConfirmRoute = /^\/booking\/confirmation\/[^/]+$/.test(normalized);
-  const isBookingDetailRoute = /^\/bookings\/[^/]+$/.test(normalized);
+  const loadHostFacilities = async (hostId: string) => {
+    try {
+      const facs = await api.getFacilities({ hostId });
+      setFacilities(facs);
+      if (facs.length > 0 && !selectedFacilityId) {
+        setSelectedFacilityId(facs[0].id);
+      }
+    } catch (err) {
+      console.error('Failed to load host facilities:', err);
+    }
+  };
 
-  const isKnownUserRoute =
-    normalized === '/' ||
-    normalized === '/search' ||
-    normalized === '/booking/review' ||
-    normalized === '/checkout' ||
-    normalized === '/bookings' ||
-    normalized === '/profile' ||
-    normalized === '/login' ||
-    normalized === '/register' ||
-    isSpacesRoute ||
-    isBookingConfirmRoute ||
-    isBookingDetailRoute;
+  const handleHostLoginSuccess = async (user: User) => {
+    setHostUser(user);
+    setHostTab('dashboard');
+    await loadHostFacilities(user.id);
+  };
 
-  if (isKnownHostRoute) {
+  const handleHostLogout = async () => {
+    await api.logoutHost();
+    setHostUser(null);
+    setFacilities([]);
+    setSelectedFacilityId(null);
+  };
+
+  // ----------------- ADMIN SESSION -----------------
+  const initAdminSession = async () => {
+    try {
+      setAdminLoading(true);
+      const admin = await api.getAdminUser();
+      setAdminUser(admin);
+    } catch (err) {
+      console.error('Error verifying admin session:', err);
+      setAdminUser(null);
+    } finally {
+      setAdminLoading(false);
+    }
+  };
+
+  const handleAdminLoginSuccess = (user: User) => {
+    setAdminUser(user);
+  };
+
+  const handleAdminLogout = async () => {
+    await api.logoutAdmin();
+    setAdminUser(null);
+  };
+
+  // ----------------- CUSTOMER SESSION -----------------
+  const initCustomerSession = async () => {
+    try {
+      const cust = await api.getCustomerUser();
+      setCustomerUser(cust);
+    } catch {
+      setCustomerUser(null);
+    }
+  };
+
+  const handleBookingCreated = (booking: Booking) => {
+    setCustomerTab('my_bookings');
+  };
+
+  // =========================================================================
+  // VIEW ROUTER: Distinct route-based experiences for Customer, Host, Admin
+  // =========================================================================
+
+  // ----------------- 1. HOST ROUTE (/host) -----------------
+  if (currentRoute === 'host') {
+    if (hostLoading) {
+      return (
+        <div className="min-h-screen bg-[#F0F4F3] flex items-center justify-center text-xs text-[#162A2D]">
+          <div className="flex items-center gap-3 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <div className="w-4 h-4 border-2 border-[#087E8A] border-t-transparent rounded-full animate-spin" />
+            <span className="font-semibold">Verifying Host Session...</span>
+          </div>
+        </div>
+      );
+    }
+
+    // Unauthenticated: Show Host Login page
+    if (!hostUser) {
+      return (
+        <HostLogin
+          onLoginSuccess={handleHostLoginSuccess}
+          onNavigateHome={() => navigate('/')}
+        />
+      );
+    }
+
+    // Authenticated: Show Host Workspace
     return (
-      <HostPortalApp
-        currentPath={normalized}
-        onNavigate={navigate}
-      />
+      <div className="min-h-screen bg-[#F0F4F3] flex flex-col font-sans text-[#162A2D]">
+        <HostHeader
+          currentUser={hostUser}
+          facilities={facilities}
+          selectedFacilityId={selectedFacilityId}
+          onSelectFacility={setSelectedFacilityId}
+          onLogout={handleHostLogout}
+          onNavigateToCustomer={() => navigate('/')}
+        />
+
+        <main className="flex-1 w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <div className="flex flex-col md:flex-row items-start gap-6">
+            {/* Left Sidebar Navigation */}
+            <HostSidebar
+              currentTab={hostTab}
+              onSelectTab={(tab) => setHostTab(tab)}
+              currentUser={hostUser}
+              facilitiesCount={facilities.length}
+            />
+
+            {/* Right-Hand Content Area */}
+            <div className="flex-1 min-w-0 w-full space-y-6">
+              {hostTab === 'dashboard' && (
+                <HostDashboard
+                  currentUser={hostUser}
+                  onNavigateTab={(tab) => setHostTab(tab)}
+                  onOpenCreateFacility={() => setHostTab('facilities')}
+                  onOpenBulkCreateBays={() => {
+                    setTriggerBulkCreateBays(true);
+                    setHostTab('bays');
+                  }}
+                />
+              )}
+
+              {hostTab === 'facilities' && (
+                <HostFacilities
+                  facilities={facilities}
+                  currentUser={hostUser}
+                  onRefresh={() => loadHostFacilities(hostUser.id)}
+                  onSelectFacilityForBays={(facId) => {
+                    setSelectedFacilityId(facId);
+                    setHostTab('bays');
+                  }}
+                  onSelectFacilityForPricing={(facId) => {
+                    setSelectedFacilityId(facId);
+                    setHostTab('pricing');
+                  }}
+                />
+              )}
+
+              {hostTab === 'bays' && (
+                <HostBays
+                  facilities={facilities}
+                  selectedFacilityId={selectedFacilityId}
+                  onSelectFacility={(id) => setSelectedFacilityId(id)}
+                  currentUser={hostUser}
+                  onRefreshFacilities={() => loadHostFacilities(hostUser.id)}
+                  bulkModalOpenInitial={triggerBulkCreateBays}
+                />
+              )}
+
+              {hostTab === 'pricing' && (
+                <HostPricing
+                  facilities={facilities}
+                  selectedFacilityId={selectedFacilityId}
+                  onSelectFacility={(id) => setSelectedFacilityId(id)}
+                  currentUser={hostUser}
+                />
+              )}
+
+              {hostTab === 'bookings' && (
+                <HostBookings
+                  currentUser={hostUser}
+                  facilities={facilities}
+                />
+              )}
+
+              {hostTab === 'earnings' && (
+                <HostEarnings currentUser={hostUser} />
+              )}
+
+              {hostTab === 'reviews' && (
+                <HostReviews
+                  facilities={facilities}
+                  currentUser={hostUser}
+                />
+              )}
+
+              {hostTab === 'reports' && (
+                <HostReports currentUser={hostUser} />
+              )}
+
+              {hostTab === 'profile' && (
+                <HostProfile
+                  currentUser={hostUser}
+                  onRefresh={() => loadHostFacilities(hostUser.id)}
+                />
+              )}
+            </div>
+          </div>
+        </main>
+      </div>
     );
   }
 
-  if (isKnownAdminRoute) {
+  // ----------------- 2. ADMIN ROUTE (/admin) -----------------
+  if (currentRoute === 'admin') {
+    if (adminLoading) {
+      return (
+        <div className="min-h-screen bg-[#F4F8FC] flex items-center justify-center text-xs text-slate-800">
+          <div className="flex items-center gap-3 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <div className="w-4 h-4 border-2 border-slate-800 border-t-transparent rounded-full animate-spin" />
+            <span className="font-semibold">Authorizing Administrator...</span>
+          </div>
+        </div>
+      );
+    }
+
+    // Unauthenticated: Show Admin Login page
+    if (!adminUser) {
+      return (
+        <AdminLogin
+          onLoginSuccess={handleAdminLoginSuccess}
+          onNavigateHome={() => navigate('/')}
+        />
+      );
+    }
+
+    // Authenticated: Show Admin Moderation Console
     return (
-      <AdminPanelApp
-        currentPath={normalized}
-        onNavigate={navigate}
-      />
+      <div className="min-h-screen bg-[#F4F8FC] flex flex-col font-sans text-slate-900">
+        <AdminHeader
+          currentUser={adminUser}
+          onLogout={handleAdminLogout}
+          onNavigateToCustomer={() => navigate('/')}
+        />
+
+        <main className="flex-1 w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <AdminConsole
+            currentUser={adminUser}
+            onRefreshAll={() => {}}
+          />
+        </main>
+      </div>
     );
   }
 
-  if (isKnownUserRoute) {
-    return (
-      <UserWebsiteApp
-        currentPath={currentPath}
-        onNavigate={navigate}
-      />
-    );
-  }
+  // ----------------- 3. CUSTOMER ROUTE (/) -----------------
+  const activeCustomer = customerUser || defaultDemoCustomer;
 
-  // Any unmatched route intentionally returns NotFoundPage
   return (
-    <NotFoundPage
-      currentPath={currentPath}
-      onNavigate={navigate}
-    />
+    <div className="min-h-screen bg-[#F4F8F7] flex flex-col font-sans text-[#162A2D]">
+      {/* Public Customer Header (No Host/Admin Switching Tabs, No identity dropdown) */}
+      <CustomerHeader
+        currentUser={customerUser}
+        activeCustomerTab={customerTab}
+        onSelectCustomerTab={setCustomerTab}
+        onNavigateToHost={() => navigate('/host')}
+        onCustomerAuthChange={setCustomerUser}
+      />
+
+      {/* Customer Main Viewport */}
+      <div className="flex-1 flex flex-col">
+        <div className="flex-1 py-4">
+          {customerTab === 'home' ? (
+            <CustomerHome
+              currentUser={activeCustomer}
+              onBookingCreated={handleBookingCreated}
+              onViewMyBookings={() => setCustomerTab('my_bookings')}
+              onNavigateToHostPortal={() => navigate('/host')}
+            />
+          ) : (
+            <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-4">
+              <CustomerBookings
+                currentUser={activeCustomer}
+                onRefresh={() => {}}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Established Customer Footer */}
+        <UserFooter
+          onOpenHostPortal={() => navigate('/host')}
+          onOpenAdminPortal={() => navigate('/admin')}
+          onNavigateHome={() => {
+            navigate('/');
+            setCustomerTab('home');
+          }}
+        />
+      </div>
+    </div>
   );
 }

@@ -1,93 +1,20 @@
-# ParkEazy — Parking Marketplace Platform
-## Stage 1: Technical Foundation & Three Web Application Baselines
+<div align="center">
+<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
+</div>
 
-ParkEazy is a peer-to-peer parking marketplace connecting drivers needing parking with parking-space hosts.
+# Run and deploy your AI Studio app
 
----
+This contains everything you need to run your app locally.
 
-## 1. Application Responsibilities
-The ParkEazy web repository establishes four core application responsibilities:
-1. **User Website** (`apps/user-website/`): Public-facing marketplace for discovering parking, 10-minute hold reservation locks, pricing transparency, and host conversion.
-2. **Host Portal** (`apps/host-portal/`): Dedicated workspace based on the VoiceCloud Creator Studio structure (collapsible sidebar, top nav with breadcrumbs, bay inventory, bookings, and payout telemetry).
-3. **Admin Panel** (`apps/admin-panel/`): Restricted platform operations workspace based on VoiceCloud Admin (system health, double-entry financial ledger auditing, correlation ID tracking, and state machine invariants).
-4. **Shared Backend API** (`apps/api/` & `server.ts`): Unified REST API with `/api/v1` prefix serving all three web applications and future hybrid mobile applications.
+View your app in AI Studio: https://ai.studio/apps/2e4b43ec-69a0-4ddc-ac18-274fea0bcb3d
 
-*(Note: The User Mobile App and Host Mobile App are developed separately in native/hybrid repositories and are strictly excluded from this web repository).*
+## Run Locally
 
----
+**Prerequisites:**  Node.js
 
-## 2. Directory Structure
-```text
-parkeazy/
-├── apps/
-│   ├── api/                     # Backend API modules & controllers
-│   │   ├── config/              # Environment & application config
-│   │   ├── database/            # Database prober & SQL migrations
-│   │   ├── docs/                # OpenAPI 3.0 specification
-│   │   ├── middleware/          # CorrelationId, ErrorHandler, AuthGuard, Logger
-│   │   ├── services/            # Inventory, Booking & Ledger business logic
-│   │   └── router.ts            # /api/v1 Router
-│   ├── user-website/            # Public Marketplace Web App
-│   │   ├── components/          # Header, Hero, LocationCard, Modals, Footer
-│   │   └── UserWebsiteApp.tsx   # User Website entry point
-│   ├── host-portal/             # Host Portal Web App (Creator Studio pattern)
-│   │   └── HostPortalApp.tsx    # Host Studio entry point
-│   └── admin-panel/             # Admin Panel Web App (Admin Portal pattern)
-│       └── AdminPanelApp.tsx    # Admin Console entry point
-├── packages/
-│   ├── contracts/               # Shared TypeScript schemas, DTOs & constraints
-│   ├── design-system/           # Color palettes, typography & design tokens
-│   ├── api-client/              # Typed API client with correlation tracking
-│   └── ui/                      # Shared reusable UI primitives (Button, Card, Table, etc.)
-├── docs/                        # Architecture Decision Records & specifications
-│   └── ARCHITECTURE_DECISION_RECORD.md
-├── src/                         # Multi-app shell and portal router
-│   ├── App.tsx
-│   ├── index.css
-│   └── main.tsx
-├── server.ts                    # Full-Stack entry point (Express + Vite middlewares)
-├── .env.example                 # Sanitized environment configuration template
-└── README.md
-```
 
----
-
-## 3. Key Invariants & Business Rules Enforced
-- **Location vs Bay Separation**: Locations and physical bays are discrete entities with separate identifiers and properties.
-- **10-Minute Hold Invariant**: When a bay is held, the server enforces a 600-second lock. Page refresh does not reset the timer.
-- **Duration Bounds**: Minimum 1 hour, maximum 72 continuous hours, scheduled in 30-minute intervals.
-- **Turnaround Buffer**: 15 minutes between consecutive bookings, calculated separately from holds and grace periods.
-- **Append-Only Financial Ledger**: Double-entry accounting where transactions are immutable. Security deposits are escrowed separately from platform commission and host revenue.
-- **Payment Provider Association**: Transactions retain their originating payment provider (Stripe, Razorpay).
-
----
-
-## 4. Development & Verification Commands
-- `npm run dev`: Runs the full-stack server on port 3000 (`tsx server.ts`), serving both the `/api/v1` API and the Vite frontend.
-- `npm run build`: Bundles the production frontend into `dist/`.
-- `npm run lint`: Performs full TypeScript type checking across all packages and apps (`tsc --noEmit`).
-
----
-
-## 5. Admin-Managed Integrations & Zero-Credential Boot
-- **Zero Third-Party Dependency**: No Stripe, Razorpay, Google Maps, Twilio, or S3 credentials are required to run or test Stage 1.
-- **Internal Sandbox Simulator**: Pre-configured and active by default, allowing simulated payments and holds without third-party fees.
-- **Admin Configuration (`Settings -> Integrations`)**:
-  - Live provider switching between Sandbox Simulator, Stripe, and Razorpay.
-  - Test/Live mode toggles and diagnostic connection probes with real-time latency reporting.
-  - Safe credential management with server-side masking (`sk_••••••••••••3a9f`) and encryption at rest.
-  - Configuration audit logging without leaking secret values.
-
----
-
-## 6. PostgreSQL & Redis Infrastructure & Readiness Probing
-- **Mandatory Production Dependencies**: In production (`NODE_ENV="production"`), both `DATABASE_URL` (PostgreSQL) and `REDIS_URL` (Redis) are strictly mandatory. Missing or invalid connection strings immediately halt application boot with a descriptive `ConfigurationError`.
-- **Live Connectivity Verification**: The readiness probe at `/api/v1/readiness` actively probes real network connectivity:
-  - **PostgreSQL**: Acquires a pool client and executes `SELECT 1` with latency timing.
-  - **Redis**: Connects and executes a `PING` command, validating the authoritative `PONG` response with latency timing.
-  - Presence of a URL string is never treated as proof of connectivity.
-- **Truthful Readiness Status (HTTP 200 vs 503)**:
-  - If either PostgreSQL or Redis is unconfigured or unreachable, `/api/v1/readiness` returns **HTTP 503 Service Unavailable** with `ready: false` and `productionReady: false`.
-  - Only when both PostgreSQL and Redis are connected and operational (`up`) and all migrations applied does `/api/v1/readiness` return **HTTP 200 OK** with `ready: true`.
-- **Preserved Development In-Memory Mode**: In local development and test environments (`NODE_ENV !== "production"`), omitting `DATABASE_URL` or `REDIS_URL` allows the application to boot in a safe in-memory baseline mode for frontend development. The readiness probe truthfully reports `mode: "in-memory-baseline"`, `status: "unconfigured"`, and is **never** labeled production-ready.
-
+1. Install dependencies:
+   `npm install`
+2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+3. Run the app:
+   `npm run dev`

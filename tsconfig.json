@@ -2,10 +2,9 @@
   "compilerOptions": {
     "target": "ES2022",
     "experimentalDecorators": true,
-    "emitDecoratorMetadata": true,
     "useDefineForClassFields": false,
     "module": "ESNext",
-    "types": ["vite/client", "node"],
+    "types": ["vite/client"],
     "lib": [
       "ES2022",
       "DOM",
@@ -20,24 +19,6 @@
     "paths": {
       "@/*": [
         "./*"
-      ],
-      "@parkeazy/config": [
-        "./packages/config/src/index.ts"
-      ],
-      "@parkeazy/shared-types": [
-        "./packages/shared-types/src/index.ts"
-      ],
-      "@parkeazy/branding": [
-        "./packages/branding/src/index.ts"
-      ],
-      "@parkeazy/validation": [
-        "./packages/validation/src/index.ts"
-      ],
-      "@parkeazy/api-client": [
-        "./packages/api-client/src/index.ts"
-      ],
-      "@parkeazy/shared-ui": [
-        "./packages/shared-ui/src/index.ts"
       ]
     },
     "allowImportingTsExtensions": true,

@@ -1,0 +1,290 @@
+{
+  "ratePlans": [
+    {
+      "id": "rp-dt-001",
+      "hostId": "usr-host-001",
+      "facilityId": "loc-dt-001",
+      "name": "Standard Financial District Tier",
+      "hourlyRateCents": 650,
+      "dailyRateCents": 3800,
+      "minBillableMinutes": 60,
+      "minBookingMinutes": 60,
+      "maxBookingMinutes": 4320,
+      "stepMinutes": 30,
+      "vehicleCategory": "ALL",
+      "effectiveFromUtc": "2026-01-01T00:00:00Z",
+      "isActive": true,
+      "createdAtUtc": "2026-01-01T00:00:00Z",
+      "updatedAtUtc": "2026-01-01T00:00:00Z"
+    },
+    {
+      "id": "rp-res-002",
+      "hostId": "usr-host-001",
+      "facilityId": "loc-res-002",
+      "name": "Palo Alto Residential EV Rate",
+      "hourlyRateCents": 450,
+      "dailyRateCents": 2800,
+      "minBillableMinutes": 60,
+      "minBookingMinutes": 60,
+      "maxBookingMinutes": 4320,
+      "stepMinutes": 30,
+      "vehicleCategory": "ALL",
+      "effectiveFromUtc": "2026-01-01T00:00:00Z",
+      "isActive": true,
+      "createdAtUtc": "2026-01-01T00:00:00Z",
+      "updatedAtUtc": "2026-01-01T00:00:00Z"
+    },
+    {
+      "id": "rp-sub-003",
+      "hostId": "usr-host-001",
+      "facilityId": "loc-sub-003",
+      "name": "Mission Bay Commuter Rate",
+      "hourlyRateCents": 500,
+      "dailyRateCents": 3200,
+      "minBillableMinutes": 60,
+      "minBookingMinutes": 60,
+      "maxBookingMinutes": 4320,
+      "stepMinutes": 30,
+      "vehicleCategory": "ALL",
+      "effectiveFromUtc": "2026-01-01T00:00:00Z",
+      "isActive": true,
+      "createdAtUtc": "2026-01-01T00:00:00Z",
+      "updatedAtUtc": "2026-01-01T00:00:00Z"
+    }
+  ],
+  "operatingHours": [
+    {
+      "id": "oph-loc-dt-001-0",
+      "facilityId": "loc-dt-001",
+      "dayOfWeek": 0,
+      "isClosed": false,
+      "openTime": "06:00",
+      "closeTime": "23:00",
+      "isOvernight": false
+    },
+    {
+      "id": "oph-loc-dt-001-1",
+      "facilityId": "loc-dt-001",
+      "dayOfWeek": 1,
+      "isClosed": false,
+      "openTime": "06:00",
+      "closeTime": "23:00",
+      "isOvernight": false
+    },
+    {
+      "id": "oph-loc-dt-001-2",
+      "facilityId": "loc-dt-001",
+      "dayOfWeek": 2,
+      "isClosed": false,
+      "openTime": "06:00",
+      "closeTime": "23:00",
+      "isOvernight": false
+    },
+    {
+      "id": "oph-loc-dt-001-3",
+      "facilityId": "loc-dt-001",
+      "dayOfWeek": 3,
+      "isClosed": false,
+      "openTime": "06:00",
+      "closeTime": "23:00",
+      "isOvernight": false
+    },
+    {
+      "id": "oph-loc-dt-001-4",
+      "facilityId": "loc-dt-001",
+      "dayOfWeek": 4,
+      "isClosed": false,
+      "openTime": "06:00",
+      "closeTime": "23:00",
+      "isOvernight": false
+    },
+    {
+      "id": "oph-loc-dt-001-5",
+      "facilityId": "loc-dt-001",
+      "dayOfWeek": 5,
+      "isClosed": false,
+      "openTime": "06:00",
+      "closeTime": "23:00",
+      "isOvernight": false
+    },
+    {
+      "id": "oph-loc-dt-001-6",
+      "facilityId": "loc-dt-001",
+      "dayOfWeek": 6,
+      "isClosed": false,
+      "openTime": "06:00",
+      "closeTime": "23:00",
+      "isOvernight": false
+    },
+    {
+      "id": "oph-loc-res-002-0",
+      "facilityId": "loc-res-002",
+      "dayOfWeek": 0,
+      "isClosed": false,
+      "openTime": "06:00",
+      "closeTime": "23:00",
+      "isOvernight": false
+    },
+    {
+      "id": "oph-loc-res-002-1",
+      "facilityId": "loc-res-002",
+      "dayOfWeek": 1,
+      "isClosed": false,
+      "openTime": "06:00",
+      "closeTime": "23:00",
+      "isOvernight": false
+    },
+    {
+      "id": "oph-loc-res-002-2",
+      "facilityId": "loc-res-002",
+      "dayOfWeek": 2,
+      "isClosed": false,
+      "openTime": "06:00",
+      "closeTime": "23:00",
+      "isOvernight": false
+    },
+    {
+      "id": "oph-loc-res-002-3",
+      "facilityId": "loc-res-002",
+      "dayOfWeek": 3,
+      "isClosed": false,
+      "openTime": "06:00",
+      "closeTime": "23:00",
+      "isOvernight": false
+    },
+    {
+      "id": "oph-loc-res-002-4",
+      "facilityId": "loc-res-002",
+      "dayOfWeek": 4,
+      "isClosed": false,
+      "openTime": "06:00",
+      "closeTime": "23:00",
+      "isOvernight": false
+    },
+    {
+      "id": "oph-loc-res-002-5",
+      "facilityId": "loc-res-002",
+      "dayOfWeek": 5,
+      "isClosed": false,
+      "openTime": "06:00",
+      "closeTime": "23:00",
+      "isOvernight": false
+    },
+    {
+      "id": "oph-loc-res-002-6",
+      "facilityId": "loc-res-002",
+      "dayOfWeek": 6,
+      "isClosed": false,
+      "openTime": "06:00",
+      "closeTime": "23:00",
+      "isOvernight": false
+    },
+    {
+      "id": "oph-loc-sub-003-0",
+      "facilityId": "loc-sub-003",
+      "dayOfWeek": 0,
+      "isClosed": false,
+      "openTime": "06:00",
+      "closeTime": "23:00",
+      "isOvernight": false
+    },
+    {
+      "id": "oph-loc-sub-003-1",
+      "facilityId": "loc-sub-003",
+      "dayOfWeek": 1,
+      "isClosed": false,
+      "openTime": "06:00",
+      "closeTime": "23:00",
+      "isOvernight": false
+    },
+    {
+      "id": "oph-loc-sub-003-2",
+      "facilityId": "loc-sub-003",
+      "dayOfWeek": 2,
+      "isClosed": false,
+      "openTime": "06:00",
+      "closeTime": "23:00",
+      "isOvernight": false
+    },
+    {
+      "id": "oph-loc-sub-003-3",
+      "facilityId": "loc-sub-003",
+      "dayOfWeek": 3,
+      "isClosed": false,
+      "openTime": "06:00",
+      "closeTime": "23:00",
+      "isOvernight": false
+    },
+    {
+      "id": "oph-loc-sub-003-4",
+      "facilityId": "loc-sub-003",
+      "dayOfWeek": 4,
+      "isClosed": false,
+      "openTime": "06:00",
+      "closeTime": "23:00",
+      "isOvernight": false
+    },
+    {
+      "id": "oph-loc-sub-003-5",
+      "facilityId": "loc-sub-003",
+      "dayOfWeek": 5,
+      "isClosed": false,
+      "openTime": "06:00",
+      "closeTime": "23:00",
+      "isOvernight": false
+    },
+    {
+      "id": "oph-loc-sub-003-6",
+      "facilityId": "loc-sub-003",
+      "dayOfWeek": 6,
+      "isClosed": false,
+      "openTime": "06:00",
+      "closeTime": "23:00",
+      "isOvernight": false
+    }
+  ],
+  "policies": [
+    {
+      "id": "pol-dt-001",
+      "facilityId": "loc-dt-001",
+      "minDurationMinutes": 60,
+      "maxDurationMinutes": 4320,
+      "bookingIncrementMinutes": 30,
+      "transitionBufferMinutes": 15,
+      "cancellationPolicyTier": "STANDARD_48H",
+      "securityDepositCents": 2500,
+      "overstayPenaltyPerHourCents": 2000,
+      "effectiveFromUtc": "2026-01-01T00:00:00Z",
+      "updatedAtUtc": "2026-01-01T00:00:00Z"
+    },
+    {
+      "id": "pol-res-002",
+      "facilityId": "loc-res-002",
+      "minDurationMinutes": 60,
+      "maxDurationMinutes": 4320,
+      "bookingIncrementMinutes": 30,
+      "transitionBufferMinutes": 15,
+      "cancellationPolicyTier": "FLEXIBLE_24H",
+      "securityDepositCents": 1500,
+      "overstayPenaltyPerHourCents": 1500,
+      "effectiveFromUtc": "2026-01-01T00:00:00Z",
+      "updatedAtUtc": "2026-01-01T00:00:00Z"
+    },
+    {
+      "id": "pol-sub-003",
+      "facilityId": "loc-sub-003",
+      "minDurationMinutes": 60,
+      "maxDurationMinutes": 4320,
+      "bookingIncrementMinutes": 30,
+      "transitionBufferMinutes": 15,
+      "cancellationPolicyTier": "STANDARD_48H",
+      "securityDepositCents": 2000,
+      "overstayPenaltyPerHourCents": 1800,
+      "effectiveFromUtc": "2026-01-01T00:00:00Z",
+      "updatedAtUtc": "2026-01-01T00:00:00Z"
+    }
+  ],
+  "closures": [],
+  "auditLogs": [],
+  "updatedAt": "2026-10-20T11:47:53.319Z"
+}

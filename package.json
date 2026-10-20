@@ -5,51 +5,35 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
-    "start": "node server.ts",
-    "dev:same-origin": "node scripts/dev-same-origin.mjs",
-    "dev:same-origin:hmr": "node scripts/dev-same-origin.mjs",
-    "dev:root": "vite --config vite.config.ts --port 3001 --host 0.0.0.0",
-    "dev:host": "vite apps/host --port=3002 --host=0.0.0.0",
-    "dev:admin": "vite apps/admin --port=3003 --host=0.0.0.0",
-    "dev:api": "tsx server.ts",
+    "start": "tsx server.ts",
     "build": "vite build",
     "preview": "vite preview",
-    "gateway": "node scripts/production-gateway.mjs",
     "clean": "rm -rf dist server.js",
-    "lint": "tsc --noEmit",
-    "test": "node scripts/run-with-demo-auth.mjs --test tests/**/*.test.ts",
-    "test:vitest": "vitest run"
+    "lint": "tsc --noEmit"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
-    "@nestjs/common": "^12.2.0",
-    "@nestjs/core": "^12.2.0",
     "@tailwindcss/vite": "^4.3.3",
     "@vitejs/plugin-react": "^6.1.1",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
-    "ioredis": "^6.0.0",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
-    "pg": "^8.23.1",
-    "pg-mem": "^3.0.14",
+    "qrcode": "^1.5.4",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
-    "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.2",
     "vite": "^8.3.0"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
-    "@types/pg": "^8.23.1",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "autoprefixer": "^10.4.21",
     "esbuild": "^0.28.2",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.21.0",
-    "typescript": "^7.0.2",
-    "vitest": "^5.0.5"
+    "typescript": "^7.0.2"
   }
 }
