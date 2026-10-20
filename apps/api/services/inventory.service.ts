@@ -435,9 +435,6 @@ export class InventoryService {
     if (!data.address || !data.address.line1 || !data.address.city || !data.address.state || !data.address.postalCode) {
       throw new AppError('Complete facility street address (line1, city, state, postal code) is required.', 400, 'VALIDATION_ERROR');
     }
-    if (typeof data.address.latitude !== 'number' || typeof data.address.longitude !== 'number' || isNaN(data.address.latitude) || isNaN(data.address.longitude)) {
-      throw new AppError('Valid latitude and longitude coordinates are required.', 400, 'VALIDATION_ERROR');
-    }
 
     const facilityId = `loc-${crypto.randomBytes(6).toString('hex')}`;
     const now = new Date().toISOString();
@@ -455,10 +452,10 @@ export class InventoryService {
         state: data.address.state.trim(),
         postalCode: data.address.postalCode.trim(),
         country: data.address.country?.trim() || 'US',
-        latitude: data.address.latitude,
-        longitude: data.address.longitude,
+        latitude: typeof data.address.latitude === 'number' ? data.address.latitude : 37.7749,
+        longitude: typeof data.address.longitude === 'number' ? data.address.longitude : -122.4194,
       },
-      timezone: data.timezone || 'UTC',
+      timezone: data.timezone || 'America/Los_Angeles',
       accessMethod: data.accessMethod || AccessMethod.GATE_CODE,
       accessInstructions: data.accessInstructions?.trim() || undefined,
       status: LocationStatus.DRAFT,

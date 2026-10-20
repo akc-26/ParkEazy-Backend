@@ -29,7 +29,7 @@ export function createApp(): express.Express {
         error: {
           code: 'SERVICE_UNAVAILABLE',
           message: 'Server is undergoing graceful shutdown. Please retry shortly.',
-          correlationId: (req as any).correlationId || 'unknown',
+          correlationId: req.correlationId || 'unknown',
           timestamp: new Date().toISOString(),
         },
       });
@@ -38,8 +38,8 @@ export function createApp(): express.Express {
   });
 
   // 2. Body limit parsing
-  app.use(express.json({ limit: appConfig.bodyLimit || '1mb' }));
-  app.use(express.urlencoded({ extended: true, limit: appConfig.bodyLimit || '1mb' }));
+  app.use(express.json({ limit: appConfig.bodyLimit }));
+  app.use(express.urlencoded({ extended: true, limit: appConfig.bodyLimit }));
 
   // 3. Correlation ID & request logger
   app.use(correlationMiddleware);
@@ -61,34 +61,27 @@ export function createApp(): express.Express {
   app.use((req: Request, res: Response, next: NextFunction) => {
     const origin = req.headers.origin as string | undefined;
     const allowed = appConfig.corsOrigins.includes('*') || (origin && appConfig.corsOrigins.includes(origin));
+
     if (allowed) {
       res.setHeader('Access-Control-Allow-Origin', origin || '*');
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Correlation-Id, X-Request-Id, Origin, X-Requested-With, Accept');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Correlation-Id, X-Request-Id');
       if (origin && !appConfig.corsOrigins.includes('*')) {
         res.setHeader('Access-Control-Allow-Credentials', 'true');
       }
     }
+
     if (req.method === 'OPTIONS') {
       return res.sendStatus(204);
     }
     next();
   });
 
-  // Health check root alias
-  app.get('/health', (_req: Request, res: Response) => {
-    res.json({
-      status: 'healthy',
-      timestamp: new Date().toISOString(),
-      service: 'parkeazy-platform',
-    });
-  });
-
   // 6. Mount API v1 router
-  app.use(appConfig.apiPrefix || '/api/v1', apiV1Router);
+  app.use(appConfig.apiPrefix, apiV1Router);
 
   // 7. Centralized API Error Handler for /api/v1
-  app.use(appConfig.apiPrefix || '/api/v1', errorHandler);
+  app.use(appConfig.apiPrefix, errorHandler);
 
   // 8. Guarantee any unmatched /api/* route returns structured JSON 404
   app.all('/api/*', (req: Request, res: Response) => {
@@ -97,7 +90,7 @@ export function createApp(): express.Express {
       error: {
         code: 'API_NOT_FOUND',
         message: `API endpoint '${req.method} ${req.originalUrl}' does not exist on ParkEazy backend.`,
-        correlationId: (req as any).correlationId || 'unknown',
+        correlationId: req.correlationId || 'unknown',
         timestamp: new Date().toISOString(),
       },
     });
@@ -111,12 +104,9 @@ export function createApp(): express.Express {
   return app;
 }
 
-export const app = createApp();
-
 export async function startServer() {
-  const serverApp = createApp();
-  const PORT = parseInt(process.env.PORT || String(appConfig.port || 3000), 10);
-  const HOST = process.env.HOST || appConfig.host || '0.0.0.0';
+  const app = createApp();
+  const PORT = appConfig.port;
 
   // Initialize DB pool if configured
   if (appConfig.database.isConfigured) {
@@ -136,13 +126,15 @@ export async function startServer() {
     }
   }
 
-  const server = http.createServer(serverApp);
+  // Create HTTP server early so Vite can bind WebSocket HMR in middleware mode
+  const server = http.createServer(app);
 
   // Serve Frontend
   if (appConfig.nodeEnv === 'production') {
     const distPath = path.resolve(process.cwd(), 'dist');
-    serverApp.use(express.static(distPath));
-    serverApp.get('*', (_req: Request, res: Response) => {
+    app.use(express.static(distPath));
+    // SPA fallback: any non-API route serves index.html
+    app.get('*', (_req: Request, res: Response) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   } else {
@@ -150,6 +142,7 @@ export async function startServer() {
     const isHmrDisabled = process.env.DISABLE_HMR === 'true';
     const isHttps = Boolean(process.env.APP_URL?.startsWith('https://'));
     const { createServer: createViteServer } = await import('vite');
+
     const vite = await createViteServer({
       server: {
         middlewareMode: true,
@@ -165,27 +158,77 @@ export async function startServer() {
       appType: 'spa',
     });
 
-    serverApp.use(vite.middlewares);
+    server.on('upgrade', (req, _socket, _head) => {
+      const protocol = req.headers['sec-websocket-protocol'];
+      console.log(`[ParkEazy-WS] Upgrade handshake received: url=${req.url}, protocol=${protocol}, host=${req.headers.host}`);
+    });
+
+    app.use(vite.middlewares);
   }
 
-  server.listen(PORT, HOST, () => {
-    console.log(`[ParkEazy] Dev server running at http://${HOST}:${PORT}`);
+  server.listen(PORT, appConfig.host, () => {
+    console.log(`[ParkEazy] Full-Stack server running on http://${appConfig.host}:${PORT} (${appConfig.nodeEnv})`);
     console.log(`[ParkEazy] API endpoints active at ${appConfig.apiPrefix}`);
+    console.log(`[ParkEazy] Database mode: ${appConfig.database.isConfigured ? 'PostgreSQL (' + appConfig.database.sanitizedUrl + ')' : 'In-Memory Baseline'}`);
+    console.log(`[ParkEazy] Cache mode: ${appConfig.redis.isConfigured ? 'Redis (' + appConfig.redis.sanitizedUrl + ')' : 'In-Memory Baseline'}`);
+    console.log(`[ParkEazy] Canonical URLs: / (User Website), /host/ (Host Portal), /admin/ (Admin Panel)`);
   });
 
-  return { app: serverApp, server };
+  // Graceful shutdown handling
+  const shutdown = (signal: string) => {
+    if (isShuttingDown) {
+      console.log(`[ParkEazy] Duplicate shutdown signal (${signal}) received. Already closing.`);
+      return;
+    }
+    isShuttingDown = true;
+    console.log(`[ParkEazy] Received ${signal}. Stopping server gracefully...`);
+
+    const forceTimer = setTimeout(() => {
+      console.error('[ParkEazy] Shutdown timed out. Forcing termination.');
+      process.exit(1);
+    }, appConfig.shutdown.timeoutMs);
+    forceTimer.unref();
+
+    server.close(async (err) => {
+      if (err) {
+        console.error('[ParkEazy] Error during HTTP server close:', err);
+      } else {
+        console.log('[ParkEazy] HTTP server closed to new connections.');
+      }
+
+      try {
+        await dbManager.close();
+      } catch (dbErr: any) {
+        console.error('[ParkEazy] Error closing database pool:', dbErr.message);
+      }
+
+      try {
+        await redisManager.close();
+      } catch (redisErr: any) {
+        console.error('[ParkEazy] Error closing Redis connection:', redisErr.message);
+      }
+
+      clearTimeout(forceTimer);
+      console.log('[ParkEazy] Server closed successfully.');
+      process.exit(0);
+    });
+  };
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
+
+  return { app, server };
 }
 
 // Start server when run as primary entry point directly
-const isDirectEntry =
-  process.argv[1] &&
-  (process.argv[1].endsWith('server.ts') || process.argv[1].endsWith('server.js')) &&
-  process.env.NODE_ENV !== 'test' &&
-  !process.env.NODE_TEST_CONTEXT;
+const isDirectEntry = process.argv[1] && (
+  process.argv[1].endsWith('server.ts') ||
+  process.argv[1].endsWith('server.js')
+) && process.env.NODE_ENV !== 'test' && !process.env.NODE_TEST_CONTEXT;
 
 if (isDirectEntry) {
   startServer().catch((err) => {
-    console.error('[ParkEazy] Failed to start server:', err);
+    console.error('[ParkEazy] Fatal startup error:', err.message || err);
     process.exit(1);
   });
 }

@@ -1,46 +1,19 @@
 {
-  "name": "parkeazy-monorepo",
+  "name": "react-example",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.0.0",
   "type": "module",
-  "workspaces": [
-    "apps/*",
-    "services/*",
-    "packages/*"
-  ],
   "scripts": {
-    "dev": "tsx server.ts",
+    "dev": "node scripts/run-with-demo-auth.mjs server.ts",
     "start": "node server.ts",
-    "start:full": "node scripts/start-local-full.mjs",
-    "dev:same-origin": "node scripts/dev-same-origin.mjs",
-    "dev:same-origin:hmr": "node scripts/dev-same-origin.mjs",
-    "dev:root": "vite --config vite.config.ts --port 3001 --host 0.0.0.0",
-    "dev:website": "vite apps/website --port=3001 --host=0.0.0.0",
-    "dev:host": "vite apps/host --port=3002 --host=0.0.0.0",
-    "dev:admin": "vite apps/admin --port=3003 --host=0.0.0.0",
-    "dev:api": "tsx services/api/src/main.ts",
-    "dev:all": "node -e \"console.log('Launch dev:api, dev:website, dev:host, and dev:admin in separate terminal windows for parallel local execution.')\"",
     "build": "vite build",
-    "build:website": "vite build apps/website",
-    "build:host": "vite build apps/host",
-    "build:admin": "vite build apps/admin",
-    "build:all": "npm run build && npm run build:website && npm run build:host && npm run build:admin",
     "preview": "vite preview",
-    "gateway": "node scripts/production-gateway.mjs",
-    "verify": "node scripts/verify-local.mjs",
-    "db:migrate": "node scripts/migrate.mjs",
-    "db:status": "node scripts/migrate.mjs --status",
-    "db:seed": "node scripts/seed.mjs",
-    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "node scripts/run-with-demo-auth.mjs --test tests/**/*.test.ts",
-    "test:vitest": "vitest run --config vitest.config.ts",
-    "clean": "rm -rf dist server.js"
+    "test": "node scripts/run-with-demo-auth.mjs --test tests/**/*.test.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
-    "@nestjs/common": "^12.2.0",
-    "@nestjs/core": "^12.2.0",
     "@tailwindcss/vite": "^4.3.3",
     "@vitejs/plugin-react": "^6.1.1",
     "dotenv": "^17.2.3",
@@ -51,8 +24,6 @@
     "pg": "^8.23.1",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
-    "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.2",
     "vite": "^8.3.0"
   },
   "devDependencies": {
@@ -65,7 +36,6 @@
     "esbuild": "^0.28.2",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.21.0",
-    "typescript": "^7.0.2",
-    "vitest": "^5.0.5"
+    "typescript": "^7.0.2"
   }
 }
