@@ -1,12 +1,5 @@
 import React from 'react';
-import {
-  Shield,
-  LogOut,
-  ExternalLink,
-  ShieldCheck,
-  Server,
-  Activity
-} from 'lucide-react';
+import { Shield, LogOut, ArrowLeft } from 'lucide-react';
 import { User } from '../../types';
 
 interface AdminHeaderProps {
@@ -21,64 +14,49 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({
   onNavigateToCustomer
 }) => {
   return (
-    <header className="sticky top-0 z-40 bg-[#0F1E2E] text-white border-b border-slate-800">
-      <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
-        {/* Brand Wordmark with Admin Badge */}
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-base shadow-xs">
-              <Shield className="w-4 h-4" />
+    <header className="sticky top-0 z-40 bg-slate-950 border-b border-slate-800 text-white">
+      <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-16">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-rose-600 to-indigo-600 flex items-center justify-center font-bold text-lg text-white shadow-md">
+              <Shield className="w-5 h-5" />
             </div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-xl font-bold tracking-tight text-white">
-                ParkEazy
+            <div>
+              <span className="font-bold text-lg tracking-tight text-white flex items-center gap-2">
+                <span>ParkEazy</span>
+                <span className="text-xs px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40 font-semibold">
+                  Admin Console
+                </span>
               </span>
-              <span className="px-2 py-0.5 rounded-md bg-blue-500/20 border border-blue-400/30 text-blue-300 text-[10px] font-bold uppercase tracking-wider">
-                Admin Moderation
-              </span>
+              <span className="text-[10px] text-slate-400 block -mt-1">Operational Governance & Audit</span>
             </div>
           </div>
 
-          <div className="hidden lg:flex items-center gap-2 pl-4 border-l border-slate-700 text-xs text-slate-300">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>Platform Online · Strict Authorization Guard</span>
-          </div>
-        </div>
-
-        {/* Right Controls: Customer View Link, Admin Identity & Explicit Logout */}
-        <div className="flex items-center gap-3">
-          {/* Link to public customer experience */}
-          <button
-            type="button"
-            onClick={onNavigateToCustomer}
-            className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
-          >
-            <span>Public Website</span>
-            <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
-          </button>
-
-          {/* Admin Profile Info */}
-          <div className="flex items-center gap-2.5 pl-3 border-l border-slate-700">
-            <div className="w-8 h-8 rounded-full bg-blue-900 border border-blue-700 flex items-center justify-center text-xs font-bold text-blue-200">
-              {currentUser.fullName.charAt(0)}
-            </div>
-            <div className="hidden md:block text-left">
-              <div className="text-xs font-bold text-white leading-tight">
-                {currentUser.fullName}
-              </div>
-              <div className="text-[10px] text-blue-300">Administrator</div>
-            </div>
-
-            {/* Clear Real Logout Button */}
+          <div className="flex items-center gap-3">
             <button
-              type="button"
-              onClick={onLogout}
-              className="ml-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-700 hover:border-rose-400 hover:bg-rose-500/20 text-slate-300 hover:text-rose-200 text-xs font-semibold transition-colors cursor-pointer"
-              title="Log out of Admin Console"
+              onClick={onNavigateToCustomer}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-300 hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-800 transition-colors cursor-pointer"
             >
-              <LogOut className="w-3.5 h-3.5" />
-              <span>Log Out</span>
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Customer View</span>
             </button>
+
+            <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
+              <div className="w-7 h-7 rounded-full bg-rose-600 flex items-center justify-center font-bold text-xs text-white">
+                {currentUser.fullName.charAt(0)}
+              </div>
+              <div className="hidden sm:block text-left text-xs">
+                <div className="font-semibold text-white leading-tight">{currentUser.fullName}</div>
+                <div className="text-[10px] text-rose-400 uppercase font-semibold">Admin</div>
+              </div>
+              <button
+                onClick={onLogout}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-900 transition-colors ml-1 cursor-pointer"
+                title="Sign Out"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
       </div>

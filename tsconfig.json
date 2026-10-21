@@ -19,45 +19,10 @@
     "paths": {
       "@/*": [
         "./*"
-      ],
-      "@parkeazy/contracts": [
-        "./packages/contracts/index.ts"
-      ],
-      "@parkeazy/contracts/*": [
-        "./packages/contracts/*"
-      ],
-      "@parkeazy/config": [
-        "./packages/config/src/index.ts"
-      ],
-      "@parkeazy/config/*": [
-        "./packages/config/src/*"
-      ],
-      "@parkeazy/shared-types": [
-        "./packages/shared-types/src/index.ts"
-      ],
-      "@parkeazy/shared-types/*": [
-        "./packages/shared-types/src/*"
-      ],
-      "@parkeazy/validation": [
-        "./packages/validation/src/index.ts"
-      ],
-      "@parkeazy/validation/*": [
-        "./packages/validation/src/*"
-      ],
-      "@parkeazy/api-client": [
-        "./packages/api-client/src/index.ts"
-      ],
-      "@parkeazy/api-client/*": [
-        "./packages/api-client/src/*"
-      ],
-      "@parkeazy/*": [
-        "./packages/*",
-        "./packages/*/src",
-        "./packages/*/src/index.ts"
       ]
     },
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "exclude": ["dist", "services", "services/**/*", "tests", "tests/**/*", ".phase0_checkpoint", "checkpoint_backup"]
+  "exclude": ["dist"]
 }

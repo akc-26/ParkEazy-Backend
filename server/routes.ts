@@ -683,10 +683,27 @@ apiRouter.get('/payouts', requireHost, async (req, res) => {
   return res.json(payouts);
 });
 
+apiRouter.get('/payouts/:id', requireHost, async (req, res) => {
+  try {
+    const user = (req as any).user as User;
+    const payouts = await db.getPayouts();
+    const payout = payouts.find(p => p.id === req.params.id || p.referenceNumber === req.params.id);
+    if (!payout) {
+      return res.status(404).json({ error: 'Payout not found' });
+    }
+    if (user.role !== 'admin' && (user.role !== 'host' || user.id !== payout.hostId)) {
+      return res.status(403).json({ error: 'Forbidden: You do not own this payout' });
+    }
+    return res.json(payout);
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message });
+  }
+});
+
 apiRouter.post('/payouts', requireHost, async (req, res) => {
   try {
     const user = (req as any).user as User;
-    if (user.role !== 'host') {
+    if (user.role !== 'host' && user.role !== 'admin') {
       return res.status(403).json({ error: 'Only hosts can request payouts' });
     }
     const { amount, method, destinationAccount } = req.body;
@@ -694,10 +711,75 @@ apiRouter.post('/payouts', requireHost, async (req, res) => {
     if (!amount || !method || !destinationAccount) {
       return res.status(400).json({ error: 'Amount, method, and destination account are required' });
     }
-    const payout = await db.requestPayout(user.id, Number(amount), method, destinationAccount, user, idempotencyKey);
+    const targetHostId = user.role === 'admin' && req.body.hostId ? req.body.hostId : user.id;
+    const payout = await db.requestPayout(targetHostId, Number(amount), method, destinationAccount, user, idempotencyKey);
     return res.status(201).json(payout);
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
+  }
+});
+
+apiRouter.post('/payouts/:id/reconcile', requireHost, async (req, res) => {
+  try {
+    const user = (req as any).user as User;
+    const result = await db.reconcilePayout(req.params.id, user);
+    return res.json(result);
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message });
+  }
+});
+
+apiRouter.post('/payouts/:id/cancel', requireHost, async (req, res) => {
+  try {
+    const user = (req as any).user as User;
+    const payout = await db.cancelPayout(req.params.id, user, req.body?.reason);
+    return res.json(payout);
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message });
+  }
+});
+
+// Provider Webhook receivers with signature verification and deduplication
+apiRouter.post('/webhooks/stripe', async (req, res) => {
+  try {
+    const signature = (req.headers['stripe-signature'] as string) || (req.headers['x-webhook-signature'] as string);
+    const rawBody = (req as any).rawBody || (typeof req.body === 'string' ? req.body : JSON.stringify(req.body));
+    const result = await db.processProviderWebhook('stripe', req.body, signature, rawBody);
+    return res.json(result);
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message });
+  }
+});
+
+apiRouter.post('/webhooks/payout', async (req, res) => {
+  try {
+    const signature = (req.headers['x-webhook-signature'] as string) || (req.headers['stripe-signature'] as string);
+    const rawBody = (req as any).rawBody || (typeof req.body === 'string' ? req.body : JSON.stringify(req.body));
+    const result = await db.processProviderWebhook('payout', req.body, signature, rawBody);
+    return res.json(result);
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message });
+  }
+});
+
+// Host portal API compatibility routes
+apiRouter.get('/host/payouts', requireHost, async (req, res) => {
+  const user = (req as any).user as User;
+  const payouts = await db.getPayouts(user.id);
+  return res.json({ success: true, data: payouts });
+});
+
+apiRouter.post('/host/payouts/request', requireHost, async (req, res) => {
+  try {
+    const user = (req as any).user as User;
+    const amount = Number(req.body?.amount) || 50;
+    const method = req.body?.method || 'ach_bank_transfer';
+    const dest = req.body?.destinationAccount || user.businessDetails?.payoutAccountNumber || 'Default Verified Bank Account';
+    const idempotencyKey = (req.headers['x-idempotency-key'] as string) || req.body?.idempotencyKey;
+    const payout = await db.requestPayout(user.id, amount, method, dest, user, idempotencyKey);
+    return res.status(201).json({ success: true, data: payout });
+  } catch (err: any) {
+    return res.status(400).json({ success: false, error: err.message });
   }
 });
 

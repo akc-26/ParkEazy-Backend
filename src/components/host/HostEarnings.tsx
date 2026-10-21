@@ -96,6 +96,31 @@ export const HostEarnings: React.FC<HostEarningsProps> = ({ currentUser }) => {
     }
   };
 
+  const handleReconcilePayout = async (payoutId: string) => {
+    try {
+      const res = await api.reconcilePayout(payoutId);
+      if (res.reconciled) {
+        setPayoutSuccess(`Reconciliation complete: ${res.message}`);
+      } else {
+        alert(res.message);
+      }
+      await loadData();
+    } catch (err: any) {
+      alert('Reconciliation failed: ' + err.message);
+    }
+  };
+
+  const handleCancelPayout = async (payoutId: string) => {
+    if (!window.confirm('Cancel this pending payout request and release the reserved balance?')) return;
+    try {
+      await api.cancelPayout(payoutId, 'Cancelled from host portal');
+      setPayoutSuccess('Payout cancelled and reserved balance released.');
+      await loadData();
+    } catch (err: any) {
+      alert('Cancel failed: ' + err.message);
+    }
+  };
+
   const handleExportCSV = () => {
     const headers = ['Transaction ID', 'Date', 'Type', 'Description', 'Amount (USD)', 'Balance After (USD)', 'Idempotency Key'];
     const rows = ledger.map(l => [
@@ -232,12 +257,16 @@ export const HostEarnings: React.FC<HostEarningsProps> = ({ currentUser }) => {
               <div className="text-xs text-slate-400 text-center py-8">No payouts requested yet.</div>
             ) : (
               payouts.map(po => (
-                <div key={po.id} className="p-3 rounded-xl border border-slate-100 bg-slate-50 text-xs space-y-1">
+                <div key={po.id} className="p-3 rounded-xl border border-slate-100 bg-slate-50 text-xs space-y-1.5">
                   <div className="flex items-center justify-between">
                     <span className="font-mono font-bold text-slate-800">{po.referenceNumber}</span>
                     <span
                       className={`text-[10px] font-bold px-2 py-0.5 rounded capitalize ${
-                        po.status === 'paid' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                        po.status === 'paid'
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : po.status === 'failed'
+                          ? 'bg-rose-100 text-rose-800'
+                          : 'bg-amber-100 text-amber-800'
                       }`}
                     >
                       {po.status}
@@ -247,9 +276,34 @@ export const HostEarnings: React.FC<HostEarningsProps> = ({ currentUser }) => {
                     <span>{po.destinationAccount}</span>
                     <span className="font-bold text-slate-900">${po.amount.toFixed(2)}</span>
                   </div>
-                  <div className="text-[10px] text-slate-400 flex items-center justify-between">
+                  {po.notes && (
+                    <div className="text-[10px] text-slate-600 bg-white/80 p-1.5 rounded border border-slate-100 leading-tight">
+                      {po.notes}
+                    </div>
+                  )}
+                  <div className="text-[10px] text-slate-400 flex items-center justify-between pt-0.5">
                     <span>{po.method === 'stripe_instant' ? 'Stripe Instant' : 'ACH Standard'}</span>
-                    <span>{new Date(po.requestedAt).toLocaleDateString()}</span>
+                    <div className="flex items-center gap-2">
+                      <span>{new Date(po.requestedAt).toLocaleDateString()}</span>
+                      {(po.status === 'processing' || po.status === 'pending') && (
+                        <>
+                          <button
+                            onClick={() => handleReconcilePayout(po.id)}
+                            className="text-[10px] text-emerald-700 hover:underline font-semibold cursor-pointer"
+                            title="Check clearance with provider"
+                          >
+                            Reconcile
+                          </button>
+                          <button
+                            onClick={() => handleCancelPayout(po.id)}
+                            className="text-[10px] text-rose-600 hover:underline font-semibold cursor-pointer"
+                            title="Cancel request and release reserved funds"
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))

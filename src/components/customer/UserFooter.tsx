@@ -1,4 +1,5 @@
 import React from 'react';
+import { ShieldCheck, ArrowRight, Building2, Shield, Heart } from 'lucide-react';
 
 interface UserFooterProps {
   onOpenHostPortal: () => void;
@@ -12,185 +13,87 @@ export const UserFooter: React.FC<UserFooterProps> = ({
   onNavigateHome
 }) => {
   return (
-    <footer className="bg-white border-t border-slate-200 py-10 sm:py-14 mt-auto">
-      <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8">
+    <footer className="bg-[#0E1E20] border-t border-slate-800 text-white py-12 mt-16 font-sans">
+      <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-10">
-          {/* Col 1: Brand Wordmark and Info */}
-          <div>
-            <div
-              onClick={onNavigateHome}
-              className="flex items-center gap-2 mb-3 cursor-pointer p-0.5"
-            >
-              <div className="w-7 h-7 rounded bg-[#087E8A] text-white font-bold flex items-center justify-center text-sm shadow-xs">
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 cursor-pointer" onClick={onNavigateHome}>
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-[#087E8A] to-[#12B886] flex items-center justify-center font-bold text-base text-white">
                 P
               </div>
-              <span className="font-bold text-base text-[#162A2D]">ParkEazy</span>
+              <span className="font-bold text-lg text-white">ParkEazy</span>
             </div>
-            <p className="text-xs text-slate-500 leading-relaxed mb-4">
-              Peer-to-peer parking marketplace connecting drivers with secure parking spaces, backed by authoritative 10-minute hold locks and double-entry escrow.
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Guaranteed covered parking bay reservations with cryptographic gate passes, automated IoT access, and ACID double-entry ledger escrow.
             </p>
-            <div className="text-xs text-slate-400">
-              © {new Date().getFullYear()} ParkEazy Technologies Inc. All rights reserved.
-            </div>
           </div>
 
-          {/* Col 2: Marketplace Navigation */}
           <div>
-            <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-3">
-              Marketplace
+            <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider mb-3">
+              Guarantees & Architecture
             </h4>
-            <ul className="space-y-2 text-xs text-slate-600">
-              <li>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const el = document.getElementById('locations');
-                    if (el) el.scrollIntoView({ behavior: 'smooth' });
-                  }}
-                  className="hover:text-[#087E8A] transition-colors"
-                >
-                  Find Parking Spaces
-                </button>
+            <ul className="space-y-2 text-xs text-slate-400">
+              <li className="flex items-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5 text-teal-400" />
+                <span>10-Minute Hold Invariant</span>
               </li>
-              <li>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const el = document.getElementById('locations');
-                    if (el) el.scrollIntoView({ behavior: 'smooth' });
-                  }}
-                  className="hover:text-[#087E8A] transition-colors"
-                >
-                  Featured Locations
-                </button>
+              <li className="flex items-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5 text-teal-400" />
+                <span>100% Segregated Escrow</span>
               </li>
-              <li>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const el = document.getElementById('how-it-works');
-                    if (el) el.scrollIntoView({ behavior: 'smooth' });
-                  }}
-                  className="hover:text-[#087E8A] transition-colors"
-                >
-                  Covered & Secured Garages
-                </button>
-              </li>
-              <li>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const el = document.getElementById('how-it-works');
-                    if (el) el.scrollIntoView({ behavior: 'smooth' });
-                  }}
-                  className="hover:text-[#087E8A] transition-colors"
-                >
-                  EV Charging Bays
-                </button>
+              <li className="flex items-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5 text-teal-400" />
+                <span>Instant QR Gate Codes</span>
               </li>
             </ul>
           </div>
 
-          {/* Col 3: Hosting Partner Links */}
           <div>
-            <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-3">
-              Hosting
+            <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider mb-3">
+              Portals
             </h4>
-            <ul className="space-y-2 text-xs text-slate-600">
+            <ul className="space-y-2 text-xs">
               <li>
                 <button
-                  type="button"
                   onClick={onOpenHostPortal}
-                  className="hover:text-[#087E8A] text-left transition-colors font-medium text-[#075762]"
+                  className="text-slate-300 hover:text-white flex items-center gap-1 transition-colors cursor-pointer"
                 >
-                  Host Portal & Management →
+                  <Building2 className="w-3 h-3 text-teal-400" />
+                  <span>Host Partner Portal</span>
                 </button>
               </li>
               <li>
                 <button
-                  type="button"
-                  onClick={() => {
-                    const el = document.getElementById('how-it-works');
-                    if (el) el.scrollIntoView({ behavior: 'smooth' });
-                  }}
-                  className="hover:text-[#087E8A] transition-colors"
+                  onClick={onOpenAdminPortal}
+                  className="text-slate-300 hover:text-white flex items-center gap-1 transition-colors cursor-pointer"
                 >
-                  Host Requirements & Guarantees
-                </button>
-              </li>
-              <li>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const el = document.getElementById('how-it-works');
-                    if (el) el.scrollIntoView({ behavior: 'smooth' });
-                  }}
-                  className="hover:text-[#087E8A] transition-colors"
-                >
-                  Automated Gate Access Methods
-                </button>
-              </li>
-              <li>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const el = document.getElementById('how-it-works');
-                    if (el) el.scrollIntoView({ behavior: 'smooth' });
-                  }}
-                  className="hover:text-[#087E8A] transition-colors"
-                >
-                  Segregated Escrow Protection
+                  <Shield className="w-3 h-3 text-rose-400" />
+                  <span>Admin Moderation Console</span>
                 </button>
               </li>
             </ul>
           </div>
 
-          {/* Col 4: Trust & Verification Invariants */}
           <div>
-            <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-3">
-              Trust & Security
+            <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider mb-3">
+              Status & Compliance
             </h4>
-            <ul className="space-y-2 text-xs text-slate-600">
-              <li className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                <span>Authoritative 10-Minute Bay Lock</span>
-              </li>
-              <li className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                <span>Discrete Physical Bay Assignment</span>
-              </li>
-              <li className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                <span>Append-Only Escrow Ledger</span>
-              </li>
-              <li className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                <span>Zero Secret Leakage Compliance</span>
-              </li>
-            </ul>
+            <div className="bg-[#162A2D] p-3 rounded-xl border border-slate-700/60 text-xs text-slate-300 space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="font-semibold text-white">Operations Active</span>
+              </div>
+              <p className="text-[11px] text-slate-400">
+                Authoritative persistence, double-entry financial ledger, and verified access control.
+              </p>
+            </div>
           </div>
         </div>
 
-        <div className="pt-6 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-400">
-          <div>
-            ParkEazy Verified Parking Marketplace Platform
-          </div>
-          <div className="flex items-center gap-4">
-            <button
-              type="button"
-              onClick={onOpenHostPortal}
-              className="hover:text-slate-600 transition-colors"
-            >
-              Host Workspace
-            </button>
-            <span>·</span>
-            <button
-              type="button"
-              onClick={onOpenAdminPortal}
-              className="hover:text-slate-600 transition-colors"
-            >
-              Admin Governance
-            </button>
+        <div className="pt-6 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 gap-3">
+          <div>© {new Date().getFullYear()} ParkEazy Platform Inc. All rights reserved.</div>
+          <div className="text-[11px] text-slate-400">
+            Phase 03 Host Baseline & Payout Integrity Enforced
           </div>
         </div>
       </div>

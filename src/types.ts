@@ -10,8 +10,6 @@ export interface User {
   status: AccountStatus;
   avatarUrl?: string;
   isEmailVerified: boolean;
-  createdAt?: string;
-  updatedAt?: string;
   businessDetails?: {
     businessName: string;
     registrationNumber: string;

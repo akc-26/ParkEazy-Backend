@@ -93,15 +93,37 @@ class ApiClient {
       headers
     });
 
+    const contentType = res.headers.get('content-type') || '';
+
     if (!res.ok) {
       let errorMsg = `API request failed with status ${res.status}`;
       try {
-        const body = await res.json();
-        if (body.error) errorMsg = body.error;
+        if (contentType.includes('application/json')) {
+          const body = await res.json();
+          if (body.error) {
+            errorMsg = typeof body.error === 'string' ? body.error : (body.error.message || JSON.stringify(body.error));
+          } else if (body.message) {
+            errorMsg = body.message;
+          }
+        } else {
+          const text = await res.text();
+          if (text.startsWith('<!doctype') || text.startsWith('<html') || text.startsWith('<')) {
+            errorMsg = `Server routing error (${res.status}): received HTML instead of JSON.`;
+          }
+        }
       } catch {
         // ignore
       }
       throw new Error(errorMsg);
+    }
+
+    if (!contentType.includes('application/json')) {
+      const text = await res.text();
+      let safeMsg = `API request to '${endpoint}' returned non-JSON response (${res.status} ${res.statusText})`;
+      if (text.startsWith('<!doctype') || text.startsWith('<html') || text.startsWith('<')) {
+        safeMsg = `Server routing error: expected JSON from '${endpoint}', but received HTML page.`;
+      }
+      throw new Error(safeMsg);
     }
 
     return res.json() as Promise<T>;
@@ -472,6 +494,19 @@ class ApiClient {
     return this.request<PayoutRequest>('/payouts', {
       method: 'POST',
       body: JSON.stringify({ amount, method, destinationAccount })
+    });
+  }
+
+  async reconcilePayout(payoutId: string) {
+    return this.request<{ success: boolean; payout: PayoutRequest; reconciled: boolean; blocker?: string; message: string }>(`/payouts/${payoutId}/reconcile`, {
+      method: 'POST'
+    });
+  }
+
+  async cancelPayout(payoutId: string, reason?: string) {
+    return this.request<PayoutRequest>(`/payouts/${payoutId}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ reason })
     });
   }
 

@@ -294,21 +294,3 @@ export interface AuditLog {
   details: string;
   ipAddress?: string;
 }
-
-export interface ActiveSession {
-  token: string;
-  userId: string;
-  role: UserRole;
-  createdAt: string;
-  expiresAt: string;
-}
-
-export interface PasswordResetToken {
-  id: string;
-  tokenHash: string;
-  userId: string;
-  email: string;
-  expiresAt: string;
-  isUsed: boolean;
-  createdAt: string;
-}
