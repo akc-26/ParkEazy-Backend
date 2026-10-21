@@ -747,18 +747,7 @@
       "updatedAt": "2026-01-18T10:00:00.000Z"
     }
   ],
-  "holds": [
-    {
-      "id": "hld_3c10471d",
-      "bayId": "bay_m5",
-      "facilityId": "fac_metro_downtown",
-      "userId": "usr_cust1",
-      "startTime": "2026-10-20T14:00:00.000Z",
-      "endTime": "2026-10-20T18:00:00.000Z",
-      "heldAt": "2026-10-20T12:30:52.242Z",
-      "expiresAt": "2026-10-20T12:45:52.242Z"
-    }
-  ],
+  "holds": [],
   "bookings": [
     {
       "id": "bk_active_1",
@@ -1207,5 +1196,7 @@
       "entityId": "fac_metro_downtown",
       "details": "Approved facility listing after compliance check"
     }
-  ]
+  ],
+  "sessions": [],
+  "passwordResetTokens": []
 }

@@ -528,12 +528,12 @@ export class ParkEazyApiClient {
       const res = await this.post<{ data: any }>(`/host/extension-requests/${requestId}/decision`, { decision });
       return res.data || (res as any);
     },
-    checkIn: async (bookingId: string): Promise<any> => {
-      const res = await this.post<{ data: any }>(`/bookings/${bookingId}/check-in`);
+    checkIn: async (id: string): Promise<any> => {
+      const res = await this.post<{ data: any }>(`/host/bookings/${encodeURIComponent(id)}/check-in`);
       return res.data || (res as any);
     },
-    checkOut: async (bookingId: string): Promise<any> => {
-      const res = await this.post<{ data: any }>(`/bookings/${bookingId}/check-out`);
+    checkOut: async (id: string): Promise<any> => {
+      const res = await this.post<{ data: any }>(`/host/bookings/${encodeURIComponent(id)}/check-out`);
       return res.data || (res as any);
     },
   };

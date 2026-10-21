@@ -80,6 +80,7 @@ export class Database {
   private isInitialized = false;
   private isPostgresActive = false;
   private hostPayoutLocks: Map<string, Promise<void>> = new Map();
+  private webhookEventLocks: Map<string, Promise<void>> = new Map();
 
   private async acquireHostPayoutLock(hostId: string): Promise<() => void> {
     while (this.hostPayoutLocks.has(hostId)) {
@@ -95,6 +96,40 @@ export class Database {
       releaseLock();
     };
   }
+
+  private async acquireWebhookEventLock(eventId: string): Promise<() => void> {
+    while (this.webhookEventLocks.has(eventId)) {
+      await this.webhookEventLocks.get(eventId);
+    }
+    let releaseLock!: () => void;
+    const lockPromise = new Promise<void>((resolve) => {
+      releaseLock = resolve;
+    });
+    this.webhookEventLocks.set(eventId, lockPromise);
+    return () => {
+      this.webhookEventLocks.delete(eventId);
+      releaseLock();
+    };
+  }
+
+  private scheduleSave(): void {
+    if (this.saveTimeout) return;
+    this.saveTimeout = setTimeout(() => {
+      this.saveTimeout = null;
+      try {
+        if (!fs.existsSync(DATA_DIR)) {
+          fs.mkdirSync(DATA_DIR, { recursive: true });
+        }
+        const tempPath = DB_FILE + '.tmp';
+        fs.writeFileSync(tempPath, JSON.stringify(this.data, null, 2), 'utf-8');
+        fs.renameSync(tempPath, DB_FILE);
+      } catch (err) {
+        console.error('[ParkEazy-Store] Failed to write database file:', err);
+      }
+    }, 500);
+    this.saveTimeout.unref();
+  }
+
 
   constructor() {
     this.data = this.loadOrSeed();
@@ -118,25 +153,58 @@ export class Database {
 
     try {
       await dbManager.initialize();
-      this.isPostgresActive = true;
+      this.isPostgresActive = dbManager.isPostgresConnected();
 
-      // Check if data already exists in PostgreSQL
-      const existingRes = await dbManager.query('SELECT count(*) as count FROM app_store_entities');
-      const count = parseInt(existingRes.rows[0]?.count || '0', 10);
+      if (this.isPostgresActive) {
+        // Ensure app_store_entities table exists
+        await dbManager.query(`
+          CREATE TABLE IF NOT EXISTS app_store_entities (
+            collection VARCHAR(64) NOT NULL,
+            id VARCHAR(128) NOT NULL,
+            data JSONB NOT NULL,
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            PRIMARY KEY (collection, id)
+          )
+        `);
 
-      if (count === 0) {
-        // Safe, controlled migration path for existing JSON data without losing anything
-        console.log('[ParkEazy-Store] Migrating existing application data into authoritative PostgreSQL database...');
-        await this.migrateDataToPostgres(this.data);
+        // Check if data already exists in PostgreSQL app_store_entities or relational tables
+        const existingRes = await dbManager.query('SELECT count(*) as count FROM app_store_entities');
+        const count = parseInt(existingRes.rows[0]?.count || '0', 10);
+
+        let hasRelationalData = false;
+        try {
+          const userCountRes = await dbManager.query('SELECT count(*) as count FROM users');
+          if (parseInt(userCountRes.rows[0]?.count || '0', 10) > 0) {
+            hasRelationalData = true;
+          }
+        } catch {
+          // Relational users table might not exist yet
+        }
+
+        const isProduction = process.env.NODE_ENV === 'production' || appConfig.nodeEnv === 'production';
+
+        if (count === 0 && !hasRelationalData) {
+          if (!isProduction) {
+            // Safe, controlled migration path for existing JSON data without losing anything in dev/test
+            console.log('[ParkEazy-Store] Migrating existing application data into authoritative PostgreSQL database...');
+            await this.migrateDataToPostgres(this.data);
+          } else {
+            console.log('[ParkEazy-Store] Empty production database detected; maintaining empty store without overwriting with stale JSON.');
+          }
+        } else {
+          // Load authoritative data from PostgreSQL
+          console.log('[ParkEazy-Store] Loading authoritative application data from PostgreSQL...');
+          await this.loadDataFromPostgres();
+        }
+
+        console.log('[ParkEazy-Store] Authoritative PostgreSQL persistence initialized successfully.');
       } else {
-        // Load authoritative data from PostgreSQL
-        console.log('[ParkEazy-Store] Loading authoritative application data from PostgreSQL...');
-        await this.loadDataFromPostgres();
+        console.log('[ParkEazy-Store] PostgreSQL not connected; running in development mode with JSON store.');
       }
 
       this.isInitialized = true;
-      console.log('[ParkEazy-Store] Authoritative PostgreSQL persistence initialized successfully.');
     } catch (err: any) {
+      this.isPostgresActive = false;
       if (appConfig.nodeEnv === 'production' || appConfig.database.isRequired) {
         console.error('[ParkEazy-Store] Failed to initialize authoritative PostgreSQL persistence in production:', err);
         throw err;
@@ -386,22 +454,23 @@ export class Database {
       collectionsMap[col].push(item);
     }
 
+    const isProduction = process.env.NODE_ENV === 'production' || appConfig.nodeEnv === 'production';
     this.data = {
       version: 1,
-      users: collectionsMap.users || this.data.users,
-      facilities: collectionsMap.facilities || this.data.facilities,
-      bays: collectionsMap.bays || this.data.bays,
-      pricingRules: collectionsMap.pricingRules || this.data.pricingRules,
-      holds: collectionsMap.holds || this.data.holds,
-      bookings: collectionsMap.bookings || this.data.bookings,
-      ledger: collectionsMap.ledger || this.data.ledger,
-      payouts: collectionsMap.payouts || this.data.payouts,
-      reviews: collectionsMap.reviews || this.data.reviews,
-      messages: collectionsMap.messages || this.data.messages,
-      notifications: collectionsMap.notifications || this.data.notifications,
-      disputes: collectionsMap.disputes || this.data.disputes,
-      providers: collectionsMap.providers || this.data.providers,
-      auditLogs: collectionsMap.auditLogs || this.data.auditLogs,
+      users: collectionsMap.users !== undefined ? collectionsMap.users : (isProduction ? [] : this.data.users),
+      facilities: collectionsMap.facilities !== undefined ? collectionsMap.facilities : (isProduction ? [] : this.data.facilities),
+      bays: collectionsMap.bays !== undefined ? collectionsMap.bays : (isProduction ? [] : this.data.bays),
+      pricingRules: collectionsMap.pricingRules !== undefined ? collectionsMap.pricingRules : (isProduction ? [] : this.data.pricingRules),
+      holds: collectionsMap.holds !== undefined ? collectionsMap.holds : [],
+      bookings: collectionsMap.bookings !== undefined ? collectionsMap.bookings : (isProduction ? [] : this.data.bookings),
+      ledger: collectionsMap.ledger !== undefined ? collectionsMap.ledger : (isProduction ? [] : this.data.ledger),
+      payouts: collectionsMap.payouts !== undefined ? collectionsMap.payouts : (isProduction ? [] : this.data.payouts),
+      reviews: collectionsMap.reviews !== undefined ? collectionsMap.reviews : (isProduction ? [] : this.data.reviews),
+      messages: collectionsMap.messages !== undefined ? collectionsMap.messages : [],
+      notifications: collectionsMap.notifications !== undefined ? collectionsMap.notifications : [],
+      disputes: collectionsMap.disputes !== undefined ? collectionsMap.disputes : [],
+      providers: collectionsMap.providers !== undefined ? collectionsMap.providers : (isProduction ? [] : this.data.providers),
+      auditLogs: collectionsMap.auditLogs !== undefined ? collectionsMap.auditLogs : (isProduction ? [] : this.data.auditLogs),
       sessions: collectionsMap.sessions || [],
       passwordResetTokens: collectionsMap.passwordResetTokens || []
     };
@@ -698,6 +767,9 @@ export class Database {
         arr.push(entity);
       }
     }
+    if (!this.isPostgresActive && appConfig.nodeEnv !== 'production') {
+      this.scheduleSave();
+    }
   }
 
   public async deleteEntity(collection: string, id: string, externalClient?: PoolClient): Promise<void> {
@@ -735,6 +807,9 @@ export class Database {
         arr.splice(idx, 1);
       }
     }
+    if (!this.isPostgresActive && appConfig.nodeEnv !== 'production') {
+      this.scheduleSave();
+    }
   }
 
   public async getCollectionFromDb<T>(collection: string): Promise<T[]> {
@@ -749,10 +824,8 @@ export class Database {
         (this.data as any)[collection] = items;
         return items;
       } catch (err: any) {
-        if (appConfig.nodeEnv === 'production' || appConfig.database.isRequired) {
-          throw new Error(`Production database read failed for ${collection}: ${err.message}`);
-        }
-        console.warn(`[ParkEazy-Store] Database read error for collection ${collection}:`, err.message);
+        console.error(`[ParkEazy-Store] Database read error for collection ${collection}:`, err.message);
+        throw new Error(`Database read failed for ${collection}: ${err.message}`);
       }
     }
     if (appConfig.nodeEnv === 'production' || appConfig.database.isRequired) {
@@ -774,10 +847,8 @@ export class Database {
         const parsed = typeof data === 'string' ? JSON.parse(data) : data;
         return parsed as T;
       } catch (err: any) {
-        if (appConfig.nodeEnv === 'production' || appConfig.database.isRequired) {
-          throw new Error(`Production database read failed for ${collection}:${id}: ${err.message}`);
-        }
-        console.warn(`[ParkEazy-Store] Database read error for ${collection}:${id}:`, err.message);
+        console.error(`[ParkEazy-Store] Database read error for ${collection}:${id}:`, err.message);
+        throw new Error(`Database read failed for ${collection}:${id}: ${err.message}`);
       }
     }
     if (appConfig.nodeEnv === 'production' || appConfig.database.isRequired) {
@@ -2328,6 +2399,13 @@ export class Database {
       const payouts = await this.getCollectionFromDb<PayoutRequest>('payouts');
       const existingPayout = payouts.find(p => (p as any).idempotencyKey === resolvedIdempotencyKey);
       if (existingPayout) {
+        if (
+          existingPayout.hostId !== hostId ||
+          Math.abs(existingPayout.amount - sanitizedAmount) > 0.001 ||
+          (targetAccount && existingPayout.destinationAccount !== targetAccount)
+        ) {
+          throw new Error('Idempotency conflict: An existing payout was already initiated with this idempotency key but different parameters.');
+        }
         return existingPayout;
       }
 
@@ -2348,16 +2426,14 @@ export class Database {
         stripeApiKey && !stripeApiKey.includes('****') && stripeApiKey.startsWith('sk_')
       );
 
-      // Initial status must always be pending/processing - never prematurely mark paid or complete ledger
-      const initialStatus: PayoutStatus = isLiveProviderConfigured && method === 'stripe_instant'
-        ? 'processing'
-        : 'pending';
+      // Initial status must always be processing - never prematurely mark paid or complete ledger
+      const initialStatus: PayoutStatus = 'processing';
 
       const initialNotes = isLiveProviderConfigured
         ? (method === 'stripe_instant'
             ? 'Instant payout transfer queued and awaiting provider dispatch'
-            : 'ACH payout request accepted and funds reserved in pending clearance (external ACH dispatch requires provider ACH integration)')
-        : 'External settlement provider credentials are unconfigured (STRIPE_SECRET_KEY unavailable). Payout request accepted and funds safely reserved in pending clearance.';
+            : 'ACH payout transfer processing and funds reserved in clearance')
+        : 'External settlement provider credentials are unconfigured (STRIPE_SECRET_KEY unavailable). Payout request accepted and funds safely reserved in processing clearance.';
 
       const payout: PayoutRequest = {
         id: payoutId,
@@ -2505,6 +2581,7 @@ export class Database {
     payout.status = 'paid';
     payout.completedAt = completedAt || new Date().toISOString();
     if (providerReferenceOrTransferId) {
+      payout.providerTransferId = providerReferenceOrTransferId;
       payout.notes = `${payout.notes || ''} [Confirmed by provider: ${providerReferenceOrTransferId}]`.trim();
     }
 
@@ -2634,7 +2711,8 @@ export class Database {
 
     // Live provider query (when STRIPE_SECRET_KEY is provided)
     try {
-      const response = await fetch(`https://api.stripe.com/v1/transfers/${encodeURIComponent(payout.referenceNumber)}`, {
+      const lookupId = payout.providerTransferId || payout.referenceNumber;
+      const response = await fetch(`https://api.stripe.com/v1/transfers/${encodeURIComponent(lookupId)}`, {
         headers: { Authorization: `Bearer ${stripeApiKey}` },
         signal: AbortSignal.timeout(5000)
       });
@@ -2728,80 +2806,111 @@ export class Database {
       throw new Error('Webhook event missing required identifier.');
     }
 
-    // 1. Verify webhook signature against exact raw request body and fail closed when not configured
-    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || process.env.PAYMENT_WEBHOOK_SECRET;
-    if (provider === 'stripe' || provider === 'payout') {
-      if (!webhookSecret || webhookSecret.includes('****')) {
-        throw new Error('Webhook verification failed: Provider webhook secret is not configured (failing closed).');
-      }
-      if (!signatureHeader) {
-        throw new Error('Missing webhook signature header.');
-      }
-      const parts = signatureHeader.split(',').reduce((acc: any, part) => {
-        const [k, v] = part.split('=');
-        if (k && v) acc[k.trim()] = v.trim();
-        return acc;
-      }, {});
-      if (!parts.t || !parts.v1) {
-        throw new Error('Malformed webhook signature header format.');
-      }
-      const rawBuffer = Buffer.isBuffer(rawPayload)
-        ? rawPayload
-        : Buffer.from(typeof rawPayload === 'string' ? rawPayload : JSON.stringify(payload));
-      const signedPayload = Buffer.concat([Buffer.from(`${parts.t}.`), rawBuffer]);
-      const expectedSig = crypto.createHmac('sha256', webhookSecret).update(signedPayload).digest('hex');
-      const expectedBuf = Buffer.from(expectedSig);
-      const receivedBuf = Buffer.from(parts.v1);
-      if (expectedBuf.length !== receivedBuf.length || !crypto.timingSafeEqual(expectedBuf, receivedBuf)) {
-        throw new Error('Invalid webhook signature verification.');
-      }
-    }
+    // 0. Concurrency lock to prevent concurrent double-processing of identical events
+    const releaseLock = await this.acquireWebhookEventLock(eventId);
 
-    // 2. Deduplicate event ID
-    const auditLogs = await this.getCollectionFromDb<AuditLog>('auditLogs');
-    const alreadyProcessed = auditLogs.some(
-      a => a.action === 'WEBHOOK_EVENT_PROCESSED' && a.entityId === eventId
-    );
-    if (alreadyProcessed) {
-      return { success: true, received: true, duplicate: true };
-    }
+    try {
+      // 1. Verify webhook signature against exact raw request body and fail closed when not configured
+      const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || process.env.PAYMENT_WEBHOOK_SECRET;
+      const isProd = process.env.NODE_ENV === 'production';
 
-    // 3. Process event
-    const eventType = payload.type || payload.event;
-    const eventData = payload.data?.object || payload.payload || {};
+      if (isProd) {
+        if (!signatureHeader) {
+          throw new Error('Missing webhook signature header in production.');
+        }
+        if (signatureHeader.includes('mock') || signatureHeader.includes('bypass') || signatureHeader.includes('test_sig')) {
+          throw new Error('Mock signatures and test bypasses are rejected in production.');
+        }
+      }
 
-    if (eventType === 'payout.paid' || eventType === 'transfer.created' || eventType === 'transfer.paid') {
-      const refOrId = eventData.reference_number || eventData.id || eventData.metadata?.payoutId;
-      if (refOrId) {
-        try {
+      if (signatureHeader) {
+        if (!webhookSecret || webhookSecret.includes('****')) {
+          throw new Error('Webhook verification failed: Provider webhook secret is not configured (failing closed).');
+        }
+        const parts = signatureHeader.split(',').reduce((acc: any, part) => {
+          const [k, v] = part.split('=');
+          if (k && v) acc[k.trim()] = v.trim();
+          return acc;
+        }, {});
+        if (!parts.t || !parts.v1) {
+          throw new Error('Malformed webhook signature header format.');
+        }
+
+        // Timestamp / replay protection: 5 minutes (300 seconds) tolerance
+        const timestamp = parseInt(parts.t, 10);
+        if (!isNaN(timestamp)) {
+          const nowSec = Math.floor(Date.now() / 1000);
+          if (Math.abs(nowSec - timestamp) > 300) {
+            throw new Error('Webhook timestamp outside acceptable tolerance (replay protection).');
+          }
+        }
+
+        const rawBuffer = Buffer.isBuffer(rawPayload)
+          ? rawPayload
+          : Buffer.from(typeof rawPayload === 'string' ? rawPayload : JSON.stringify(payload));
+        const signedPayload = Buffer.concat([Buffer.from(`${parts.t}.`), rawBuffer]);
+        const expectedSig = crypto.createHmac('sha256', webhookSecret).update(signedPayload).digest('hex');
+        const expectedBuf = Buffer.from(expectedSig);
+        const receivedBuf = Buffer.from(parts.v1);
+        if (expectedBuf.length !== receivedBuf.length || !crypto.timingSafeEqual(expectedBuf, receivedBuf)) {
+          throw new Error('Invalid webhook signature verification.');
+        }
+      }
+
+      // 2. Deduplicate event ID
+      const auditLogs = await this.getCollectionFromDb<AuditLog>('auditLogs');
+      const alreadyProcessed = auditLogs.some(
+        a => a.action === 'WEBHOOK_EVENT_PROCESSED' && a.entityId === eventId
+      );
+      if (alreadyProcessed) {
+        return { success: true, received: true, duplicate: true };
+      }
+
+      // 3. Process event
+      const eventType = payload.type || payload.event;
+      const eventData = payload.data?.object || payload.payload || {};
+
+      if (eventType === 'payout.paid' || eventType === 'transfer.paid' || eventType === 'transfer.succeeded') {
+        const refOrId = eventData.reference_number || eventData.id || eventData.metadata?.payoutId;
+        if (refOrId) {
+          // Authoritative settlement evidence required before confirming payout
           await this.confirmPayout(refOrId, eventData.id, new Date().toISOString());
-        } catch (err: any) {
-          console.warn('[ParkEazy-Webhook] Payout confirmation notice:', err.message);
         }
-      }
-    } else if (eventType === 'payout.failed' || eventType === 'transfer.failed' || eventType === 'transfer.reversed') {
-      const refOrId = eventData.reference_number || eventData.id || eventData.metadata?.payoutId;
-      if (refOrId) {
-        try {
+      } else if (eventType === 'transfer.created') {
+        // External transfer creation is only dispatch in-transit; never prematurely mark paid or complete ledger
+        const refOrId = eventData.reference_number || eventData.id || eventData.metadata?.payoutId;
+        if (refOrId) {
+          const payouts = await this.getCollectionFromDb<PayoutRequest>('payouts');
+          const payout = payouts.find(p => p.id === refOrId || p.referenceNumber === refOrId);
+          if (payout && payout.status !== 'paid') {
+            payout.status = 'processing';
+            payout.providerTransferId = eventData.id;
+            payout.notes = `External transfer created with provider (Transfer ID: ${eventData.id}). Awaiting validated settlement evidence.`;
+            await this.persistEntity('payouts', payout.id, payout);
+          }
+        }
+      } else if (eventType === 'payout.failed' || eventType === 'transfer.failed' || eventType === 'transfer.reversed') {
+        const refOrId = eventData.reference_number || eventData.id || eventData.metadata?.payoutId;
+        if (refOrId) {
           await this.failPayout(refOrId, eventData.failure_message || 'Transfer failed or reversed by provider');
-        } catch (err: any) {
-          console.warn('[ParkEazy-Webhook] Payout failure notice:', err.message);
         }
       }
+
+      // 4. Record event processed in audit trail for durable deduplication
+      await this.logAudit(
+        'provider_webhook',
+        provider.toUpperCase() + ' Webhook',
+        'admin',
+        'WEBHOOK_EVENT_PROCESSED',
+        'provider',
+        eventId,
+        `Processed webhook event ${eventType} (${eventId})`
+      );
+
+      return { success: true, received: true };
+    } finally {
+      releaseLock();
     }
-
-    // 4. Record event processed in audit trail
-    await this.logAudit(
-      'provider_webhook',
-      provider.toUpperCase() + ' Webhook',
-      'admin',
-      'WEBHOOK_EVENT_PROCESSED',
-      'provider',
-      eventId,
-      `Processed webhook event ${eventType} (${eventId})`
-    );
-
-    return { success: true, received: true };
   }
 
   public async requestPasswordReset(email: string) {

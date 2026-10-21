@@ -1,6 +1,23 @@
 {
   "ratePlans": [
     {
+      "id": "rp-e2b0b7eb",
+      "hostId": "usr-host-pricing-a",
+      "facilityId": "loc-042ac876f108",
+      "name": "Alpha Peak Rate",
+      "hourlyRateCents": 750,
+      "dailyRateCents": 4200,
+      "minBillableMinutes": 60,
+      "minBookingMinutes": 60,
+      "maxBookingMinutes": 4320,
+      "stepMinutes": 30,
+      "vehicleCategory": "ALL",
+      "effectiveFromUtc": "2026-10-21T17:15:54.426Z",
+      "isActive": true,
+      "createdAtUtc": "2026-10-21T17:15:54.426Z",
+      "updatedAtUtc": "2026-10-21T17:15:54.426Z"
+    },
+    {
       "id": "rp-af1e0af0",
       "hostId": "usr-host-pricing-a",
       "facilityId": "loc-d2ddbc70940f",
@@ -591,6 +608,34 @@
   ],
   "closures": [],
   "auditLogs": [
+    {
+      "id": "aud-395978cb",
+      "hostId": "usr-host-pricing-a",
+      "facilityId": "loc-042ac876f108",
+      "facilityName": "Alpha Pricing Tower",
+      "action": "RATE_CREATED",
+      "actorId": "usr-host-pricing-a",
+      "newValue": {
+        "id": "rp-e2b0b7eb",
+        "hostId": "usr-host-pricing-a",
+        "facilityId": "loc-042ac876f108",
+        "name": "Alpha Peak Rate",
+        "hourlyRateCents": 750,
+        "dailyRateCents": 4200,
+        "minBillableMinutes": 60,
+        "minBookingMinutes": 60,
+        "maxBookingMinutes": 4320,
+        "stepMinutes": 30,
+        "vehicleCategory": "ALL",
+        "effectiveFromUtc": "2026-10-21T17:15:54.426Z",
+        "isActive": true,
+        "createdAtUtc": "2026-10-21T17:15:54.426Z",
+        "updatedAtUtc": "2026-10-21T17:15:54.426Z"
+      },
+      "diffSummary": "Created rate plan \"Alpha Peak Rate\" ($7.50/hr, $42.00/day)",
+      "correlationId": "req-vhp1wm3-mvidijy4",
+      "createdAtUtc": "2026-10-21T17:15:54.427Z"
+    },
     {
       "id": "aud-ab7b8200",
       "hostId": "usr-host-pricing-a",
@@ -1634,5 +1679,5 @@
       "createdAtUtc": "2026-10-20T14:32:34.802Z"
     }
   ],
-  "updatedAt": "2026-10-20T14:36:11.111Z"
+  "updatedAt": "2026-10-21T17:15:54.427Z"
 }

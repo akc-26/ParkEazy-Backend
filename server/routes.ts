@@ -138,9 +138,10 @@ apiRouter.post('/auth/register', async (req, res) => {
 
     const session = await db.createSession(newUser);
 
+    const { passwordHash: _hash, ...safeUser } = newUser;
     return res.status(201).json({
       token: session.token,
-      user: newUser
+      user: safeUser
     });
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
@@ -152,14 +153,16 @@ apiRouter.get('/auth/me', async (req, res) => {
   if (!user) {
     return res.status(401).json({ error: 'Not authenticated' });
   }
-  return res.json({ user });
+  const { passwordHash: _hash, ...safeUser } = user;
+  return res.json({ user: safeUser });
 });
 
 apiRouter.put('/auth/profile', requireAuth, async (req, res) => {
   try {
     const user = (req as any).user as User;
     const updated = await db.updateUserProfile(user.id, req.body);
-    return res.json({ user: updated });
+    const { passwordHash: _hash, ...safeUser } = updated;
+    return res.json({ user: safeUser });
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
   }
@@ -217,7 +220,10 @@ apiRouter.get('/auth/demo-users', async (req, res) => {
     db.findUserById('usr_host2'),
     db.findUserById('usr_cust1'),
     db.findUserById('usr_admin1')
-  ])).filter(Boolean);
+  ])).filter(Boolean).map(u => {
+    const { passwordHash: _hash, ...safe } = u!;
+    return safe;
+  });
   return res.json(users);
 });
 
@@ -908,7 +914,8 @@ apiRouter.post('/admin/users', requireAdmin, async (req, res) => {
       role: role || 'admin',
       actor: adminUser
     });
-    return res.status(201).json({ user });
+    const { passwordHash: _hash, ...safeUser } = user;
+    return res.status(201).json({ user: safeUser });
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
   }
@@ -932,7 +939,10 @@ apiRouter.post('/admin/facilities/:id/moderate', requireAdmin, async (req, res) 
 });
 
 apiRouter.get('/admin/hosts', requireAdmin, async (req, res) => {
-  const hosts = await db.getAllHosts();
+  const hosts = (await db.getAllHosts()).map((h) => {
+    const { passwordHash: _hash, ...safeHost } = h;
+    return safeHost;
+  });
   return res.json(hosts);
 });
 
@@ -941,7 +951,8 @@ apiRouter.put('/admin/hosts/:id/status', requireAdmin, async (req, res) => {
     const user = (req as any).user as User;
     const { status } = req.body;
     const host = await db.updateHostStatus(req.params.id, status, user);
-    return res.json(host);
+    const { passwordHash: _hash, ...safeHost } = host;
+    return res.json(safeHost);
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
   }

@@ -607,29 +607,6 @@ export class BookingsService {
       });
     }
 
-  public async getExtensionRequestsByFacilityIds(facilityIds: string[]) {
-    if (this.isDbAvailable()) {
-      return this.databaseService!.transaction(async (client) => {
-        const query = `
-          SELECT r.*, b.facility_id, b.ends_at as current_ends_at
-          FROM booking_extension_requests r
-          JOIN bookings b ON r.booking_id = b.id
-          WHERE b.facility_id = ANY($1)
-          FOR UPDATE OF r,b
-        `;
-        const res = await client.query(query, [facilityIds]);
-        // Validate conflicts:
-        // if another confirmed booking conflicts with the requested extension
-        // or booking end time changed after this extension request was submitted
-        return res.rows;
-      });
-    }
-    return [];
-  }
-
-  public async createExtensionRequest(bookingId: string, customerId: string, payload: any) {
-    return { id: crypto.randomUUID(), bookingId, customerId, ...payload, status: 'pending' };
-  }
     if (process.env.NODE_ENV === 'production') this.requirePersistentStore();
     const booking = this.sandboxBookings.get(id);
     if (!booking) {
@@ -643,7 +620,6 @@ export class BookingsService {
     const newEndMs = currentEnd + additionalHours * 60 * 60 * 1000;
     const newEnd = new Date(newEndMs).toISOString();
 
-    // Downstream concurrency collision check: ensure no adjacent confirmed booking starts within requested extension
     const isExtensionConflict = Array.from(this.sandboxBookings.values()).some((b) => {
       if (b.id === id || b.spaceId !== booking.spaceId || b.status === 'cancelled') return false;
       const bStart = new Date(b.startsAt).getTime();
@@ -670,6 +646,155 @@ export class BookingsService {
     this.sandboxBookings.set(id, booking);
     this.logLifecycleEvent(id, 'BOOKING_EXTENDED', booking.customerId, 'customer', { additionalHours, newEnd });
     return booking;
+  }
+
+  public async getExtensionRequestsByFacilityIds(facilityIds: string[], tenantId = 'default') {
+    if (facilityIds.length === 0) return [];
+    if (this.isDbAvailable()) {
+      return this.databaseService!.transaction(async (client) => {
+        const query = `
+          SELECT r.*, b.facility_id, b.ends_at as current_ends_at
+          FROM booking_extension_requests r
+          JOIN bookings b ON r.booking_id = b.id
+          WHERE b.facility_id = ANY($1)
+          FOR UPDATE OF r,b
+        `;
+        const res = await client.query(query, [facilityIds]);
+        return res.rows;
+      });
+    }
+    return [];
+  }
+
+  public async createExtensionRequest(bookingId: string, customerId: string, payload: any) {
+    if (this.isDbAvailable()) {
+      return this.databaseService!.transaction(async (client) => {
+        const bRows = await client.query('SELECT * FROM bookings WHERE id = $1', [bookingId]);
+        const booking = bRows.rows[0];
+        if (!booking) throw new NotFoundException('Booking not found');
+        const id = crypto.randomUUID();
+        const res = await client.query(
+          `INSERT INTO booking_extension_requests (id, booking_id, customer_id, original_ends_at, requested_ends_at, status, reason, requested_at)
+           VALUES ($1, $2, $3, $4, $5, 'pending', $6, NOW()) RETURNING *`,
+          [id, bookingId, customerId, booking.ends_at, payload.requestedEndsAt || payload.newEndsAt, payload.reason || '']
+        );
+        return res.rows[0];
+      });
+    }
+    return { id: crypto.randomUUID(), bookingId, customerId, ...payload, status: 'pending' };
+  }
+
+  public async decideExtensionRequest(
+    requestId: string,
+    decision: 'approve' | 'reject',
+    hostId: string,
+    tenantId = 'default'
+  ): Promise<any> {
+    if (this.isDbAvailable()) {
+      return this.databaseService!.transaction(async (client) => {
+        const query = `
+          SELECT r.*, b.facility_id, b.space_id, b.customer_id, b.ends_at as current_ends_at, b.starts_at, f.host_id
+          FROM booking_extension_requests r
+          JOIN bookings b ON r.booking_id = b.id
+          JOIN parking_facilities f ON b.facility_id = f.id
+          WHERE r.id = $1
+          FOR UPDATE OF r,b
+        `;
+        const res = await client.query(query, [requestId]);
+        const row = res.rows[0];
+        if (!row) throw new NotFoundException('Extension request not found');
+        if (row.host_id !== hostId) throw new ForbiddenException('You do not own this facility.');
+        if (row.status !== 'pending') throw new BadRequestException(`Request is not pending (status: ${row.status})`);
+
+        if (decision === 'reject') {
+          await client.query(
+            `UPDATE booking_extension_requests SET status = 'rejected', decided_at = NOW(), decision_notes = 'Host rejected' WHERE id = $1`,
+            [requestId]
+          );
+          await this.recordDbLifecycle(client, { id: row.booking_id, facilityId: row.facility_id } as any, 'BOOKING_EXTENSION_REJECTED', hostId, 'host', { requestId });
+          return { id: requestId, status: 'rejected' };
+        }
+
+        // Approval flow:
+        if (new Date(row.current_ends_at).getTime() !== new Date(row.original_ends_at).getTime()) {
+          throw new ConflictException('booking end time changed after this extension request was submitted');
+        }
+
+        const totalHours = (new Date(row.requested_ends_at).getTime() - new Date(row.starts_at).getTime()) / (1000 * 60 * 60);
+        if (totalHours > 72) {
+          throw new BadRequestException('total continuous booking duration cannot exceed 72 hours');
+        }
+
+        // Lock space row before conflict detection
+        const spaceRow = await client.query(
+          `SELECT hourly_rate_inr FROM parking_spaces WHERE id=$1 AND facility_id=$2 FOR UPDATE`,
+          [row.space_id, row.facility_id]
+        );
+        const rate = Number(spaceRow.rows[0]?.hourly_rate_inr) || 40;
+
+        const conflicts = await client.query(
+          `SELECT id FROM bookings WHERE space_id = $1 AND id <> $2 AND status IN ('confirmed','active') AND starts_at < ($3::timestamptz + interval '15 minutes') AND ends_at + interval '15 minutes' > $4::timestamptz LIMIT 1`,
+          [row.space_id, row.booking_id, row.requested_ends_at, row.current_ends_at]
+        );
+        if (conflicts.rows.length > 0) {
+          throw new ConflictException('another confirmed booking conflicts with the requested extension and turnaround buffer');
+        }
+
+        const additionalHours = (new Date(row.requested_ends_at).getTime() - new Date(row.current_ends_at).getTime()) / (1000 * 60 * 60);
+        const addBase = Math.round(rate * additionalHours * 100) / 100;
+        const addFee = Math.round(addBase * 0.15 * 100) / 100;
+        const addTax = Math.round((addBase + addFee) * 0.18 * 100) / 100;
+        const addTotal = Math.round((addBase + addFee + addTax) * 100) / 100;
+
+        await client.query(
+          `UPDATE bookings SET ends_at = $2, base_amount_inr = base_amount_inr + $3, platform_fee_inr = platform_fee_inr + $4, tax_inr = tax_inr + $5, total_amount_inr = total_amount_inr + $6, updated_at = NOW() WHERE id = $1`,
+          [row.booking_id, row.requested_ends_at, addBase, addFee, addTax, addTotal]
+        );
+        await client.query(
+          `UPDATE booking_extension_requests SET status = 'approved', decided_at = NOW(), approved_amount_inr = $2 WHERE id = $1`,
+          [requestId, addTotal]
+        );
+        await this.recordDbLifecycle(client, { id: row.booking_id, facilityId: row.facility_id } as any, 'BOOKING_EXTENSION_APPROVED', hostId, 'host', { requestId, addTotal });
+        return { id: requestId, status: 'approved' };
+      });
+    }
+
+    return { id: requestId, status: decision };
+  }
+
+  public async getBookingsByFacilityIds(facilityIds: string[], tenantId = 'default'): Promise<BookingDetailsResponse[]> {
+    if (facilityIds.length === 0) return [];
+    if (this.isDbAvailable()) {
+      const res = await this.databaseService!.query(
+        `SELECT * FROM bookings WHERE tenant_id = $2 AND facility_id = ANY($1::uuid[]) ORDER BY created_at DESC`,
+        [facilityIds, tenantId]
+      );
+      const mapped = res.map((r: any) => this.mapDbBooking(r));
+      return Promise.all(mapped.map((b: any) => this.enrichBooking(b)));
+    }
+    const all = Array.from(this.sandboxBookings.values()).filter(
+      (b) => facilityIds.includes(b.facilityId) && (b.tenantId === tenantId || !b.tenantId || tenantId === 'default')
+    );
+    return Promise.all(all.map((b) => this.enrichBooking(b)));
+  }
+
+  public async getLifecycleEventsByFacilityIds(facilityIds: string[], tenantId = 'default'): Promise<any[]> {
+    if (facilityIds.length === 0) return [];
+    if (this.isDbAvailable()) {
+      const res = await this.databaseService!.query(
+        `SELECT le.*, b.facility_id FROM booking_lifecycle_events le
+         JOIN bookings b ON le.booking_id = b.id
+         WHERE b.tenant_id = $2 AND b.facility_id = ANY($1::uuid[])
+         ORDER BY le.recorded_at DESC LIMIT 100`,
+        [facilityIds, tenantId]
+      );
+      return res;
+    }
+    return Array.from(this.sandboxLifecycleEvents.values())
+      .filter((e: any) => {
+        const b = this.sandboxBookings.get(e.bookingId);
+        return b && facilityIds.includes(b.facilityId);
+      });
   }
 
   public async previewCancelBooking(id: string): Promise<any> {

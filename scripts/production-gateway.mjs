@@ -43,9 +43,9 @@ const MIME_TYPES = {
 };
 
 const distDirs = {
-  website: path.join(rootDir, 'apps/website/dist'),
-  host: path.join(rootDir, 'apps/host/dist'),
-  admin: path.join(rootDir, 'apps/admin/dist'),
+  website: fs.existsSync(path.join(rootDir, 'dist/website')) ? path.join(rootDir, 'dist/website') : path.join(rootDir, 'apps/website/dist'),
+  host: fs.existsSync(path.join(rootDir, 'dist/host')) ? path.join(rootDir, 'dist/host') : path.join(rootDir, 'apps/host/dist'),
+  admin: fs.existsSync(path.join(rootDir, 'dist/admin')) ? path.join(rootDir, 'dist/admin') : path.join(rootDir, 'apps/admin/dist'),
 };
 
 function serveStaticFile(req, res, filePath, fallbackHtmlPath) {

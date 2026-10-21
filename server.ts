@@ -4,6 +4,7 @@ import http from 'http';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { apiRouter } from './server/routes';
+import { apiV1Router } from './apps/api/router';
 import { loadAndValidateConfig, sanitizeDatabaseUrl, appConfig } from './apps/api/config/env';
 import { correlationMiddleware, requestLogger } from './apps/api/middleware/correlation';
 import { errorHandler } from './apps/api/middleware/error-handler';
@@ -102,7 +103,9 @@ export function createApp(): Express {
   });
 
   // Mount API routers
+  app.use('/api/v1', apiV1Router);
   app.use('/api/v1', apiRouter);
+  app.use('/api', apiV1Router);
   app.use('/api', apiRouter);
 
   // Unmatched /api/* route returns 404 JSON with API_NOT_FOUND

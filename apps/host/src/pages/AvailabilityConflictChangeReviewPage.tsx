@@ -106,7 +106,7 @@ export function AvailabilityConflictChangeReviewPage({ currentUser, onNavigate }
               </div>
               <div className="flex justify-between">
                 <span className="text-[#64748B]">Motorist Name:</span>
-                <span className="font-bold text-[#141B2C]">Rahul Sharma (+91 98401 22311)</span>
+                <span className="font-bold text-[#141B2C]">Confirmed Customer Booking</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-[#64748B]">Target Space:</span>
@@ -118,7 +118,7 @@ export function AvailabilityConflictChangeReviewPage({ currentUser, onNavigate }
               </div>
               <div className="flex justify-between pt-2 border-t border-[#E2E8F0] text-[#D92D20]">
                 <span className="font-bold">Conflicting Event:</span>
-                <span className="font-bold">Basement 2 Flooring Wash (14:00 - 20:00)</span>
+                <span className="font-bold">Facility Scheduled Maintenance (14:00 - 20:00)</span>
               </div>
             </div>
           </div>

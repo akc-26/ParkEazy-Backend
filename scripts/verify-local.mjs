@@ -189,7 +189,7 @@ async function check04Tests() {
 // -----------------------------------------------------------------------------
 async function check05WebsiteBuild() {
   const res = await runCommand(npmCmd, ['run', 'build:website']);
-  const distHtml = path.join(rootDir, 'apps/website/dist/index.html');
+  const distHtml = fs.existsSync(path.join(rootDir, 'dist/website/index.html')) ? path.join(rootDir, 'dist/website/index.html') : path.join(rootDir, 'apps/website/dist/index.html');
   const passed = res.code === 0 && fs.existsSync(distHtml);
   recordResult(5, 'Customer Website Build (apps/website)', passed, passed ? 'apps/website/dist/index.html generated' : res.stderr || res.stdout, res.durationMs);
 }
@@ -199,7 +199,7 @@ async function check05WebsiteBuild() {
 // -----------------------------------------------------------------------------
 async function check06HostBuild() {
   const res = await runCommand(npmCmd, ['run', 'build:host']);
-  const distHtml = path.join(rootDir, 'apps/host/dist/index.html');
+  const distHtml = fs.existsSync(path.join(rootDir, 'dist/host/index.html')) ? path.join(rootDir, 'dist/host/index.html') : path.join(rootDir, 'apps/host/dist/index.html');
   const passed = res.code === 0 && fs.existsSync(distHtml);
   recordResult(6, 'Host Portal Build (apps/host)', passed, passed ? 'apps/host/dist/index.html generated' : res.stderr || res.stdout, res.durationMs);
 }
@@ -209,7 +209,7 @@ async function check06HostBuild() {
 // -----------------------------------------------------------------------------
 async function check07AdminBuild() {
   const res = await runCommand(npmCmd, ['run', 'build:admin']);
-  const distHtml = path.join(rootDir, 'apps/admin/dist/index.html');
+  const distHtml = fs.existsSync(path.join(rootDir, 'dist/admin/index.html')) ? path.join(rootDir, 'dist/admin/index.html') : path.join(rootDir, 'apps/admin/dist/index.html');
   const passed = res.code === 0 && fs.existsSync(distHtml);
   recordResult(7, 'Admin Panel Build (apps/admin)', passed, passed ? 'apps/admin/dist/index.html generated' : res.stderr || res.stdout, res.durationMs);
 }
