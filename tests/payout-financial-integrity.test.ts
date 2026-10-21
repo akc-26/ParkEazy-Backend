@@ -131,6 +131,18 @@ describe('Micro-Phase 2: Payout and Financial Integrity Verification', () => {
     // Balance must NOT be debited again
     const balanceAfterSecond = await db.getHostAvailableBalance(host.id);
     expect(balanceAfterSecond).toBe(75.0);
+
+    // Key reuse with conflicting parameters must be rejected
+    await expect(
+      db.requestPayout(
+        host.id,
+        50.0,
+        'ach_bank_transfer',
+        '9988776655',
+        host,
+        idemKey
+      )
+    ).rejects.toThrow(/Idempotency conflict/);
   });
 
   it('4. Host ownership and eligibility guards: Ineligible or unauthorized users cannot request payouts', async () => {

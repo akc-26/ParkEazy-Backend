@@ -204,6 +204,8 @@ export interface PayoutRequest {
   destinationAccount: string;
   status: PayoutStatus;
   referenceNumber: string;
+  providerTransferId?: string;
+  idempotencyKey?: string;
   requestedAt: string;
   completedAt?: string;
   notes?: string;

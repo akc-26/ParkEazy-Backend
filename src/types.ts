@@ -199,6 +199,8 @@ export interface PayoutRequest {
   destinationAccount: string;
   status: 'pending' | 'processing' | 'paid' | 'failed';
   referenceNumber: string;
+  providerTransferId?: string;
+  idempotencyKey?: string;
   requestedAt: string;
   completedAt?: string;
   notes?: string;

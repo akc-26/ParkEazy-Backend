@@ -17,7 +17,6 @@ import {
 import { Facility, ParkingBay, User, VehicleCompatibility, AvailabilityHold, Booking } from '../../types';
 import { LocationCard } from './LocationCard';
 import { api } from '../../api';
-const heroParkingBayImg = 'https://images.unsplash.com/photo-1506521781263-d8422e82f27a?auto=format&fit=crop&w=1200&q=80';
 
 interface CustomerHomeProps {
   currentUser: User;
@@ -286,7 +285,7 @@ export const CustomerHome: React.FC<CustomerHomeProps> = ({
               <div className="relative w-full h-full min-h-[340px] sm:min-h-[420px] rounded-2xl overflow-hidden border border-slate-200 shadow-md bg-slate-900">
                 {!imageError ? (
                   <img
-                    src={heroParkingBayImg}
+                    src="/assets/images/hero_parking_bay_1792157347279.jpg"
                     alt="Secured covered parking bay in Seattle Financial District"
                     className="w-full h-full object-cover"
                     onError={() => setImageError(true)}

@@ -152,14 +152,16 @@ apiRouter.get('/auth/me', async (req, res) => {
   if (!user) {
     return res.status(401).json({ error: 'Not authenticated' });
   }
-  return res.json({ user });
+  const { passwordHash: _hash, ...safeUser } = user;
+  return res.json({ user: safeUser });
 });
 
 apiRouter.put('/auth/profile', requireAuth, async (req, res) => {
   try {
     const user = (req as any).user as User;
     const updated = await db.updateUserProfile(user.id, req.body);
-    return res.json({ user: updated });
+    const { passwordHash: _hash, ...safeUser } = updated;
+    return res.json({ user: safeUser });
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
   }
