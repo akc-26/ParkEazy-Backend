@@ -4,6 +4,7 @@ import http from 'http';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { apiRouter } from './server/routes';
+import { apiV1Router } from './apps/api/router';
 import { loadAndValidateConfig, sanitizeDatabaseUrl, appConfig } from './apps/api/config/env';
 import { correlationMiddleware, requestLogger } from './apps/api/middleware/correlation';
 import { errorHandler } from './apps/api/middleware/error-handler';
@@ -30,14 +31,9 @@ export function createApp(): Express {
     }
   }
 
-  // Request limits & raw body capture for signature verification
+  // Request limits
   const bodyLimit = process.env.BODY_LIMIT || '1mb';
-  app.use(express.json({
-    limit: bodyLimit,
-    verify: (req: any, _res, buf) => {
-      req.rawBody = buf;
-    }
-  }));
+  app.use(express.json({ limit: bodyLimit }));
   app.use(express.urlencoded({ extended: true, limit: bodyLimit }));
 
   // Correlation tracking & safe request logging
@@ -102,7 +98,7 @@ export function createApp(): Express {
   });
 
   // Mount API routers
-  app.use('/api/v1', apiRouter);
+  app.use('/api/v1', apiV1Router);
   app.use('/api', apiRouter);
 
   // Unmatched /api/* route returns 404 JSON with API_NOT_FOUND

@@ -351,7 +351,7 @@
       "status": "available",
       "hourlyRateMultiplier": 1.2,
       "createdAt": "2026-01-12T10:00:00.000Z",
-      "updatedAt": "2026-01-12T10:00:00.000Z"
+      "updatedAt": "2026-10-20T15:26:59.839Z"
     },
     {
       "id": "bay_m3",
@@ -427,10 +427,10 @@
         "Covered",
         "Well Lit"
       ],
-      "status": "reserved",
+      "status": "available",
       "hourlyRateMultiplier": 1,
       "createdAt": "2026-01-12T10:00:00.000Z",
-      "updatedAt": "2026-10-20T12:31:02.029Z"
+      "updatedAt": "2026-01-12T10:00:00.000Z"
     },
     {
       "id": "bay_m6",
@@ -747,18 +747,7 @@
       "updatedAt": "2026-01-18T10:00:00.000Z"
     }
   ],
-  "holds": [
-    {
-      "id": "hld_3c10471d",
-      "bayId": "bay_m5",
-      "facilityId": "fac_metro_downtown",
-      "userId": "usr_cust1",
-      "startTime": "2026-10-20T14:00:00.000Z",
-      "endTime": "2026-10-20T18:00:00.000Z",
-      "heldAt": "2026-10-20T12:30:52.242Z",
-      "expiresAt": "2026-10-20T12:45:52.242Z"
-    }
-  ],
+  "holds": [],
   "bookings": [
     {
       "id": "bk_active_1",
@@ -833,30 +822,6 @@
       "gateAccessCode": "4921#",
       "createdAt": "2026-10-17T18:00:00.000Z",
       "updatedAt": "2026-10-18T12:55:00.000Z"
-    },
-    {
-      "id": "bk_174c885b",
-      "bookingReference": "PKZ-279652",
-      "facilityId": "fac_metro_downtown",
-      "bayId": "bay_m5",
-      "customerId": "usr_cust1",
-      "customerName": "Alex Driver",
-      "customerPhone": "+1 (206) 555-0188",
-      "customerEmail": "alex.driver@example.com",
-      "licensePlate": "WA-99TEST",
-      "vehicleMakeModel": "BMW i4 (Silver)",
-      "startTime": "2026-10-20T14:00:00.000Z",
-      "endTime": "2026-10-20T18:00:00.000Z",
-      "grossAmount": 18,
-      "platformFee": 2.16,
-      "hostNetEarnings": 15.84,
-      "taxAmount": 1.44,
-      "status": "confirmed",
-      "qrCodeToken": "PKZ_QR_dcf22e129ea4cd2b8e95aba57d794cc2",
-      "gateAccessCode": "6262#",
-      "idempotencyKey": "test_idemp_key_001",
-      "createdAt": "2026-10-20T12:31:02.029Z",
-      "updatedAt": "2026-10-20T12:31:02.029Z"
     }
   ],
   "ledger": [
@@ -903,30 +868,16 @@
       "createdAt": "2026-10-20T03:30:00.000Z"
     },
     {
-      "id": "tx_16f749de",
-      "idempotencyKey": "ledg_test_idemp_key_001",
-      "hostId": "usr_host1",
-      "facilityId": "fac_metro_downtown",
-      "bookingId": "bk_174c885b",
-      "type": "booking_income",
-      "amount": 15.84,
-      "balanceAfter": 76.83,
-      "currency": "USD",
-      "description": "Net earnings for booking PKZ-279652 (L2-B01)",
-      "status": "completed",
-      "createdAt": "2026-10-20T12:31:02.029Z"
-    },
-    {
-      "id": "tx_9c876d87",
-      "idempotencyKey": "payout_tx_po_b5010a8a",
+      "id": "tx_eced11f4",
+      "idempotencyKey": "payout_tx_po_abd98d97",
       "hostId": "usr_host1",
       "type": "host_payout",
       "amount": -25,
-      "balanceAfter": 51.83,
+      "balanceAfter": 35.99,
       "currency": "USD",
-      "description": "Payout to Silicon Valley Bank (****8492) (PO-96591956)",
-      "status": "completed",
-      "createdAt": "2026-10-20T12:31:13.280Z"
+      "description": "Payout disbursement (Stripe Instant) to acct_test123 (PO-66868239)",
+      "status": "pending",
+      "createdAt": "2026-10-20T15:27:10.975Z"
     }
   ],
   "payouts": [
@@ -943,16 +894,16 @@
       "notes": "ACH Regular Transfer cleared"
     },
     {
-      "id": "po_b5010a8a",
+      "id": "po_abd98d97",
       "hostId": "usr_host1",
       "amount": 25,
       "method": "stripe_instant",
-      "destinationAccount": "Silicon Valley Bank (****8492)",
-      "status": "paid",
-      "referenceNumber": "PO-96591956",
-      "requestedAt": "2026-10-20T12:31:13.280Z",
-      "completedAt": "2026-10-20T12:31:13.280Z",
-      "notes": "Transferred via Stripe Instant Payouts"
+      "destinationAccount": "acct_test123",
+      "status": "processing",
+      "referenceNumber": "PO-66868239",
+      "requestedAt": "2026-10-20T15:27:10.974Z",
+      "notes": "Instant payout transfer queued and awaiting provider confirmation",
+      "idempotencyKey": "payout_usr_host1_25_acct_test123_29875167"
     }
   ],
   "reviews": [
@@ -1002,26 +953,6 @@
   ],
   "notifications": [
     {
-      "id": "notif_0ed3c7ea",
-      "userId": "usr_cust1",
-      "title": "Booking Confirmed!",
-      "message": "Your reservation PKZ-279652 is confirmed. Gate code: 6262#",
-      "type": "booking",
-      "isRead": false,
-      "createdAt": "2026-10-20T12:31:02.029Z",
-      "link": "/customer/bookings"
-    },
-    {
-      "id": "notif_c0f56d73",
-      "userId": "usr_host1",
-      "title": "New Booking Received",
-      "message": "Alex Driver booked L2-B01 at Downtown Metro Tech Center Garage for $18.00.",
-      "type": "booking",
-      "isRead": false,
-      "createdAt": "2026-10-20T12:31:02.029Z",
-      "link": "/host/bookings"
-    },
-    {
       "id": "notif_1",
       "userId": "usr_host1",
       "title": "New Booking Active",
@@ -1056,9 +987,9 @@
         "deviceControllerId": "CTRL-SEA-001",
         "autoOpenOnLprMatch": "true"
       },
-      "lastTestedAt": "2026-10-20T12:30:44.684Z",
+      "lastTestedAt": "2026-10-20T04:00:00.000Z",
       "testStatus": "healthy",
-      "testMessage": "Connected successfully (HTTP 200 OK, latency: 66ms)"
+      "testMessage": "Connected successfully (HTTP 200 OK, latency: 48ms)"
     },
     {
       "id": "prov_payment_stripe",
@@ -1142,37 +1073,26 @@
   ],
   "auditLogs": [
     {
-      "id": "aud_1ffc115b-f",
-      "timestamp": "2026-10-20T12:31:13.280Z",
+      "id": "aud_0e046d9b-7",
+      "timestamp": "2026-10-20T15:27:10.976Z",
+      "actorId": "usr_cust1",
+      "actorName": "Alex Driver",
+      "actorRole": "customer",
+      "action": "PASSWORD_RESET_REQUESTED",
+      "entityType": "user",
+      "entityId": "usr_cust1",
+      "details": "Password reset requested for alex.driver@example.com"
+    },
+    {
+      "id": "aud_c9c7ff39-3",
+      "timestamp": "2026-10-20T15:27:10.975Z",
       "actorId": "usr_host1",
       "actorName": "Marcus Vance",
       "actorRole": "host",
       "action": "PAYOUT_REQUESTED",
       "entityType": "payout",
-      "entityId": "po_b5010a8a",
-      "details": "Requested payout $25.00 via stripe_instant"
-    },
-    {
-      "id": "aud_baf7ae5b-c",
-      "timestamp": "2026-10-20T12:31:02.029Z",
-      "actorId": "usr_cust1",
-      "actorName": "Alex Driver",
-      "actorRole": "customer",
-      "action": "BOOKING_CREATED",
-      "entityType": "booking",
-      "entityId": "bk_174c885b",
-      "details": "Created booking PKZ-279652 for 18 USD"
-    },
-    {
-      "id": "aud_cdd66b79-2",
-      "timestamp": "2026-10-20T12:30:44.685Z",
-      "actorId": "usr_admin1",
-      "actorName": "Sarah Connor (Admin)",
-      "actorRole": "admin",
-      "action": "PROVIDER_TEST_PING",
-      "entityType": "provider",
-      "entityId": "prov_access_barrier",
-      "details": "Test ping succeeded: 66ms"
+      "entityId": "po_abd98d97",
+      "details": "Requested payout $25.00 via stripe_instant (Reference: PO-66868239, Status: processing)"
     },
     {
       "id": "aud_seed_1",
@@ -1206,6 +1126,18 @@
       "entityType": "facility",
       "entityId": "fac_metro_downtown",
       "details": "Approved facility listing after compliance check"
+    }
+  ],
+  "sessions": [],
+  "passwordResetTokens": [
+    {
+      "id": "prt_caac20ef",
+      "tokenHash": "2735b4ab8db9dfc2b2852c32e65aa430749b923bd9ec8da8c0bb816eaffd101b",
+      "userId": "usr_cust1",
+      "email": "alex.driver@example.com",
+      "expiresAt": "2026-10-20T15:42:10.976Z",
+      "isUsed": false,
+      "createdAt": "2026-10-20T15:27:10.976Z"
     }
   ]
 }

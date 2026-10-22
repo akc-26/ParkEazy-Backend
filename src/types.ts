@@ -10,6 +10,8 @@ export interface User {
   status: AccountStatus;
   avatarUrl?: string;
   isEmailVerified: boolean;
+  createdAt?: string;
+  updatedAt?: string;
   businessDetails?: {
     businessName: string;
     registrationNumber: string;
@@ -199,8 +201,6 @@ export interface PayoutRequest {
   destinationAccount: string;
   status: 'pending' | 'processing' | 'paid' | 'failed';
   referenceNumber: string;
-  providerTransferId?: string;
-  idempotencyKey?: string;
   requestedAt: string;
   completedAt?: string;
   notes?: string;

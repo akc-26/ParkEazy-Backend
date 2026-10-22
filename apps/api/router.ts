@@ -21,7 +21,6 @@ import { UserRole, ApiSuccessResponse, BookingStatus } from '../../packages/cont
 import { AppError } from './middleware/error-handler';
 import { validate, CommonValidators } from './middleware/validation';
 import { appConfig } from './config/env';
-import { db } from '../../server/db';
 
 export const apiV1Router = Router();
 
@@ -1536,18 +1535,16 @@ apiV1Router.get(
   requireResourceOwnership('hostId'),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const summary = await db.getHostFinancialSummary(req.params.hostId);
-      const records = await db.getPayouts(req.params.hostId);
-      const earnings = {
-        hostId: req.params.hostId,
-        totalAccruedCents: Math.round(summary.lifetimeEarnings * 100),
-        availableForPayoutCents: Math.round(summary.availableBalance * 100),
-        pendingClearanceCents: Math.round(summary.pendingPayouts * 100),
-        securityDepositsHeldCents: 0,
-        lifetimePayoutsCents: Math.round(summary.lifetimePayouts * 100),
-        currency: 'USD',
-      };
-      sendSuccess(res, { earnings, records }, req.correlationId);
+      const earnings = ledgerService.getHostEarnings(req.params.hostId);
+      const records = await dbManager.query(
+        `SELECT p.*, m.bank_name, m.account_number_masked
+         FROM host_payout_records p
+         LEFT JOIN host_payout_methods m ON m.id = p.payout_method_id
+         WHERE p.host_id = $1
+         ORDER BY p.requested_at_utc DESC`,
+        [req.params.hostId]
+      );
+      sendSuccess(res, { earnings, records: records.rows || [] }, req.correlationId);
     } catch (err) {
       next(err);
     }
@@ -1568,64 +1565,35 @@ apiV1Router.post(
         throw new AppError('Payout amount must be greater than zero.', 400, 'INVALID_AMOUNT');
       }
 
-      const amountDollars = amountCents / 100;
-      const idempotencyKey = (req.headers['x-idempotency-key'] as string) || req.body.idempotencyKey;
-      const destinationAccount = req.body.destinationAccount || 'Verified Bank Account';
-      const user = (req as any).user || { id: req.params.hostId, fullName: 'Host', role: 'host' };
+      const earnings = ledgerService.getHostEarnings(req.params.hostId);
+      if (amountCents > earnings.availableForPayoutCents) {
+        throw new AppError(
+          `Requested payout amount ($${(amountCents / 100).toFixed(2)}) exceeds available balance ($${(earnings.availableForPayoutCents / 100).toFixed(2)}).`,
+          400,
+          'INSUFFICIENT_FUNDS'
+        );
+      }
 
-      const payout = await db.requestPayout(
-        req.params.hostId,
-        amountDollars,
-        'ach_bank_transfer',
-        destinationAccount,
-        user,
-        idempotencyKey
+      const methods = await dbManager.query('SELECT id FROM host_payout_methods WHERE host_id = $1 AND status = \'ACTIVE\' LIMIT 1', [req.params.hostId]);
+      const payoutMethodId = methods.rows[0]?.id || null;
+
+      const payoutId = `pay-${crypto.randomUUID().slice(0, 8)}`;
+      const utr = `UTR-ACH-${Date.now().toString().slice(-8)}`;
+
+      await dbManager.query(
+        `INSERT INTO host_payout_records (id, host_id, amount_cents, currency, status, payout_method_id, reference_or_utr, requested_at_utc)
+         VALUES ($1, $2, $3, 'USD', 'PROCESSING', $4, $5, NOW())`,
+        [payoutId, req.params.hostId, amountCents, payoutMethodId, utr]
       );
 
       sendSuccess(res, {
-        id: payout.id,
-        amountCents: Math.round(payout.amount * 100),
+        id: payoutId,
+        amountCents,
         currency: 'USD',
-        status: payout.status.toUpperCase(),
-        referenceOrUtr: payout.referenceNumber,
-        notes: payout.notes,
-        message: payout.status === 'paid'
-          ? 'Payout settled successfully.'
-          : 'Payout disbursement request received and queued for processing.',
+        status: 'PROCESSING',
+        referenceOrUtr: utr,
+        message: 'Payout disbursement request received and queued for processing.',
       }, req.correlationId, 201);
-    } catch (err: any) {
-      if (err.message && err.message.includes('Insufficient available balance')) {
-        return next(new AppError(err.message, 400, 'INSUFFICIENT_FUNDS'));
-      }
-      next(err);
-    }
-  }
-);
-
-apiV1Router.post(
-  '/hosts/:hostId/payouts/:payoutId/reconcile',
-  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
-  requireResourceOwnership('hostId'),
-  async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const user = (req as any).user || { id: req.params.hostId, fullName: 'Host', role: 'host' };
-      const result = await db.reconcilePayout(req.params.payoutId, user);
-      sendSuccess(res, result, req.correlationId);
-    } catch (err) {
-      next(err);
-    }
-  }
-);
-
-apiV1Router.post(
-  '/hosts/:hostId/payouts/:payoutId/cancel',
-  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
-  requireResourceOwnership('hostId'),
-  async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const user = (req as any).user || { id: req.params.hostId, fullName: 'Host', role: 'host' };
-      const result = await db.cancelPayout(req.params.payoutId, user, req.body?.reason);
-      sendSuccess(res, result, req.correlationId);
     } catch (err) {
       next(err);
     }

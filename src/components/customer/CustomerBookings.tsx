@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import QRCode from 'qrcode';
 import {
   QrCode,
   CalendarCheck,
@@ -79,62 +80,15 @@ export const CustomerBookings: React.FC<CustomerBookingsProps> = ({
   const handleOpenAccessPass = async (booking: Booking) => {
     setActivePassBooking(booking);
     try {
-      const text = booking.qrCodeToken || `PKZ_PASS_${booking.id}`;
-      const size = 21;
-      const cells: boolean[][] = Array.from({ length: size }, () => Array(size).fill(false));
-
-      const drawFinder = (row: number, col: number) => {
-        for (let r = 0; r < 7; r++) {
-          for (let c = 0; c < 7; c++) {
-            if (
-              r === 0 || r === 6 || c === 0 || c === 6 ||
-              (r >= 2 && r <= 4 && c >= 2 && c <= 4)
-            ) {
-              cells[row + r][col + c] = true;
-            }
-          }
+      const url = await QRCode.toDataURL(booking.qrCodeToken || `PKZ_PASS_${booking.id}`, {
+        width: 250,
+        margin: 1,
+        color: {
+          dark: '#0f172a',
+          light: '#ffffff'
         }
-      };
-
-      drawFinder(0, 0);
-      drawFinder(0, size - 7);
-      drawFinder(size - 7, 0);
-
-      for (let i = 8; i < size - 8; i++) {
-        cells[6][i] = i % 2 === 0;
-        cells[i][6] = i % 2 === 0;
-      }
-
-      let hash = 0;
-      for (let i = 0; i < text.length; i++) {
-        hash = ((hash << 5) - hash + text.charCodeAt(i)) | 0;
-      }
-
-      for (let r = 0; r < size; r++) {
-        for (let c = 0; c < size; c++) {
-          const inTopLeft = r < 8 && c < 8;
-          const inTopRight = r < 8 && c >= size - 8;
-          const inBottomLeft = r >= size - 8 && c < 8;
-          if (!inTopLeft && !inTopRight && !inBottomLeft) {
-            const seed = (r * 31 + c * 17 + Math.abs(hash)) & 0xff;
-            cells[r][c] = (seed % 3) === 0;
-          }
-        }
-      }
-
-      const cellSize = 10;
-      const padding = 20;
-      const totalSize = size * cellSize + padding * 2;
-      let rects = '';
-      for (let r = 0; r < size; r++) {
-        for (let c = 0; c < size; c++) {
-          if (cells[r][c]) {
-            rects += `<rect x="${padding + c * cellSize}" y="${padding + r * cellSize}" width="${cellSize}" height="${cellSize}" fill="#0f172a" />`;
-          }
-        }
-      }
-      const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalSize} ${totalSize}" width="${totalSize}" height="${totalSize}"><rect width="100%" height="100%" fill="#ffffff"/>${rects}</svg>`;
-      setQrDataUrl(`data:image/svg+xml;utf8,${encodeURIComponent(svg)}`);
+      });
+      setQrDataUrl(url);
     } catch (e) {
       console.error('Failed to generate QR code', e);
     }

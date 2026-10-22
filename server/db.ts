@@ -1,7 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
-import { PoolClient, dbManager } from '../apps/api/database/connection';
+import { PoolClient } from 'pg';
+import { dbManager } from '../apps/api/database/connection';
 import { NotificationAdapterFactory } from '../apps/api/services/notification-adapter';
 import { appConfig } from '../apps/api/config/env';
 import {
@@ -13,7 +14,6 @@ import {
   Booking,
   LedgerEntry,
   PayoutRequest,
-  PayoutStatus,
   Review,
   MessageThread,
   NotificationItem,
@@ -79,57 +79,7 @@ export class Database {
   private resetRateLimits: Map<string, number[]> = new Map();
   private isInitialized = false;
   private isPostgresActive = false;
-  private hostPayoutLocks: Map<string, Promise<void>> = new Map();
-  private webhookEventLocks: Map<string, Promise<void>> = new Map();
-
-  private async acquireHostPayoutLock(hostId: string): Promise<() => void> {
-    while (this.hostPayoutLocks.has(hostId)) {
-      await this.hostPayoutLocks.get(hostId);
-    }
-    let releaseLock!: () => void;
-    const lockPromise = new Promise<void>((resolve) => {
-      releaseLock = resolve;
-    });
-    this.hostPayoutLocks.set(hostId, lockPromise);
-    return () => {
-      this.hostPayoutLocks.delete(hostId);
-      releaseLock();
-    };
-  }
-
-  private async acquireWebhookEventLock(eventId: string): Promise<() => void> {
-    while (this.webhookEventLocks.has(eventId)) {
-      await this.webhookEventLocks.get(eventId);
-    }
-    let releaseLock!: () => void;
-    const lockPromise = new Promise<void>((resolve) => {
-      releaseLock = resolve;
-    });
-    this.webhookEventLocks.set(eventId, lockPromise);
-    return () => {
-      this.webhookEventLocks.delete(eventId);
-      releaseLock();
-    };
-  }
-
-  private scheduleSave(): void {
-    if (this.saveTimeout) return;
-    this.saveTimeout = setTimeout(() => {
-      this.saveTimeout = null;
-      try {
-        if (!fs.existsSync(DATA_DIR)) {
-          fs.mkdirSync(DATA_DIR, { recursive: true });
-        }
-        const tempPath = DB_FILE + '.tmp';
-        fs.writeFileSync(tempPath, JSON.stringify(this.data, null, 2), 'utf-8');
-        fs.renameSync(tempPath, DB_FILE);
-      } catch (err) {
-        console.error('[ParkEazy-Store] Failed to write database file:', err);
-      }
-    }, 500);
-    this.saveTimeout.unref();
-  }
-
+  private payoutLock = false;
 
   constructor() {
     this.data = this.loadOrSeed();
@@ -153,31 +103,25 @@ export class Database {
 
     try {
       await dbManager.initialize();
-      this.isPostgresActive = dbManager.isPostgresConnected();
+      this.isPostgresActive = true;
 
-      if (this.isPostgresActive) {
-        // Check if data already exists in PostgreSQL
-        const existingRes = await dbManager.query('SELECT count(*) as count FROM app_store_entities');
-        const count = parseInt(existingRes.rows[0]?.count || '0', 10);
+      // Check if data already exists in PostgreSQL
+      const existingRes = await dbManager.query('SELECT count(*) as count FROM app_store_entities');
+      const count = parseInt(existingRes.rows[0]?.count || '0', 10);
 
-        if (count === 0) {
-          // Safe, controlled migration path for existing JSON data without losing anything
-          console.log('[ParkEazy-Store] Migrating existing application data into authoritative PostgreSQL database...');
-          await this.migrateDataToPostgres(this.data);
-        } else {
-          // Load authoritative data from PostgreSQL
-          console.log('[ParkEazy-Store] Loading authoritative application data from PostgreSQL...');
-          await this.loadDataFromPostgres();
-        }
-
-        console.log('[ParkEazy-Store] Authoritative PostgreSQL persistence initialized successfully.');
+      if (count === 0) {
+        // Safe, controlled migration path for existing JSON data without losing anything
+        console.log('[ParkEazy-Store] Migrating existing application data into authoritative PostgreSQL database...');
+        await this.migrateDataToPostgres(this.data);
       } else {
-        console.log('[ParkEazy-Store] PostgreSQL not connected; running in development mode with JSON store.');
+        // Load authoritative data from PostgreSQL
+        console.log('[ParkEazy-Store] Loading authoritative application data from PostgreSQL...');
+        await this.loadDataFromPostgres();
       }
 
       this.isInitialized = true;
+      console.log('[ParkEazy-Store] Authoritative PostgreSQL persistence initialized successfully.');
     } catch (err: any) {
-      this.isPostgresActive = false;
       if (appConfig.nodeEnv === 'production' || appConfig.database.isRequired) {
         console.error('[ParkEazy-Store] Failed to initialize authoritative PostgreSQL persistence in production:', err);
         throw err;
@@ -593,7 +537,7 @@ export class Database {
         await client.query(
           `INSERT INTO financial_ledger (id, host_id, booking_id, entry_type, debit_account, credit_account, amount_cents, currency, payment_provider, provider_transaction_id, description, idempotency_key, reference_number, status, created_at_utc)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-           ON CONFLICT (idempotency_key) DO UPDATE SET status = EXCLUDED.status, description = EXCLUDED.description`,
+           ON CONFLICT (idempotency_key) DO NOTHING`,
           [
             entity.id,
             (entity as any).hostId || null,
@@ -614,13 +558,9 @@ export class Database {
         );
       } else if (collection === 'payouts') {
         await client.query(
-          `INSERT INTO host_payout_records (id, host_id, amount_cents, currency, status, method, destination_account, reference_or_utr, requested_at_utc, settled_at_utc, notes, idempotency_key)
-           VALUES ($1, $2, $3, 'USD', $4, $5, $6, $7, $8, $9, $10, $11)
-           ON CONFLICT (id) DO UPDATE SET
-             status = EXCLUDED.status,
-             notes = EXCLUDED.notes,
-             settled_at_utc = CASE WHEN EXCLUDED.status = 'PAID' THEN COALESCE(EXCLUDED.settled_at_utc, NOW()) ELSE host_payout_records.settled_at_utc END,
-             reference_or_utr = EXCLUDED.reference_or_utr`,
+          `INSERT INTO host_payout_records (id, host_id, amount_cents, currency, status, method, destination_account, reference_or_utr, requested_at_utc, notes, idempotency_key)
+           VALUES ($1, $2, $3, 'USD', $4, $5, $6, $7, $8, $9, $10)
+           ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, notes = EXCLUDED.notes`,
           [
             entity.id,
             entity.hostId,
@@ -630,7 +570,6 @@ export class Database {
             entity.destinationAccount || '',
             entity.referenceNumber || '',
             entity.requestedAt || new Date().toISOString(),
-            entity.completedAt || null,
             entity.notes || null,
             (entity as any).idempotencyKey || ('payout_' + entity.id)
           ]
@@ -739,9 +678,6 @@ export class Database {
         arr.push(entity);
       }
     }
-    if (!this.isPostgresActive && appConfig.nodeEnv !== 'production') {
-      this.scheduleSave();
-    }
   }
 
   public async deleteEntity(collection: string, id: string, externalClient?: PoolClient): Promise<void> {
@@ -778,9 +714,6 @@ export class Database {
       if (idx >= 0) {
         arr.splice(idx, 1);
       }
-    }
-    if (!this.isPostgresActive && appConfig.nodeEnv !== 'production') {
-      this.scheduleSave();
     }
   }
 
@@ -2252,42 +2185,11 @@ export class Database {
     return ledgerItem;
   }
 
-  public async getHostAvailableBalance(hostId: string, client?: PoolClient): Promise<number> {
-    if (client && this.isPostgresActive) {
-      try {
-        const ledgerRes = await client.query(
-          `SELECT COALESCE(SUM(amount_cents), 0) AS completed_cents
-           FROM financial_ledger
-           WHERE host_id = $1 AND status = 'completed'`,
-          [hostId]
-        );
-        const payoutRes = await client.query(
-          `SELECT COALESCE(SUM(amount_cents), 0) AS reserved_cents
-           FROM host_payout_records
-           WHERE host_id = $1 AND status IN ('PENDING', 'PROCESSING')`,
-          [hostId]
-        );
-        const completedCents = parseInt(ledgerRes.rows[0]?.completed_cents || '0', 10);
-        const reservedCents = parseInt(payoutRes.rows[0]?.reserved_cents || '0', 10);
-        if (completedCents !== 0 || reservedCents !== 0) {
-          return Math.max(0, Math.round((completedCents - reservedCents) / 100 * 100) / 100);
-        }
-      } catch (err) {
-        // Fall back to collection calculation
-      }
-    }
-
+  public async getHostAvailableBalance(hostId: string): Promise<number> {
     const ledger = await this.getCollectionFromDb<LedgerEntry>('ledger');
     const completedTransactions = ledger.filter(l => l.hostId === hostId && l.status === 'completed');
-    const completedTotal = completedTransactions.reduce((acc, t) => acc + t.amount, 0);
-
-    const payouts = await this.getCollectionFromDb<PayoutRequest>('payouts');
-    const reservedPayouts = payouts
-      .filter(p => p.hostId === hostId && (p.status === 'pending' || p.status === 'processing'))
-      .reduce((acc, p) => acc + p.amount, 0);
-
-    const available = completedTotal - reservedPayouts;
-    return Math.max(0, Math.round(available * 100) / 100);
+    const total = completedTransactions.reduce((acc, t) => acc + t.amount, 0);
+    return Math.max(0, Math.round(total * 100) / 100);
   }
 
   public async getHostFinancialSummary(hostId: string) {
@@ -2296,15 +2198,15 @@ export class Database {
     const availableBalance = await this.getHostAvailableBalance(hostId);
 
     const lifetimeEarnings = hostTransactions
-      .filter(l => l.type === 'booking_income' && l.status === 'completed')
+      .filter(l => l.type === 'booking_income')
       .reduce((acc, t) => acc + t.amount, 0);
 
     const lifetimePayouts = hostTransactions
-      .filter(l => l.type === 'host_payout' && l.status === 'completed')
+      .filter(l => l.type === 'host_payout')
       .reduce((acc, t) => acc + Math.abs(t.amount), 0);
 
     const lifetimeRefunds = hostTransactions
-      .filter(l => l.type === 'booking_refund' && l.status === 'completed')
+      .filter(l => l.type === 'booking_refund')
       .reduce((acc, t) => acc + Math.abs(t.amount), 0);
 
     const payouts = await this.getPayouts(hostId);
@@ -2314,7 +2216,7 @@ export class Database {
 
     return {
       availableBalance,
-      pendingPayouts: Math.round(pendingPayouts * 100) / 100,
+      pendingPayouts,
       lifetimeEarnings: Math.round(lifetimeEarnings * 100) / 100,
       lifetimePayouts: Math.round(lifetimePayouts * 100) / 100,
       lifetimeRefunds: Math.round(lifetimeRefunds * 100) / 100
@@ -2342,16 +2244,6 @@ export class Database {
       throw new Error('Forbidden: You can only request payouts for your own host account.');
     }
 
-    // 2. Validate host eligibility
-    const hostUser = await this.getEntityFromDb<User>('users', hostId);
-    if (!hostUser) {
-      throw new Error(`Host account '${hostId}' not found.`);
-    }
-    if (hostUser.status && hostUser.status !== 'active') {
-      throw new Error(`Host account is ${hostUser.status}. Only active host accounts are eligible for payouts.`);
-    }
-
-    // 3. Amount and destination account validation
     if (typeof amount !== 'number' || isNaN(amount) || !isFinite(amount) || amount <= 0) {
       throw new Error('Payout amount must be a positive number.');
     }
@@ -2359,33 +2251,25 @@ export class Database {
     if (sanitizedAmount < 10) {
       throw new Error('Minimum payout request amount is $10.00.');
     }
-    const targetAccount = (destinationAccount && destinationAccount.trim()) || hostUser.businessDetails?.payoutAccountNumber;
-    if (!targetAccount) {
-      throw new Error('Destination account or payout banking details are required.');
+    if (!destinationAccount || !destinationAccount.trim()) {
+      throw new Error('Destination account or payout method details are required.');
     }
 
-    // 4. Concurrency lock to serialize payout requests per host
-    const releaseLock = await this.acquireHostPayoutLock(hostId);
+    // 2. Prevent duplicate payouts via Idempotency protection
+    const resolvedIdempotencyKey = idempotencyKey || `payout_${hostId}_${sanitizedAmount}_${destinationAccount}_${Math.floor(Date.now() / 60000)}`;
+    const payouts = await this.getCollectionFromDb<PayoutRequest>('payouts');
+    const existingPayout = payouts.find(p => (p as any).idempotencyKey === resolvedIdempotencyKey);
+    if (existingPayout) {
+      return existingPayout;
+    }
+
+    // 3. Concurrency lock to prevent concurrent double-spend of available balance
+    if (this.payoutLock) {
+      throw new Error('A financial payout transaction is currently in progress. Please retry in a moment.');
+    }
+    this.payoutLock = true;
 
     try {
-      // 5. Durable Idempotency check: return existing payout if previously submitted
-      const resolvedIdempotencyKey = (idempotencyKey && idempotencyKey.trim())
-        || `payout_${hostId}_${sanitizedAmount}_${targetAccount}_${Math.floor(Date.now() / 60000)}`;
-
-      const payouts = await this.getCollectionFromDb<PayoutRequest>('payouts');
-      const existingPayout = payouts.find(p => (p as any).idempotencyKey === resolvedIdempotencyKey);
-      if (existingPayout) {
-        if (
-          existingPayout.hostId !== hostId ||
-          Math.abs(existingPayout.amount - sanitizedAmount) > 0.001 ||
-          (targetAccount && existingPayout.destinationAccount !== targetAccount)
-        ) {
-          throw new Error('Idempotency conflict: An existing payout was already initiated with this idempotency key but different parameters.');
-        }
-        return existingPayout;
-      }
-
-      // Check available balance with pending reservations accounted for
       const available = await this.getHostAvailableBalance(hostId);
       if (sanitizedAmount > available) {
         throw new Error(`Insufficient available balance ($${available.toFixed(2)}) for payout of $${sanitizedAmount.toFixed(2)}.`);
@@ -2393,78 +2277,60 @@ export class Database {
 
       const now = new Date().toISOString();
       const refNum = 'PO-' + Math.floor(10000000 + Math.random() * 90000000);
-      const payoutId = 'po_' + crypto.randomUUID().slice(0, 8);
-      const ledgerId = 'led_' + crypto.randomUUID().slice(0, 8);
 
-      // Check provider configuration
-      const stripeApiKey = process.env.STRIPE_SECRET_KEY || process.env.STRIPE_API_KEY;
-      const isLiveProviderConfigured = Boolean(
-        stripeApiKey && !stripeApiKey.includes('****') && stripeApiKey.startsWith('sk_')
-      );
-
-      // Initial status must always be processing - never prematurely mark paid or complete ledger
-      const initialStatus: PayoutStatus = 'processing';
-
-      const initialNotes = isLiveProviderConfigured
-        ? (method === 'stripe_instant'
-            ? 'Instant payout transfer queued and awaiting provider dispatch'
-            : 'ACH payout transfer processing and funds reserved in clearance')
-        : 'External settlement provider credentials are unconfigured (STRIPE_SECRET_KEY unavailable). Payout request accepted and funds safely reserved in processing clearance.';
-
+      // Financial Integrity: NEVER record as 'paid' or 'completed' before confirmed external provider transfer
       const payout: PayoutRequest = {
-        id: payoutId,
+        id: 'po_' + crypto.randomUUID().slice(0, 8),
         hostId,
         amount: sanitizedAmount,
         method,
-        destinationAccount: targetAccount,
-        status: initialStatus,
+        destinationAccount,
+        status: 'processing',
         referenceNumber: refNum,
         requestedAt: now,
-        completedAt: undefined,
-        notes: initialNotes
+        notes: method === 'stripe_instant'
+          ? 'Instant payout transfer queued and awaiting provider confirmation'
+          : 'ACH Standard Transfer initiated and processing batch clearance'
       };
       (payout as any).idempotencyKey = resolvedIdempotencyKey;
 
-      const ledgerDescription = `Payout disbursement (${method === 'stripe_instant' ? 'Stripe Instant' : 'ACH Bank Transfer'}) to ${targetAccount} (${refNum})`;
+      const ledgerId = 'led_' + crypto.randomUUID().slice(0, 8);
+      const ledgerDescription = `Payout disbursement (${method === 'stripe_instant' ? 'Stripe Instant' : 'ACH Bank Transfer'}) to ${destinationAccount} (${refNum})`;
 
-      const ledgerItem: LedgerEntry = {
-        id: ledgerId,
-        idempotencyKey: 'payout_tx_' + payout.id,
-        hostId,
-        type: 'host_payout',
-        amount: -sanitizedAmount,
-        balanceAfter: Math.round((available - sanitizedAmount) * 100) / 100,
-        currency: 'USD',
-        description: ledgerDescription,
-        status: 'pending',
-        createdAt: now
-      };
-
-      // STEP 1: Durably commit reservation and idempotency record to the database FIRST
-      const committedPayout = await this.withTransaction(async (client) => {
-        if (client) {
-          // Lock host user row in PostgreSQL transaction to serialize concurrent financial requests
-          await client.query('SELECT id, status FROM users WHERE id = $1 FOR UPDATE', [hostId]);
-
-          // Re-verify idempotency inside database transaction
-          const checkRes = await client.query(
-            'SELECT id FROM host_payout_records WHERE idempotency_key = $1',
-            [resolvedIdempotencyKey]
-          );
-          if (checkRes.rows.length > 0) {
-            const foundPayout = payouts.find(p => (p as any).idempotencyKey === resolvedIdempotencyKey);
-            return foundPayout || payout;
-          }
-
-          // Re-verify available balance inside transaction
-          const txAvailable = await this.getHostAvailableBalance(hostId, client);
-          if (sanitizedAmount > txAvailable) {
-            throw new Error(`Insufficient available balance ($${txAvailable.toFixed(2)}) for payout of $${sanitizedAmount.toFixed(2)}.`);
-          }
+      return await this.withTransaction(async (client) => {
+        // Idempotency check inside transaction
+        const checkRes = await client.query(
+          'SELECT id FROM host_payout_records WHERE idempotency_key = $1',
+          [resolvedIdempotencyKey]
+        );
+        if (checkRes.rows.length > 0) {
+          return existingPayout || payout;
         }
 
+        // Atomic insert into host_payout_records
+        await client.query(
+          `INSERT INTO host_payout_records (id, host_id, amount_cents, currency, status, method, destination_account, reference_or_utr, requested_at_utc, notes, idempotency_key)
+           VALUES ($1, $2, $3, 'USD', 'PROCESSING', $4, $5, $6, NOW(), $7, $8)`,
+          [payout.id, hostId, Math.round(sanitizedAmount * 100), method, destinationAccount, refNum, payout.notes, resolvedIdempotencyKey]
+        );
+
+        // Atomic insert into financial_ledger
+        await client.query(
+          `INSERT INTO financial_ledger (id, host_id, entry_type, debit_account, credit_account, amount_cents, currency, payment_provider, description, idempotency_key, reference_number, status, created_at_utc)
+           VALUES ($1, $2, 'HOST_PAYOUT', 'ACCOUNTS_PAYABLE', 'BANK_ACCOUNT', $3, 'USD', $4, $5, $6, $7, 'PENDING', NOW())`,
+          [ledgerId, hostId, Math.round(sanitizedAmount * 100), method === 'stripe_instant' ? 'STRIPE' : 'ACH', ledgerDescription, resolvedIdempotencyKey, refNum]
+        );
+
         await this.persistEntity('payouts', payout.id, payout, client);
-        await this.persistEntity('ledger', ledgerItem.id, ledgerItem, client);
+        await this.recordLedgerEntry({
+          idempotencyKey: 'payout_tx_' + payout.id,
+          hostId,
+          type: 'host_payout',
+          amount: -sanitizedAmount,
+          currency: 'USD',
+          description: ledgerDescription,
+          status: 'pending'
+        }, client);
 
         await this.logAudit(
           actor.id,
@@ -2473,413 +2339,14 @@ export class Database {
           'PAYOUT_REQUESTED',
           'payout',
           payout.id,
-          `Payout $${sanitizedAmount.toFixed(2)} via ${method} reserved (Reference: ${refNum}, Status: ${initialStatus}). Notes: ${initialNotes}`,
+          `Requested payout $${sanitizedAmount.toFixed(2)} via ${method} (Reference: ${refNum}, Status: processing)`,
           client
         );
 
         return payout;
       });
-
-      // If duplicate request matched existing persisted payout, return it without duplicate transfers
-      if (committedPayout.id !== payout.id) {
-        return committedPayout;
-      }
-
-      // STEP 2: Only AFTER reservation and idempotency are durably committed, initiate external transfer
-      if (isLiveProviderConfigured && method === 'stripe_instant') {
-        try {
-          const transferRes = await fetch('https://api.stripe.com/v1/transfers', {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${stripeApiKey}`,
-              'Content-Type': 'application/x-www-form-urlencoded',
-              'Idempotency-Key': resolvedIdempotencyKey
-            },
-            body: new URLSearchParams({
-              amount: Math.round(sanitizedAmount * 100).toString(),
-              currency: 'usd',
-              destination: targetAccount,
-              description: `ParkEazy payout ${refNum}`
-            }),
-            signal: AbortSignal.timeout(7000)
-          });
-          const transferData: any = await transferRes.json();
-          if (!transferRes.ok) {
-            // Provider failed - mark failed and release reservation
-            payout.status = 'failed';
-            payout.notes = `Provider transfer dispatch failed: ${transferData?.error?.message || 'Stripe API rejection'}`;
-            await this.failPayout(payout.id, payout.notes, actor);
-          } else if (transferData.id) {
-            if (transferData.status === 'paid' || transferData.status === 'succeeded') {
-              // Only mark paid upon verified provider confirmation
-              await this.confirmPayout(payout.id, transferData.id, new Date().toISOString(), actor);
-              payout.status = 'paid';
-              payout.completedAt = new Date().toISOString();
-              payout.notes = `Dispatched to Stripe and confirmed paid (Transfer ID: ${transferData.id})`;
-            } else {
-              payout.status = 'processing';
-              payout.notes = `Dispatched to Stripe (Transfer ID: ${transferData.id}, Status: ${transferData.status || 'in_transit'})`;
-              await this.persistEntity('payouts', payout.id, payout);
-            }
-          }
-        } catch (err: any) {
-          payout.status = 'processing';
-          payout.notes = `Transfer dispatch pending gateway retry: ${err.message}`;
-          await this.persistEntity('payouts', payout.id, payout);
-        }
-      }
-
-      return payout;
     } finally {
-      releaseLock();
-    }
-  }
-
-  public async confirmPayout(
-    payoutId: string,
-    providerReferenceOrTransferId?: string,
-    completedAt?: string,
-    actor?: User
-  ): Promise<PayoutRequest> {
-    const payouts = await this.getCollectionFromDb<PayoutRequest>('payouts');
-    const payout = payouts.find(p => p.id === payoutId || p.referenceNumber === payoutId);
-    if (!payout) {
-      throw new Error(`Payout record '${payoutId}' not found.`);
-    }
-
-    if (payout.status === 'paid') {
-      return payout; // Idempotent
-    }
-    if (payout.status === 'failed') {
-      throw new Error(`Cannot confirm payout '${payout.id}' because it has already failed.`);
-    }
-
-    payout.status = 'paid';
-    payout.completedAt = completedAt || new Date().toISOString();
-    if (providerReferenceOrTransferId) {
-      payout.providerTransferId = providerReferenceOrTransferId;
-      payout.notes = `${payout.notes || ''} [Confirmed by provider: ${providerReferenceOrTransferId}]`.trim();
-    }
-
-    return await this.withTransaction(async (client) => {
-      // 1. Update payout record
-      await this.persistEntity('payouts', payout.id, payout, client);
-
-      // 2. Update ledger entry from pending to completed
-      const ledger = await this.getCollectionFromDb<LedgerEntry>('ledger');
-      const ledgerEntry = ledger.find(l => l.idempotencyKey === 'payout_tx_' + payout.id || l.idempotencyKey === (payout as any).idempotencyKey);
-      if (ledgerEntry) {
-        ledgerEntry.status = 'completed';
-        await this.persistEntity('ledger', ledgerEntry.id, ledgerEntry, client);
-      }
-
-      // 3. Log audit
-      await this.logAudit(
-        actor?.id || 'system_provider',
-        actor?.fullName || 'Payment Settlement Provider',
-        actor?.role || 'admin',
-        'PAYOUT_CONFIRMED',
-        'payout',
-        payout.id,
-        `Payout ${payout.id} verified and settled. Provider ref: ${providerReferenceOrTransferId || payout.referenceNumber}. Ledger completed.`,
-        client
-      );
-
-      return payout;
-    });
-  }
-
-  public async failPayout(
-    payoutId: string,
-    failureReason: string,
-    actor?: User
-  ): Promise<PayoutRequest> {
-    const payouts = await this.getCollectionFromDb<PayoutRequest>('payouts');
-    const payout = payouts.find(p => p.id === payoutId || p.referenceNumber === payoutId);
-    if (!payout) {
-      throw new Error(`Payout record '${payoutId}' not found.`);
-    }
-
-    if (payout.status === 'failed') {
-      return payout; // Idempotent
-    }
-    if (payout.status === 'paid') {
-      throw new Error(`Cannot fail payout '${payout.id}' because it has already been marked paid.`);
-    }
-
-    payout.status = 'failed';
-    payout.notes = `${payout.notes || ''} [Failed: ${failureReason}]`.trim();
-
-    return await this.withTransaction(async (client) => {
-      // 1. Update payout record
-      await this.persistEntity('payouts', payout.id, payout, client);
-
-      // 2. Update ledger entry to failed (releases reserved balance)
-      const ledger = await this.getCollectionFromDb<LedgerEntry>('ledger');
-      const ledgerEntry = ledger.find(l => l.idempotencyKey === 'payout_tx_' + payout.id || l.idempotencyKey === (payout as any).idempotencyKey);
-      if (ledgerEntry) {
-        ledgerEntry.status = 'failed';
-        await this.persistEntity('ledger', ledgerEntry.id, ledgerEntry, client);
-      }
-
-      // 3. Log audit
-      await this.logAudit(
-        actor?.id || 'system_provider',
-        actor?.fullName || 'Payment Settlement Provider',
-        actor?.role || 'admin',
-        'PAYOUT_FAILED',
-        'payout',
-        payout.id,
-        `Payout ${payout.id} failed: ${failureReason}. Balance reservation released.`,
-        client
-      );
-
-      return payout;
-    });
-  }
-
-  public async reconcilePayout(
-    payoutId: string,
-    actor: User
-  ): Promise<{
-    success: boolean;
-    payout: PayoutRequest;
-    reconciled: boolean;
-    providerStatus?: string;
-    blocker?: string;
-    message: string;
-  }> {
-    const payouts = await this.getCollectionFromDb<PayoutRequest>('payouts');
-    const payout = payouts.find(p => p.id === payoutId || p.referenceNumber === payoutId);
-    if (!payout) {
-      throw new Error(`Payout record '${payoutId}' not found.`);
-    }
-
-    // Authorization
-    if (actor.role !== 'admin' && (actor.role !== 'host' || actor.id !== payout.hostId)) {
-      throw new Error('Forbidden: You can only reconcile payouts for your own host account.');
-    }
-
-    // If already finalized (paid or failed), no need to query provider
-    if (payout.status === 'paid' || payout.status === 'failed') {
-      return {
-        success: true,
-        payout,
-        reconciled: true,
-        providerStatus: payout.status.toUpperCase(),
-        message: `Payout is already finalized with status '${payout.status}'.`
-      };
-    }
-
-    // Check provider configuration
-    const stripeApiKey = process.env.STRIPE_SECRET_KEY || process.env.STRIPE_API_KEY;
-    const isConfigured = Boolean(stripeApiKey && !stripeApiKey.includes('****') && stripeApiKey.startsWith('sk_'));
-
-    if (!isConfigured) {
-      return {
-        success: false,
-        payout,
-        reconciled: false,
-        blocker: 'STRIPE_CREDENTIALS_UNCONFIGURED',
-        message: 'Live provider status reconciliation unavailable: Stripe API credentials (STRIPE_SECRET_KEY) are unconfigured. The payout remains safely held in processing state with reserved balance.'
-      };
-    }
-
-    // Live provider query (when STRIPE_SECRET_KEY is provided)
-    try {
-      const lookupId = payout.providerTransferId || payout.referenceNumber;
-      const response = await fetch(`https://api.stripe.com/v1/transfers/${encodeURIComponent(lookupId)}`, {
-        headers: { Authorization: `Bearer ${stripeApiKey}` },
-        signal: AbortSignal.timeout(5000)
-      });
-      const data: any = await response.json();
-      if (!response.ok) {
-        return {
-          success: false,
-          payout,
-          reconciled: false,
-          blocker: 'PROVIDER_API_ERROR',
-          message: data?.error?.message || 'Provider query returned an error'
-        };
-      }
-
-      if (data.status === 'paid' || data.status === 'succeeded') {
-        const confirmed = await this.confirmPayout(payout.id, data.id, new Date().toISOString(), actor);
-        return {
-          success: true,
-          payout: confirmed,
-          reconciled: true,
-          providerStatus: data.status,
-          message: 'Provider confirmed transfer completion. Payout marked as paid and ledger completed.'
-        };
-      } else if (data.status === 'failed' || data.status === 'reversed') {
-        const failed = await this.failPayout(payout.id, data.failure_message || 'Provider transfer reversed', actor);
-        return {
-          success: true,
-          payout: failed,
-          reconciled: true,
-          providerStatus: data.status,
-          message: 'Provider reported transfer failure. Payout marked as failed and balance reservation released.'
-        };
-      }
-
-      return {
-        success: true,
-        payout,
-        reconciled: false,
-        providerStatus: data.status,
-        message: `Provider status is '${data.status}'. Transfer remains in processing clearance.`
-      };
-    } catch (err: any) {
-      return {
-        success: false,
-        payout,
-        reconciled: false,
-        blocker: 'NETWORK_TIMEOUT',
-        message: `Failed to contact provider: ${err.message}`
-      };
-    }
-  }
-
-  public async cancelPayout(
-    payoutId: string,
-    actor: User,
-    reason?: string
-  ): Promise<PayoutRequest> {
-    const payouts = await this.getCollectionFromDb<PayoutRequest>('payouts');
-    const payout = payouts.find(p => p.id === payoutId || p.referenceNumber === payoutId);
-    if (!payout) {
-      throw new Error(`Payout record '${payoutId}' not found.`);
-    }
-
-    // Authorization
-    if (actor.role !== 'admin' && (actor.role !== 'host' || actor.id !== payout.hostId)) {
-      throw new Error('Forbidden: You can only cancel payouts for your own host account.');
-    }
-
-    if (payout.status === 'paid') {
-      throw new Error('Cannot cancel a payout that has already been settled and paid.');
-    }
-    if (payout.status === 'failed') {
-      return payout;
-    }
-
-    return await this.failPayout(
-      payout.id,
-      `Cancelled by ${actor.fullName || actor.role}: ${reason || 'User requested cancellation before provider clearance'}`,
-      actor
-    );
-  }
-
-  public async processProviderWebhook(
-    provider: 'stripe' | 'razorpay' | string,
-    payload: any,
-    signatureHeader?: string,
-    rawPayload?: string | Buffer
-  ): Promise<{ success: boolean; received: true; duplicate?: boolean; error?: string }> {
-    const eventId = payload?.id || payload?.event_id;
-    if (!eventId) {
-      throw new Error('Webhook event missing required identifier.');
-    }
-
-    // 0. Concurrency lock to prevent concurrent double-processing of identical events
-    const releaseLock = await this.acquireWebhookEventLock(eventId);
-
-    try {
-      // 1. Verify webhook signature against exact raw request body and fail closed when not configured
-      const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || process.env.PAYMENT_WEBHOOK_SECRET;
-      const isProd = process.env.NODE_ENV === 'production';
-
-      if (isProd) {
-        if (!signatureHeader) {
-          throw new Error('Missing webhook signature header in production.');
-        }
-        if (signatureHeader.includes('mock') || signatureHeader.includes('bypass') || signatureHeader.includes('test_sig')) {
-          throw new Error('Mock signatures and test bypasses are rejected in production.');
-        }
-      }
-
-      if (signatureHeader) {
-        if (!webhookSecret || webhookSecret.includes('****')) {
-          throw new Error('Webhook verification failed: Provider webhook secret is not configured (failing closed).');
-        }
-        const parts = signatureHeader.split(',').reduce((acc: any, part) => {
-          const [k, v] = part.split('=');
-          if (k && v) acc[k.trim()] = v.trim();
-          return acc;
-        }, {});
-        if (!parts.t || !parts.v1) {
-          throw new Error('Malformed webhook signature header format.');
-        }
-
-        // Timestamp / replay protection: 5 minutes (300 seconds) tolerance
-        const timestamp = parseInt(parts.t, 10);
-        if (!isNaN(timestamp)) {
-          const nowSec = Math.floor(Date.now() / 1000);
-          if (Math.abs(nowSec - timestamp) > 300) {
-            throw new Error('Webhook timestamp outside acceptable tolerance (replay protection).');
-          }
-        }
-
-        const rawBuffer = Buffer.isBuffer(rawPayload)
-          ? rawPayload
-          : Buffer.from(typeof rawPayload === 'string' ? rawPayload : JSON.stringify(payload));
-        const signedPayload = Buffer.concat([Buffer.from(`${parts.t}.`), rawBuffer]);
-        const expectedSig = crypto.createHmac('sha256', webhookSecret).update(signedPayload).digest('hex');
-        const expectedBuf = Buffer.from(expectedSig);
-        const receivedBuf = Buffer.from(parts.v1);
-        if (expectedBuf.length !== receivedBuf.length || !crypto.timingSafeEqual(expectedBuf, receivedBuf)) {
-          throw new Error('Invalid webhook signature verification.');
-        }
-      }
-
-      // 2. Deduplicate event ID
-      const auditLogs = await this.getCollectionFromDb<AuditLog>('auditLogs');
-      const alreadyProcessed = auditLogs.some(
-        a => a.action === 'WEBHOOK_EVENT_PROCESSED' && a.entityId === eventId
-      );
-      if (alreadyProcessed) {
-        return { success: true, received: true, duplicate: true };
-      }
-
-      // 3. Process event
-      const eventType = payload.type || payload.event;
-      const eventData = payload.data?.object || payload.payload || {};
-
-      if (eventType === 'payout.paid' || eventType === 'transfer.created' || eventType === 'transfer.paid') {
-        const refOrId = eventData.reference_number || eventData.id || eventData.metadata?.payoutId;
-        if (refOrId) {
-          try {
-            await this.confirmPayout(refOrId, eventData.id, new Date().toISOString());
-          } catch (err: any) {
-            console.warn('[ParkEazy-Webhook] Payout confirmation notice:', err.message);
-          }
-        }
-      } else if (eventType === 'payout.failed' || eventType === 'transfer.failed' || eventType === 'transfer.reversed') {
-        const refOrId = eventData.reference_number || eventData.id || eventData.metadata?.payoutId;
-        if (refOrId) {
-          try {
-            await this.failPayout(refOrId, eventData.failure_message || 'Transfer failed or reversed by provider');
-          } catch (err: any) {
-            console.warn('[ParkEazy-Webhook] Payout failure notice:', err.message);
-          }
-        }
-      }
-
-      // 4. Record event processed in audit trail for durable deduplication
-      await this.logAudit(
-        'provider_webhook',
-        provider.toUpperCase() + ' Webhook',
-        'admin',
-        'WEBHOOK_EVENT_PROCESSED',
-        'provider',
-        eventId,
-        `Processed webhook event ${eventType} (${eventId})`
-      );
-
-      return { success: true, received: true };
-    } finally {
-      releaseLock();
+      this.payoutLock = false;
     }
   }
 

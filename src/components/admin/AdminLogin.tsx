@@ -1,140 +1,176 @@
 import React, { useState } from 'react';
-import { Shield, Lock, Mail, ArrowRight, ShieldAlert, ArrowLeft } from 'lucide-react';
-import { User } from '../../types';
+import {
+  Shield,
+  Lock,
+  Mail,
+  ArrowRight,
+  AlertCircle,
+  ChevronLeft,
+  Sparkles,
+  ShieldCheck,
+  Server,
+  Activity
+} from 'lucide-react';
 import { api } from '../../api';
+import { User } from '../../types';
 
 interface AdminLoginProps {
   onLoginSuccess: (user: User) => void;
   onNavigateHome: () => void;
 }
 
-export const AdminLogin: React.FC<AdminLoginProps> = ({
-  onLoginSuccess,
-  onNavigateHome
-}) => {
-  const [email, setEmail] = useState('admin@parkeazy.com');
-  const [password, setPassword] = useState('admin123');
-  const [loading, setLoading] = useState(false);
+export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess, onNavigateHome }) => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
-    setLoading(true);
+    if (!email || !password) {
+      setError('Please provide administrator email and credentials.');
+      return;
+    }
 
     try {
-      const res = await api.loginAdmin(email.trim(), password);
+      setIsLoading(true);
+      setError(null);
+      const res = await api.loginAdmin(email, password);
       onLoginSuccess(res.user);
     } catch (err: any) {
-      setError(err.message || 'Administrative authentication failed.');
+      setError(err.message || 'Administrator authorization failed.');
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
-  return (
-    <div className="min-h-screen bg-slate-950 flex flex-col justify-center py-12 sm:px-6 lg:px-8 text-white font-sans">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <button
-          onClick={onNavigateHome}
-          className="mb-6 inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" />
-          <span>Return to Customer Portal</span>
-        </button>
+  const handleQuickFillAdmin = () => {
+    setEmail('admin@parkeazy.com');
+    setPassword('admin123');
+    setError(null);
+  };
 
-        <div className="flex items-center justify-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-rose-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-rose-900/40 font-bold text-2xl">
-            <Shield className="w-6 h-6 text-white" />
-          </div>
-          <div>
-            <h2 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
-              <span>ParkEazy</span>
-              <span className="text-xs px-2 py-0.5 rounded-md bg-rose-500/20 text-rose-300 border border-rose-500/40 font-semibold">
-                Admin Console
-              </span>
-            </h2>
-            <p className="text-xs text-slate-400">Platform Moderation & Operational Auditing</p>
-          </div>
-        </div>
+  return (
+    <div className="min-h-screen bg-[#F4F8FC] flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8">
+      {/* Return to Customer Portal link */}
+      <div className="max-w-md w-full mx-auto mb-4">
+        <button
+          type="button"
+          onClick={onNavigateHome}
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-800 transition-colors"
+        >
+          <ChevronLeft className="w-4 h-4" />
+          <span>Return to ParkEazy Public Customer Site</span>
+        </button>
       </div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-slate-900 py-8 px-6 shadow-2xl rounded-2xl border border-slate-800 sm:px-10">
-          <form className="space-y-5" onSubmit={handleSubmit}>
-            {error && (
-              <div className="p-3.5 rounded-xl bg-rose-950/70 border border-rose-800 text-xs text-rose-200">
-                <div className="flex items-center gap-1.5 font-semibold mb-0.5">
-                  <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
-                  <span>Access Denied</span>
-                </div>
-                <span>{error}</span>
-              </div>
-            )}
+      <div className="max-w-md w-full mx-auto bg-white rounded-2xl border border-slate-200 shadow-xl overflow-hidden">
+        {/* Header Branding */}
+        <div className="bg-[#0F1E2E] p-6 text-white text-center relative overflow-hidden">
+          <div className="absolute top-0 right-0 -mr-8 -mt-8 w-32 h-32 rounded-full bg-blue-500/10 pointer-events-none" />
+          <div className="w-12 h-12 mx-auto rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-xl shadow-md mb-3 text-cyan-400">
+            <Shield className="w-6 h-6" />
+          </div>
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 text-[10px] font-bold tracking-wider uppercase mb-2">
+            Governance Console
+          </div>
+          <h2 className="text-xl font-bold tracking-tight text-white">ParkEazy Admin Moderation</h2>
+          <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">
+            Authorized personnel only. Facility approval, host verification, provider testing, and disputes.
+          </p>
+        </div>
 
+        {/* Content Body */}
+        <div className="p-6 sm:p-8 space-y-6">
+          {error && (
+            <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start gap-2.5">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+              <div className="leading-relaxed">{error}</div>
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1.5">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                 Administrator Email
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
-                  <Mail className="w-4 h-4" />
-                </div>
+                <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
                 <input
                   type="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="block w-full pl-9 pr-3 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-hidden focus:ring-1 focus:ring-rose-500 focus:border-rose-500"
                   placeholder="admin@parkeazy.com"
+                  className="w-full pl-9 pr-3 py-2.5 text-xs border border-slate-300 rounded-xl focus:outline-hidden focus:border-slate-800 focus:ring-2 focus:ring-slate-800/20 transition-all font-medium"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                Administrative Password
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                Administrator Password
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
-                  <Lock className="w-4 h-4" />
-                </div>
+                <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
                 <input
                   type="password"
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="block w-full pl-9 pr-3 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-hidden focus:ring-1 focus:ring-rose-500 focus:border-rose-500"
-                  placeholder="••••••••••••"
+                  placeholder="••••••••"
+                  className="w-full pl-9 pr-3 py-2.5 text-xs border border-slate-300 rounded-xl focus:outline-hidden focus:border-slate-800 focus:ring-2 focus:ring-slate-800/20 transition-all font-medium"
                 />
               </div>
             </div>
 
-            <div>
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white text-sm font-semibold shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-60 cursor-pointer"
-              >
-                {loading ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span>Verifying Authority...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Authenticate Console Access</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </>
-                )}
-              </button>
-            </div>
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full py-2.5 px-4 rounded-xl bg-[#0F1E2E] hover:bg-[#1A2F45] text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+            >
+              {isLoading ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>Authorizing Administrator...</span>
+                </>
+              ) : (
+                <>
+                  <span>Authenticate Administrator</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
+            </button>
           </form>
 
-          <div className="mt-6 pt-5 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-500">
-            <span>Privileged Access Zone</span>
-            <span>Audit Logged</span>
+          {/* Quick-fill demo account shortcut */}
+          <div className="pt-4 border-t border-slate-100">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                Demo Admin Credentials
+              </span>
+              <span className="text-[10px] text-slate-400">1-click test fill</span>
+            </div>
+            <button
+              type="button"
+              onClick={handleQuickFillAdmin}
+              className="w-full text-left p-2.5 rounded-xl border border-slate-200 hover:border-slate-800 bg-slate-50/70 hover:bg-slate-100 transition-colors flex items-center justify-between text-xs group"
+            >
+              <div>
+                <div className="font-bold text-slate-800 group-hover:text-blue-900">
+                  Sarah Connor (System Administrator)
+                </div>
+                <div className="text-[10px] text-slate-500 font-mono">admin@parkeazy.com · admin123</div>
+              </div>
+              <Sparkles className="w-4 h-4 text-slate-400 group-hover:text-blue-600" />
+            </button>
           </div>
+        </div>
+
+        {/* Security Footer Note */}
+        <div className="bg-slate-50 p-3.5 border-t border-slate-200/80 text-[11px] text-slate-500 flex items-center justify-center gap-2">
+          <ShieldCheck className="w-4 h-4 text-cyan-600" />
+          <span>Requires server-side role validation. Host or customer tokens are rejected with 403.</span>
         </div>
       </div>
     </div>

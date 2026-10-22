@@ -1,6 +1,6 @@
 {
-  "name": "ParkEazy",
-  "description": "Intelligent parking operations, customer reservations, and host earnings engine.",
+  "name": "ParkEazy - Host & Facility Management Platform",
+  "description": "Comprehensive parking host management platform with facility and bay operations, smart pricing rules, live customer booking holds, earnings ledger, payouts, and admin moderation.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
