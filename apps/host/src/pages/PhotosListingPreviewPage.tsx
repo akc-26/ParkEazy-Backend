@@ -254,7 +254,7 @@ export function PhotosListingPreviewPage({
                         alt={p.caption || 'Facility photo'}
                         className="w-full h-full object-cover group-hover:scale-105 transition-all duration-300"
                         onError={(e: any) => {
-                          e.target.src = 'https://images.unsplash.com/photo-1590674899484-d5640e854abe?w=800&auto=format&fit=crop&q=80';
+                          e.target.src = 'https://images.unsplash.com/photo-1506521781263-d8422e82f27a?w=800&auto=format&fit=crop&q=80';
                         }}
                       />
                     </div>

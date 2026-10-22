@@ -1,57 +1,6 @@
 {
   "ratePlans": [
     {
-      "id": "rp-a5ad535f",
-      "hostId": "usr-host-pricing-a",
-      "facilityId": "loc-b571ddeb6059",
-      "name": "Alpha Peak Rate",
-      "hourlyRateCents": 750,
-      "dailyRateCents": 4200,
-      "minBillableMinutes": 60,
-      "minBookingMinutes": 60,
-      "maxBookingMinutes": 4320,
-      "stepMinutes": 30,
-      "vehicleCategory": "ALL",
-      "effectiveFromUtc": "2026-10-22T13:47:16.276Z",
-      "isActive": true,
-      "createdAtUtc": "2026-10-22T13:47:16.276Z",
-      "updatedAtUtc": "2026-10-22T13:47:16.276Z"
-    },
-    {
-      "id": "rp-d5050918",
-      "hostId": "usr-host-pricing-a",
-      "facilityId": "loc-95800c7cbe80",
-      "name": "Alpha Peak Rate",
-      "hourlyRateCents": 750,
-      "dailyRateCents": 4200,
-      "minBillableMinutes": 60,
-      "minBookingMinutes": 60,
-      "maxBookingMinutes": 4320,
-      "stepMinutes": 30,
-      "vehicleCategory": "ALL",
-      "effectiveFromUtc": "2026-10-22T13:35:50.352Z",
-      "isActive": true,
-      "createdAtUtc": "2026-10-22T13:35:50.352Z",
-      "updatedAtUtc": "2026-10-22T13:35:50.352Z"
-    },
-    {
-      "id": "rp-da832fc0",
-      "hostId": "usr-host-pricing-a",
-      "facilityId": "loc-173aca724745",
-      "name": "Alpha Peak Rate",
-      "hourlyRateCents": 750,
-      "dailyRateCents": 4200,
-      "minBillableMinutes": 60,
-      "minBookingMinutes": 60,
-      "maxBookingMinutes": 4320,
-      "stepMinutes": 30,
-      "vehicleCategory": "ALL",
-      "effectiveFromUtc": "2026-10-22T13:27:58.097Z",
-      "isActive": true,
-      "createdAtUtc": "2026-10-22T13:27:58.097Z",
-      "updatedAtUtc": "2026-10-22T13:27:58.097Z"
-    },
-    {
       "id": "rp-af1e0af0",
       "hostId": "usr-host-pricing-a",
       "facilityId": "loc-d2ddbc70940f",
@@ -642,90 +591,6 @@
   ],
   "closures": [],
   "auditLogs": [
-    {
-      "id": "aud-ecee81e6",
-      "hostId": "usr-host-pricing-a",
-      "facilityId": "loc-b571ddeb6059",
-      "facilityName": "Alpha Pricing Tower",
-      "action": "RATE_CREATED",
-      "actorId": "usr-host-pricing-a",
-      "newValue": {
-        "id": "rp-a5ad535f",
-        "hostId": "usr-host-pricing-a",
-        "facilityId": "loc-b571ddeb6059",
-        "name": "Alpha Peak Rate",
-        "hourlyRateCents": 750,
-        "dailyRateCents": 4200,
-        "minBillableMinutes": 60,
-        "minBookingMinutes": 60,
-        "maxBookingMinutes": 4320,
-        "stepMinutes": 30,
-        "vehicleCategory": "ALL",
-        "effectiveFromUtc": "2026-10-22T13:47:16.276Z",
-        "isActive": true,
-        "createdAtUtc": "2026-10-22T13:47:16.276Z",
-        "updatedAtUtc": "2026-10-22T13:47:16.276Z"
-      },
-      "diffSummary": "Created rate plan \"Alpha Peak Rate\" ($7.50/hr, $42.00/day)",
-      "correlationId": "req-q2ub0lr-mvjli3jv",
-      "createdAtUtc": "2026-10-22T13:47:16.279Z"
-    },
-    {
-      "id": "aud-e4be7402",
-      "hostId": "usr-host-pricing-a",
-      "facilityId": "loc-95800c7cbe80",
-      "facilityName": "Alpha Pricing Tower",
-      "action": "RATE_CREATED",
-      "actorId": "usr-host-pricing-a",
-      "newValue": {
-        "id": "rp-d5050918",
-        "hostId": "usr-host-pricing-a",
-        "facilityId": "loc-95800c7cbe80",
-        "name": "Alpha Peak Rate",
-        "hourlyRateCents": 750,
-        "dailyRateCents": 4200,
-        "minBillableMinutes": 60,
-        "minBookingMinutes": 60,
-        "maxBookingMinutes": 4320,
-        "stepMinutes": 30,
-        "vehicleCategory": "ALL",
-        "effectiveFromUtc": "2026-10-22T13:35:50.352Z",
-        "isActive": true,
-        "createdAtUtc": "2026-10-22T13:35:50.352Z",
-        "updatedAtUtc": "2026-10-22T13:35:50.352Z"
-      },
-      "diffSummary": "Created rate plan \"Alpha Peak Rate\" ($7.50/hr, $42.00/day)",
-      "correlationId": "req-tuchgu5-mvjl3eab",
-      "createdAtUtc": "2026-10-22T13:35:50.352Z"
-    },
-    {
-      "id": "aud-0b7738a8",
-      "hostId": "usr-host-pricing-a",
-      "facilityId": "loc-173aca724745",
-      "facilityName": "Alpha Pricing Tower",
-      "action": "RATE_CREATED",
-      "actorId": "usr-host-pricing-a",
-      "newValue": {
-        "id": "rp-da832fc0",
-        "hostId": "usr-host-pricing-a",
-        "facilityId": "loc-173aca724745",
-        "name": "Alpha Peak Rate",
-        "hourlyRateCents": 750,
-        "dailyRateCents": 4200,
-        "minBillableMinutes": 60,
-        "minBookingMinutes": 60,
-        "maxBookingMinutes": 4320,
-        "stepMinutes": 30,
-        "vehicleCategory": "ALL",
-        "effectiveFromUtc": "2026-10-22T13:27:58.097Z",
-        "isActive": true,
-        "createdAtUtc": "2026-10-22T13:27:58.097Z",
-        "updatedAtUtc": "2026-10-22T13:27:58.097Z"
-      },
-      "diffSummary": "Created rate plan \"Alpha Peak Rate\" ($7.50/hr, $42.00/day)",
-      "correlationId": "req-mq9hi0v-mvjkt9wb",
-      "createdAtUtc": "2026-10-22T13:27:58.098Z"
-    },
     {
       "id": "aud-ab7b8200",
       "hostId": "usr-host-pricing-a",
@@ -1769,5 +1634,5 @@
       "createdAtUtc": "2026-10-20T14:32:34.802Z"
     }
   ],
-  "updatedAt": "2026-10-22T13:47:16.279Z"
+  "updatedAt": "2026-10-20T14:36:11.111Z"
 }

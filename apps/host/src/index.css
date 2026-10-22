@@ -62,20 +62,3 @@
     font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
   }
 }
-
-:root {
-  --pe-primary:#0F766E;
-}
-
-.host-finance-kpis {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 1rem;
-}
-
-@media(max-width:480px) {
-  .host-finance-kpis {
-    grid-template-columns: 1fr;
-  }
-}
-

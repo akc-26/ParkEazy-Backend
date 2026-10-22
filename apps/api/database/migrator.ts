@@ -1,14 +1,12 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
-import { PoolClient } from 'pg';
 import { dbManager } from './connection';
-import { appConfig } from '../config/env';
 
-export interface MigrationRecord {
-  version: string;
+export interface MigrationFile {
   name: string;
-  appliedAt: string;
+  version: string;
+  path: string;
   checksum?: string;
 }
 
@@ -20,166 +18,136 @@ export interface MigrationStatus {
 }
 
 export class MigrationManager {
+  private static instance: MigrationManager;
   private migrationsDir: string;
 
-  constructor(migrationsDir?: string) {
-    this.migrationsDir =
-      migrationsDir ||
-      path.resolve(process.cwd(), 'apps/api/database/migrations');
+  private constructor() {
+    this.migrationsDir = path.resolve(process.cwd(), 'apps/api/database/migrations');
+    if (!fs.existsSync(this.migrationsDir)) {
+      this.migrationsDir = path.resolve(process.cwd(), 'services/api/src/database/migrations');
+    }
   }
 
-  /**
-   * Discovers all SQL migration files sorted deterministically by filename.
-   */
-  public getAvailableMigrationFiles(): { name: string; version: string; fullPath: string }[] {
+  public static getInstance(): MigrationManager {
+    if (!MigrationManager.instance) {
+      MigrationManager.instance = new MigrationManager();
+    }
+    return MigrationManager.instance;
+  }
+
+  public getAvailableMigrationFiles(): MigrationFile[] {
     if (!fs.existsSync(this.migrationsDir)) {
       return [];
     }
 
-    const files = fs
-      .readdirSync(this.migrationsDir)
+    const fileNames = fs.readdirSync(this.migrationsDir)
       .filter((file) => file.endsWith('.sql'))
       .sort((a, b) => a.localeCompare(b));
 
-    return files.map((name) => {
-      // Version extracted from prefix e.g. 001_initial_schema.sql -> 001
-      const versionMatch = name.match(/^(\d+)/);
-      const version = versionMatch ? versionMatch[1] : name;
+    return fileNames.map((name) => {
+      const match = name.match(/^(\d+)/);
+      const version = match ? match[1] : name.split('_')[0];
       return {
         name,
         version,
-        fullPath: path.join(this.migrationsDir, name),
+        path: path.join(this.migrationsDir, name),
       };
     });
   }
 
-  /**
-   * Calculates a SHA-256 checksum of the migration file content
-   * to guard against unintentional mutation of applied migrations.
-   */
   public calculateChecksum(content: string): string {
-    return crypto.createHash('sha256').update(content.trim()).digest('hex');
+    return crypto.createHash('sha256').update(content).digest('hex');
   }
 
-  /**
-   * Retrieves current applied and pending migration status.
-   * When PostgreSQL is configured, always verifies against the live database.
-   */
   public async getMigrationStatus(): Promise<MigrationStatus> {
+    const isConfigured = dbManager.isPostgresConnected();
     const available = this.getAvailableMigrationFiles();
 
-    if (!appConfig.database.isConfigured) {
+    if (!isConfigured) {
       return {
         isConfigured: false,
-        applied: ['001_initial_schema.sql (in-memory baseline)'],
-        pending: [],
+        applied: ['000_in_memory_baseline.sql (in-memory baseline schema active)'],
+        pending: available.map((f) => f.name),
       };
     }
 
     try {
-      await this.ensureMigrationTable();
-      const res = await dbManager.query<{ name: string; version: string }>(
-        'SELECT version, name FROM schema_migrations ORDER BY version ASC'
+      const res = await dbManager.query(
+        'SELECT migration_name FROM schema_migrations ORDER BY migration_name ASC'
       );
-      const appliedNames = new Set(res.rows.map((r) => r.name));
-
-      const applied = available.filter((f) => appliedNames.has(f.name)).map((f) => f.name);
-      const pending = available.filter((f) => !appliedNames.has(f.name)).map((f) => f.name);
+      const applied = res.rows.map((r: any) => r.migration_name);
+      const appliedSet = new Set(applied);
+      const pending = available
+        .filter((f) => !appliedSet.has(f.name))
+        .map((f) => f.name);
 
       return {
         isConfigured: true,
         applied,
         pending,
       };
-    } catch (err: any) {
-      const safeMessage = err.message || 'Database connection error';
-      console.warn('[ParkEazy-Migrator] Could not read migration status from PostgreSQL DB:', safeMessage);
+    } catch (err) {
       return {
         isConfigured: true,
         applied: [],
         pending: available.map((f) => f.name),
-        error: `Database unreachable or migration table inaccessible: ${safeMessage}`,
+        error: err instanceof Error ? err.message : 'Unable to read migration status.',
       };
     }
   }
 
-  /**
-   * Ensures the schema_migrations tracking table exists.
-   */
-  private async ensureMigrationTable(client?: PoolClient): Promise<void> {
-    const ddl = `
-      CREATE TABLE IF NOT EXISTS schema_migrations (
-        version VARCHAR(100) PRIMARY KEY,
-        name VARCHAR(255) NOT NULL,
-        applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        checksum VARCHAR(64)
-      );
-    `;
-    if (client) {
-      await client.query(ddl);
-    } else {
-      await dbManager.query(ddl);
-    }
-  }
-
-  /**
-   * Executes pending migrations in deterministic order wrapped in database transactions.
-   * Rollback strategy: PostgreSQL DDL is transactional. If any migration fails,
-   * the transaction rolls back cleanly, preventing partial schema corruption.
-   */
-  public async runMigrations(): Promise<{ applied: string[]; errors?: string[] }> {
-    if (!appConfig.database.isConfigured) {
-      console.log('[ParkEazy-Migrator] Database unconfigured; skipping SQL migrations.');
-      return { applied: [] };
+  public async runMigrations(): Promise<{ applied: string[]; errors: string[] }> {
+    const status = await this.getMigrationStatus();
+    if (!status.isConfigured) {
+      return { applied: [], errors: [] };
     }
 
     const available = this.getAvailableMigrationFiles();
-    if (available.length === 0) {
-      return { applied: [] };
-    }
+    const applied: string[] = [];
+    const errors: string[] = [];
 
     const client = await dbManager.getClient();
-    const appliedList: string[] = [];
+    if (!client) return { applied: [], errors: ['No database client available'] };
 
     try {
-      await client.query('BEGIN');
-      await this.ensureMigrationTable(client);
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+          id SERIAL PRIMARY KEY,
+          migration_name VARCHAR(255) NOT NULL UNIQUE,
+          checksum VARCHAR(64) NOT NULL,
+          applied_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        )
+      `);
 
-      const existingRes = await client.query<{ name: string; version: string }>(
-        'SELECT version, name FROM schema_migrations'
-      );
-      const appliedNames = new Set(existingRes.rows.map((r) => r.name));
+      for (const file of available) {
+        if (status.applied.includes(file.name)) continue;
 
-      const pending = available.filter((m) => !appliedNames.has(m.name));
+        const content = fs.readFileSync(file.path, 'utf8');
+        const checksum = this.calculateChecksum(content);
 
-      for (const migration of pending) {
-        console.log(`[ParkEazy-Migrator] Applying migration: ${migration.name}`);
-        const sql = fs.readFileSync(migration.fullPath, 'utf-8');
-        const checksum = this.calculateChecksum(sql);
-
-        // Execute migration SQL inside transaction
-        await client.query(sql);
-
-        // Record successful execution
-        await client.query(
-          'INSERT INTO schema_migrations (version, name, applied_at, checksum) VALUES ($1, $2, NOW(), $3)',
-          [migration.version, migration.name, checksum]
-        );
-
-        appliedList.push(migration.name);
+        try {
+          await client.query('BEGIN');
+          await client.query(content);
+          await client.query(
+            'INSERT INTO schema_migrations (migration_name, checksum) VALUES ($1, $2)',
+            [file.name, checksum]
+          );
+          await client.query('COMMIT');
+          applied.push(file.name);
+        } catch (err: any) {
+          await client.query('ROLLBACK');
+          errors.push(`Failed to apply ${file.name}: ${err.message}`);
+          break;
+        }
       }
-
-      await client.query('COMMIT');
-      console.log(`[ParkEazy-Migrator] Successfully applied ${appliedList.length} migration(s).`);
-      return { applied: appliedList };
-    } catch (err: any) {
-      await client.query('ROLLBACK');
-      console.error(`[ParkEazy-Migrator] Migration failed. Transaction rolled back cleanly: ${err.message}`);
-      throw new Error(`Database migration failed: ${err.message}`);
     } finally {
-      client.release();
+      if (typeof client.release === 'function') {
+        client.release();
+      }
     }
+
+    return { applied, errors };
   }
 }
 
-export const migrationManager = new MigrationManager();
+export const migrationManager = MigrationManager.getInstance();

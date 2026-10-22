@@ -59,7 +59,7 @@ export class ParkEazyApiClient {
 
   constructor(options: ApiClientOptions = {}) {
     const envUrl = typeof process !== 'undefined' && (process.env?.VITE_API_URL || process.env?.REACT_APP_API_URL);
-    this.baseUrl = options.baseUrl || envUrl || (typeof window !== 'undefined' ? `${window.location.origin}${API_CONFIG.prefix}` : `http://${API_CONFIG.defaultHost}:${API_CONFIG.defaultPort}${API_CONFIG.prefix}`);
+    this.baseUrl = options.baseUrl || envUrl || `http://${API_CONFIG.defaultHost}:${API_CONFIG.defaultPort}${API_CONFIG.prefix}`;
     this.tenantId = options.tenantId || 'default';
     this.timeoutMs = options.timeoutMs || 8000;
     this.accessToken = options.initialToken || this.readStoredToken();

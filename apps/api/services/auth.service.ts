@@ -20,10 +20,41 @@ import {
   ResendCodeResponse,
 } from '../../../packages/contracts';
 import { appConfig } from '../config/env';
-import { UnauthorizedError, ForbiddenError, AppError } from '../middleware/error-handler';
-import { DEMO_USERS } from '../middleware/auth-guard';
+import { UnauthorizedError, ForbiddenError, AppError, ValidationError, NotFoundError, ConflictError } from '../middleware/error-handler';
 import { dbManager } from '../database/connection';
 import { NotificationAdapterFactory } from './notification-adapter';
+
+export const DEMO_USERS: Record<string, SessionUser> = {
+  customer: {
+    id: 'usr-customer-001',
+    email: 'driver@parkeazy.com',
+    firstName: 'Alex',
+    lastName: 'Morgan',
+    roles: [UserRole.CUSTOMER],
+    phoneNumber: '+1-555-0199',
+    isHostVerified: false,
+    createdAt: '2026-01-15T08:00:00Z',
+  },
+  host: {
+    id: 'usr-host-001',
+    email: 'host@parkeazy.com',
+    firstName: 'Marcus',
+    lastName: 'Chen',
+    roles: [UserRole.CUSTOMER, UserRole.HOST],
+    phoneNumber: '+1-555-0144',
+    isHostVerified: true,
+    createdAt: '2026-01-10T09:30:00Z',
+  },
+  admin: {
+    id: 'usr-admin-001',
+    email: 'admin@parkeazy.com',
+    firstName: 'Elena',
+    lastName: 'Rostova',
+    roles: [UserRole.CUSTOMER, UserRole.ADMIN, UserRole.SUPER_ADMIN],
+    isHostVerified: true,
+    createdAt: '2025-11-01T12:00:00Z',
+  },
+};
 
 export interface JwtHeader {
   alg: 'HS256';

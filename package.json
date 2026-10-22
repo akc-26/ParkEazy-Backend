@@ -17,6 +17,9 @@
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
+    "@nestjs/common": "^12.2.0",
+    "@nestjs/core": "^12.2.0",
+    "@nestjs/platform-express": "^12.2.0",
     "@tailwindcss/vite": "^4.3.3",
     "@vitejs/plugin-react": "^6.1.1",
     "dotenv": "^17.2.3",
@@ -28,6 +31,8 @@
     "qrcode": "^1.5.4",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
     "vite": "^8.3.0"
   },
   "devDependencies": {

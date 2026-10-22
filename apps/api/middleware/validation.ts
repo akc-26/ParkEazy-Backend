@@ -172,7 +172,7 @@ export function validate(rules: ValidationRule[]) {
     }
 
     if (details.length > 0) {
-      return next(new ValidationError(details, 'Request validation failed.'));
+      return next(new ValidationError('Request validation failed.', details));
     }
 
     next();

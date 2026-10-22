@@ -7,6 +7,7 @@
  */
 
 import { Pool, PoolClient, QueryResult, QueryResultRow } from 'pg';
+export type { PoolClient } from 'pg';
 import { newDb } from 'pg-mem';
 import fs from 'fs';
 import path from 'path';

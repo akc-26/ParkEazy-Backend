@@ -79,7 +79,7 @@ export function OperatingHoursWeeklySchedulePage({ currentUser, onNavigate }: Pr
     setSaving(true);
     setTimeout(() => {
       setSaving(false);
-      setSuccessMsg('Operating hours synchronized with gate barriers and driver booking engines.');
+      setSuccessMsg('Operating schedule saved locally. This schedule has not been synchronized with gate barriers or booking availability.');
     }, 400);
   };
 

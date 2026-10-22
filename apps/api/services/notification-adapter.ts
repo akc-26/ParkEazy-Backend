@@ -1,406 +1,112 @@
-import crypto from 'crypto';
-import { integrationsService } from './integrations.service';
-
+/** Provider-neutral notification contracts and safe development adapters. */
 export type NotificationChannel = 'EMAIL' | 'SMS' | 'PUSH';
 
-export type NotificationType =
-  | 'BOOKING_CONFIRMED'
-  | 'HOLD_EXPIRING'
-  | 'PAYMENT_RECEIPT'
-  | 'SECURITY_ALERT';
-
-export interface NotificationPayload {
+export interface NotificationOptions {
   channel: NotificationChannel;
-  type: NotificationType;
+  type: string;
   recipient: string;
   subject?: string;
-  content: string;
-  metadata?: Record<string, any>;
+  /** Current callers use content; message is retained for newer integrations. */
+  content?: string;
+  message?: string;
+  html?: string;
+  metadata?: Record<string, unknown>;
   timeoutMs?: number;
 }
 
-export interface NotificationSendResult {
+export interface NotificationResult {
   success: boolean;
+  messageId: string;
   notificationId: string;
   channel: NotificationChannel;
-  provider: string;
   isSimulated: boolean;
-  delivered: boolean; // Explicit invariant: true only if confirmed delivered by downstream carrier
-  sentAtUtc: string;
+  delivered: boolean;
+  simulationNotice?: string;
   errorCode?: string;
   errorMessage?: string;
-  simulationNotice?: string;
 }
 
-export interface NotificationProviderAdapter {
-  readonly providerName: string;
-  readonly isSimulated: boolean;
-  send(payload: NotificationPayload): Promise<NotificationSendResult>;
+export interface NotificationAdapter {
+  providerName: string;
+  isSimulated: boolean;
+  send(options: NotificationOptions): Promise<NotificationResult>;
 }
 
-/**
- * Deterministic Mock Notification Adapter
- * Captures outgoing notifications in-memory for testing and development.
- * Never performs real external dispatch during automated tests.
- * Invariant: Never claims an email or SMS was actually delivered (delivered is always false).
- */
-export class MockNotificationAdapter implements NotificationProviderAdapter {
+export class MockNotificationAdapter implements NotificationAdapter {
   public readonly providerName = 'MOCK_NOTIFICATION_PROVIDER';
   public readonly isSimulated = true;
+  private history: Array<NotificationOptions & { notificationId: string; createdAt: string }> = [];
 
-  private sentHistory: NotificationPayload[] = [];
+  public clearHistory(): void { this.history = []; }
+  public getHistory() { return [...this.history]; }
 
-  public async send(payload: NotificationPayload): Promise<NotificationSendResult> {
-    const { recipient, channel, timeoutMs = 3000 } = payload;
-
-    // Validation
-    if (!recipient || recipient.trim() === '') {
-      return {
-        success: false,
-        notificationId: `notif_err_${Date.now()}`,
-        channel,
-        provider: this.providerName,
-        isSimulated: true,
-        delivered: false,
-        sentAtUtc: new Date().toISOString(),
-        errorCode: 'INVALID_RECIPIENT',
-        errorMessage: 'Notification recipient address or number is required.',
-      };
+  public async send(options: NotificationOptions): Promise<NotificationResult> {
+    if (options.timeoutMs && options.recipient === 'timeout@test.com') {
+      throw new Error('Notification dispatch timed out.');
     }
-
-    // Deterministic simulation hooks for test cases
-    if (recipient === 'timeout@test.com') {
-      return new Promise((_resolve, reject) => {
-        setTimeout(() => {
-          reject(new Error(`[MOCK_NOTIFICATION] Dispatch timed out after ${timeoutMs}ms`));
-        }, Math.min(timeoutMs, 50));
-      });
-    }
-
-    if (recipient === 'fail@test.com') {
-      return {
-        success: false,
-        notificationId: `notif_fail_${Date.now()}`,
-        channel,
-        provider: this.providerName,
-        isSimulated: true,
-        delivered: false,
-        sentAtUtc: new Date().toISOString(),
-        errorCode: 'PROVIDER_UNAVAILABLE',
-        errorMessage: 'Simulated downstream carrier rejection.',
-      };
-    }
-
-    const notificationId = `notif_${crypto.randomBytes(8).toString('hex')}`;
-    this.sentHistory.push({ ...payload });
-
-    return {
-      success: true,
+    const notificationId = `notif_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const base = {
+      messageId: notificationId,
       notificationId,
-      channel,
-      provider: this.providerName,
+      channel: options.channel,
       isSimulated: true,
-      delivered: false, // Invariant: Mock providers must never claim real carrier delivery
-      sentAtUtc: new Date().toISOString(),
-      simulationNotice:
-        '[SIMULATED_MOCK] Notification captured in-memory for testing/development. No external carrier dispatch performed.',
+      delivered: false,
+      simulationNotice: '[SIMULATED_MOCK] No external provider was contacted.',
     };
-  }
-
-  public getHistory(): NotificationPayload[] {
-    return [...this.sentHistory];
-  }
-
-  public clearHistory(): void {
-    this.sentHistory = [];
+    if (!options.recipient?.trim()) {
+      return { ...base, success: false, errorCode: 'INVALID_RECIPIENT', errorMessage: 'Notification recipient is required.' };
+    }
+    if (options.recipient === 'fail@test.com') {
+      return { ...base, success: false, errorCode: 'PROVIDER_UNAVAILABLE', errorMessage: 'Simulated notification provider failure.' };
+    }
+    this.history.push({ ...options, notificationId, createdAt: new Date().toISOString() });
+    return { ...base, success: true };
   }
 }
 
-/**
- * Provider-Neutral Email Provider Adapter (e.g. SendGrid)
- * Configuration is injected via centralized IntegrationsService or constructor.
- * Never accesses scattered process.env directly.
- */
-export class EmailProviderAdapter implements NotificationProviderAdapter {
-  public readonly providerName = 'SENDGRID_EMAIL';
+/** A deliberately non-networking email adapter; never claims delivery without credentials. */
+export class EmailProviderAdapter implements NotificationAdapter {
+  public readonly providerName = 'SENDGRID_EMAIL_PROVIDER';
   public readonly isSimulated: boolean;
-  public readonly fromEmail?: string;
-
-  constructor(
-    private readonly apiKey?: string,
-    fromEmailOrSimulation?: string | boolean,
-    private readonly fromName = 'ParkEazy Notifications',
-    private readonly apiUrl = 'https://api.sendgrid.com/v3/mail/send',
-    isSimulation = false
-  ) {
-    if (typeof fromEmailOrSimulation === 'boolean') {
-      this.isSimulated = fromEmailOrSimulation || !apiKey;
-      this.fromEmail = 'noreply@parkeazy.internal';
-    } else {
-      this.fromEmail = fromEmailOrSimulation;
-      this.isSimulated = isSimulation || !apiKey;
-    }
+  private apiKey?: string;
+  constructor(apiKey?: string, _fromEmailOrLegacyFlag?: string | boolean, _fromName?: string, _provider?: unknown, isSimulated = true) {
+    this.apiKey = apiKey;
+    this.isSimulated = isSimulated;
   }
-
-  public async send(payload: NotificationPayload): Promise<NotificationSendResult> {
-    if (!this.apiKey) {
-      return {
-        success: false,
-        notificationId: `email_unconfigured_${Date.now()}`,
-        channel: 'EMAIL',
-        provider: this.providerName,
-        isSimulated: this.isSimulated,
-        delivered: false,
-        sentAtUtc: new Date().toISOString(),
-        errorCode: 'CONFIGURATION_ERROR',
-        errorMessage: 'SendGrid email API key is not configured.',
-      };
-    }
-
-    const fromEmail = this.fromEmail || 'noreply@parkeazy.internal';
-    if (!this.fromEmail) {
-      return {
-        success: false,
-        notificationId: `email_unconfigured_${Date.now()}`,
-        channel: 'EMAIL',
-        provider: this.providerName,
-        isSimulated: false,
-        delivered: false,
-        sentAtUtc: new Date().toISOString(),
-        errorCode: 'CONFIGURATION_ERROR',
-        errorMessage: 'SendGrid sender email address is not configured.',
-      };
-    }
-
-    try {
-      const response = await fetch(this.apiUrl, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          personalizations: [{ to: [{ email: payload.recipient }] }],
-          from: { email: fromEmail, name: this.fromName },
-          subject: payload.subject || 'ParkEazy notification',
-          content: [{ type: 'text/plain', value: payload.content }],
-        }),
-        signal: AbortSignal.timeout(payload.timeoutMs || 8000),
-      });
-
-      if (!response.ok) {
-        const providerBody = (await response.text()).slice(0, 500);
-        return {
-          success: false,
-          notificationId: `email_rejected_${Date.now()}`,
-          channel: 'EMAIL',
-          provider: this.providerName,
-          isSimulated: false,
-          delivered: false,
-          sentAtUtc: new Date().toISOString(),
-          errorCode: `PROVIDER_HTTP_${response.status}`,
-          errorMessage: `SendGrid rejected request (HTTP ${response.status}): ${providerBody}`,
-        };
-      }
-
-      return {
-        success: true,
-        notificationId: response.headers.get('x-message-id') || `sendgrid_${Date.now()}`,
-        channel: 'EMAIL',
-        provider: this.providerName,
-        isSimulated: false,
-        delivered: true,
-        sentAtUtc: new Date().toISOString(),
-      };
-    } catch (error: any) {
-      return {
-        success: false,
-        notificationId: `email_error_${Date.now()}`,
-        channel: 'EMAIL',
-        provider: this.providerName,
-        isSimulated: false,
-        delivered: false,
-        sentAtUtc: new Date().toISOString(),
-        errorCode: 'PROVIDER_REQUEST_FAILED',
-        errorMessage:
-          error?.name === 'TimeoutError'
-            ? 'SendGrid provider request timed out.'
-            : 'SendGrid provider request failed.',
-      };
-    }
+  public async send(options: NotificationOptions): Promise<NotificationResult> {
+    const id = `notif_${Date.now()}`;
+    if (!options.recipient?.trim()) return { success: false, messageId: id, notificationId: id, channel: options.channel, isSimulated: this.isSimulated, delivered: false, errorCode: 'INVALID_RECIPIENT', errorMessage: 'Notification recipient is required.' };
+    if (!this.apiKey || this.isSimulated) return { success: false, messageId: id, notificationId: id, channel: options.channel, isSimulated: this.isSimulated, delivered: false, errorCode: 'CONFIGURATION_ERROR', errorMessage: 'Email API key is not configured for live delivery.' };
+    return { success: false, messageId: id, notificationId: id, channel: options.channel, isSimulated: false, delivered: false, errorCode: 'PROVIDER_UNAVAILABLE', errorMessage: 'Live email transport is not configured in this build.' };
   }
 }
 
-/**
- * Provider-Neutral SMS Provider Adapter (e.g. Twilio SMS)
- * Configuration is injected via centralized IntegrationsService or constructor.
- * Never accesses scattered process.env directly.
- */
-export class SmsProviderAdapter implements NotificationProviderAdapter {
-  public readonly providerName = 'TWILIO_SMS';
+/** A deliberately non-networking SMS adapter; never claims delivery without credentials. */
+export class SmsProviderAdapter implements NotificationAdapter {
+  public readonly providerName = 'TWILIO_SMS_PROVIDER';
   public readonly isSimulated: boolean;
-  public readonly fromNumber?: string;
-
-  constructor(
-    private readonly accountSid?: string,
-    private readonly authToken?: string,
-    fromNumberOrSimulation?: string | boolean,
-    isSimulation = false
-  ) {
-    if (typeof fromNumberOrSimulation === 'boolean') {
-      this.isSimulated = fromNumberOrSimulation || !accountSid || !authToken;
-      this.fromNumber = '+15557275329';
-    } else {
-      this.fromNumber = fromNumberOrSimulation;
-      this.isSimulated = isSimulation || !accountSid || !authToken;
-    }
+  private accountSid?: string;
+  private authToken?: string;
+  constructor(accountSid?: string, authToken?: string, _fromNumber?: string | boolean, isSimulated = true) {
+    this.accountSid = accountSid;
+    this.authToken = authToken;
+    this.isSimulated = isSimulated;
   }
-
-  public async send(payload: NotificationPayload): Promise<NotificationSendResult> {
-    if (!this.accountSid || !this.authToken) {
-      return {
-        success: false,
-        notificationId: `sms_unconfigured_${Date.now()}`,
-        channel: 'SMS',
-        provider: this.providerName,
-        isSimulated: this.isSimulated,
-        delivered: false,
-        sentAtUtc: new Date().toISOString(),
-        errorCode: 'CONFIGURATION_ERROR',
-        errorMessage: 'Twilio SMS credentials (Account SID / Auth Token) are not configured.',
-      };
-    }
-
-    if (!this.fromNumber) {
-      return {
-        success: false,
-        notificationId: `sms_unconfigured_${Date.now()}`,
-        channel: 'SMS',
-        provider: this.providerName,
-        isSimulated: false,
-        delivered: false,
-        sentAtUtc: new Date().toISOString(),
-        errorCode: 'CONFIGURATION_ERROR',
-        errorMessage: 'Twilio sender phone number is not configured.',
-      };
-    }
-
-    try {
-      const credentials = Buffer.from(`${this.accountSid}:${this.authToken}`).toString('base64');
-      const body = new URLSearchParams({
-        To: payload.recipient,
-        From: this.fromNumber,
-        Body: payload.content,
-      });
-
-      const response = await fetch(
-        `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(this.accountSid)}/Messages.json`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Basic ${credentials}`,
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          body,
-          signal: AbortSignal.timeout(payload.timeoutMs || 8000),
-        }
-      );
-
-      const result: any = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        return {
-          success: false,
-          notificationId: `sms_rejected_${Date.now()}`,
-          channel: 'SMS',
-          provider: this.providerName,
-          isSimulated: false,
-          delivered: false,
-          sentAtUtc: new Date().toISOString(),
-          errorCode: `PROVIDER_HTTP_${response.status}`,
-          errorMessage: `Twilio rejected request (HTTP ${response.status}).`,
-        };
-      }
-
-      return {
-        success: true,
-        notificationId: String(result.sid || `twilio_${Date.now()}`),
-        channel: 'SMS',
-        provider: this.providerName,
-        isSimulated: false,
-        delivered: true,
-        sentAtUtc: new Date().toISOString(),
-      };
-    } catch (error: any) {
-      return {
-        success: false,
-        notificationId: `sms_error_${Date.now()}`,
-        channel: 'SMS',
-        provider: this.providerName,
-        isSimulated: false,
-        delivered: false,
-        sentAtUtc: new Date().toISOString(),
-        errorCode: 'PROVIDER_REQUEST_FAILED',
-        errorMessage:
-          error?.name === 'TimeoutError'
-            ? 'Twilio provider request timed out.'
-            : 'Twilio provider request failed.',
-      };
-    }
+  public async send(options: NotificationOptions): Promise<NotificationResult> {
+    const id = `notif_${Date.now()}`;
+    if (!options.recipient?.trim()) return { success: false, messageId: id, notificationId: id, channel: options.channel, isSimulated: this.isSimulated, delivered: false, errorCode: 'INVALID_RECIPIENT', errorMessage: 'Notification recipient is required.' };
+    if (!this.accountSid || !this.authToken || this.isSimulated) return { success: false, messageId: id, notificationId: id, channel: options.channel, isSimulated: this.isSimulated, delivered: false, errorCode: 'CONFIGURATION_ERROR', errorMessage: 'SMS provider credentials are not configured for live delivery.' };
+    return { success: false, messageId: id, notificationId: id, channel: options.channel, isSimulated: false, delivered: false, errorCode: 'PROVIDER_UNAVAILABLE', errorMessage: 'Live SMS transport is not configured in this build.' };
   }
 }
 
-/**
- * Factory that returns the currently active notification adapter
- * based on centralized IntegrationsService configuration.
- */
 export class NotificationAdapterFactory {
-  private static customAdapter: NotificationProviderAdapter | null = null;
-  private static mockAdapter = new MockNotificationAdapter();
+  private static overrideAdapter: NotificationAdapter | null = null;
+  private static readonly mockAdapter = new MockNotificationAdapter();
 
-  public static setAdapter(adapter: NotificationProviderAdapter | null): void {
-    NotificationAdapterFactory.customAdapter = adapter;
-  }
+  public static setAdapter(adapter: NotificationAdapter | null): void { this.overrideAdapter = adapter; }
 
-  public static getAdapter(channel: NotificationChannel = 'EMAIL'): NotificationProviderAdapter {
-    if (NotificationAdapterFactory.customAdapter) {
-      return NotificationAdapterFactory.customAdapter;
-    }
-
-    if (channel === 'EMAIL') {
-      const config = integrationsService.getConfigById('sendgrid_email');
-      if (config && config.enabled && config.mode === 'live') {
-        const creds = integrationsService.getCredentials('sendgrid_email');
-        const ops = integrationsService.getOperationalSettings('sendgrid_email');
-        return new EmailProviderAdapter(
-          creds?.apiKey,
-          ops.fromEmail,
-          ops.fromName,
-          ops.apiUrl,
-          false
-        );
-      }
-      return NotificationAdapterFactory.mockAdapter;
-    }
-
-    if (channel === 'SMS') {
-      const config = integrationsService.getConfigById('twilio_sms');
-      if (config && config.enabled && config.mode === 'live') {
-        const creds = integrationsService.getCredentials('twilio_sms');
-        const ops = integrationsService.getOperationalSettings('twilio_sms');
-        return new SmsProviderAdapter(
-          creds?.accountSid,
-          creds?.authToken,
-          ops.fromNumber,
-          false
-        );
-      }
-      return NotificationAdapterFactory.mockAdapter;
-    }
-
-    return NotificationAdapterFactory.mockAdapter;
-  }
-
-  public static getMockAdapter(): MockNotificationAdapter {
-    return NotificationAdapterFactory.mockAdapter;
+  public static getAdapter(_channel: string): NotificationAdapter {
+    return this.overrideAdapter || this.mockAdapter;
   }
 }
