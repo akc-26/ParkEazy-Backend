@@ -1,0 +1,12 @@
+{
+  "stripe": {
+    "ivHex": "fa9342695c3ffd8d9b753623",
+    "tagHex": "45c50ee0a2e409f864518c30e63659b3",
+    "cipherHex": "5d485c25c630101c46f885424b96fc5ad079066d325bb17f5d49aff55370231cebbd34eee425bd4ec0f268288a2983f01de0a6"
+  },
+  "twilio_sms": {
+    "ivHex": "9f1936320429c66a1d2d1e14",
+    "tagHex": "8d77dcd864b0d28183ad22555acaa06f",
+    "cipherHex": "dd7baff9269e8cef823498ccbff3f56f3f71d4ece6dc7e3660870305eadbd877449a4567315800bfe8d8892a9bfc0ce4c06e8734a2a7313b2edd3b42f066e973c05a9399d8"
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "recurringSchedules": [
+    {
+      "id": "sch-1caebb2a",
+      "hostId": "usr-host-avail-a",
+      "facilityId": "loc-b871bdd0a5d8",
+      "dayOfWeek": 1,
+      "startTime": "08:00",
+      "endTime": "18:00",
+      "isAvailable": true,
+      "createdAtUtc": "2026-10-20T14:35:57.954Z",
+      "updatedAtUtc": "2026-10-20T14:35:57.954Z"
+    },
+    {
+      "id": "sch-b07fa291",
+      "hostId": "usr-host-avail-a",
+      "facilityId": "loc-b871bdd0a5d8",
+      "dayOfWeek": 2,
+      "startTime": "08:00",
+      "endTime": "18:00",
+      "isAvailable": true,
+      "createdAtUtc": "2026-10-20T14:35:57.954Z",
+      "updatedAtUtc": "2026-10-20T14:35:57.954Z"
+    }
+  ],
+  "dateOverrides": [],
+  "maintenanceBlocks": [
+    {
+      "id": "mb-001",
+      "hostId": "usr-host-001",
+      "facilityId": "loc-dt-001",
+      "spaceId": "bay-001-c",
+      "spaceNumber": "B2-32 (EV)",
+      "title": "EV Charger 22kW Cable Inspection & Diagnostic",
+      "description": "Scheduled preventive maintenance and software firmware update on Level 2 charger.",
+      "startTimeUtc": "2026-10-19T08:00:00Z",
+      "endTimeUtc": "2026-10-19T12:00:00Z",
+      "status": "SCHEDULED",
+      "createdAtUtc": "2026-10-15T10:00:00Z",
+      "updatedAtUtc": "2026-10-15T10:00:00Z"
+    }
+  ],
+  "updatedAt": "2026-10-20T14:35:57.966Z"
+}

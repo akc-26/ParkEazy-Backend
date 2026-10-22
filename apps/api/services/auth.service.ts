@@ -994,7 +994,7 @@ export class AuthService {
     }
 
     // 1. Resend throttling: enforce minimum 60 seconds interval (0 in test)
-    const throttleMs = appConfig.nodeEnv === 'test' ? 0 : 60000;
+    const throttleMs = (process.env.NODE_ENV === 'test' || appConfig.nodeEnv === 'test') ? 0 : 60000;
     const lastSentTime = this.resendTimestamps.get(`${userId}:${type}`) || 0;
     const now = Date.now();
     if (throttleMs > 0 && now - lastSentTime < throttleMs) {

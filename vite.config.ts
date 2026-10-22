@@ -9,6 +9,13 @@ export default defineConfig(() => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
+        '@parkeazy/config': path.resolve(__dirname, 'packages/config/src/index.ts'),
+        '@parkeazy/shared-types': path.resolve(__dirname, 'packages/shared-types/src/index.ts'),
+        '@parkeazy/branding': path.resolve(__dirname, 'packages/branding/src/index.ts'),
+        '@parkeazy/validation': path.resolve(__dirname, 'packages/validation/src/index.ts'),
+        '@parkeazy/api-client': path.resolve(__dirname, 'packages/api-client/src/index.ts'),
+        '@parkeazy/shared-ui': path.resolve(__dirname, 'packages/shared-ui/src/index.ts'),
+        '@parkeazy/contracts': path.resolve(__dirname, 'packages/contracts/index.ts'),
       },
     },
     server: {
@@ -17,6 +24,44 @@ export default defineConfig(() => {
       hmr: process.env.DISABLE_HMR !== 'true',
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      proxy: {
+        '/api/v1': {
+          target: 'http://localhost:3000',
+          changeOrigin: true,
+        },
+        '/health': {
+          target: 'http://localhost:3000',
+          changeOrigin: true,
+        },
+        '/host': {
+          target: `http://localhost:${process.env.HOST_PORT || 3002}`,
+          changeOrigin: true,
+          configure: (proxy) => {
+            proxy.on('error', (_err, _req, res: any) => {
+              if (res && !res.headersSent && typeof res.writeHead === 'function') {
+                res.writeHead(503, { 'Content-Type': 'text/plain' });
+                res.end('Service Unavailable');
+              }
+            });
+          },
+        },
+        '/admin': {
+          target: `http://localhost:${process.env.ADMIN_PORT || 3003}`,
+          changeOrigin: true,
+          configure: (proxy) => {
+            proxy.on('error', (_err, _req, res: any) => {
+              if (res && !res.headersSent && typeof res.writeHead === 'function') {
+                res.writeHead(503, { 'Content-Type': 'text/plain' });
+                res.end('Service Unavailable');
+              }
+            });
+          },
+        },
+        '/api': {
+          target: 'http://localhost:3000',
+          changeOrigin: true,
+        },
+      },
     },
   };
 });

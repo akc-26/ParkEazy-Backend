@@ -650,6 +650,65 @@ export class InventoryService {
     return newBay;
   }
 
+  public bulkCreateBays(
+    locationId: string,
+    hostId: string,
+    baysData: CreateBayRequest[],
+    isAdmin = false
+  ): ParkingBay[] {
+    const location = this.getLocationForHost(locationId, hostId, isAdmin);
+    const created: ParkingBay[] = [];
+    const now = new Date().toISOString();
+
+    for (const data of baysData) {
+      if (!data.bayNumber || typeof data.bayNumber !== 'string' || data.bayNumber.trim().length === 0) {
+        continue;
+      }
+      const normalizedBayNumber = data.bayNumber.trim();
+      const existingBays = this.getBaysByLocationId(locationId);
+      const duplicate = existingBays.some(
+        (b) => b.bayNumber.toLowerCase() === normalizedBayNumber.toLowerCase()
+      );
+      if (duplicate) {
+        continue;
+      }
+
+      const bayId = `bay-${crypto.randomBytes(6).toString('hex')}`;
+      const newBay: ParkingBay = {
+        id: bayId,
+        locationId: location.id,
+        bayNumber: normalizedBayNumber,
+        bayType: data.bayType || BayType.STANDARD,
+        levelOrFloor: data.levelOrFloor?.trim() || 'Ground',
+        status: data.status || BayStatus.AVAILABLE,
+        maxVehicleHeightMeters: typeof data.maxVehicleHeightMeters === 'number' ? data.maxVehicleHeightMeters : undefined,
+        maxVehicleLengthMeters: typeof data.maxVehicleLengthMeters === 'number' ? data.maxVehicleLengthMeters : undefined,
+        maxVehicleWidthMeters: typeof data.maxVehicleWidthMeters === 'number' ? data.maxVehicleWidthMeters : undefined,
+        supportedVehicles: Array.isArray(data.supportedVehicles) && data.supportedVehicles.length > 0
+          ? data.supportedVehicles
+          : [VehicleCategory.SEDAN, VehicleCategory.SUV, VehicleCategory.COMPACT],
+        isEvCharging: Boolean(data.isEvCharging),
+        evChargerKw: data.isEvCharging && typeof data.evChargerKw === 'number' ? data.evChargerKw : undefined,
+        hasCctv: Boolean(data.hasCctv),
+        isAccessible: Boolean(data.isAccessible),
+        isCovered: Boolean(data.isCovered),
+        notes: data.notes?.trim() || undefined,
+        instructions: data.instructions?.trim() || undefined,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      this.bays.push(newBay);
+      created.push(newBay);
+    }
+
+    location.totalBays = this.getBaysByLocationId(locationId).length;
+    location.updatedAt = now;
+    this.saveToDisk();
+
+    return created;
+  }
+
   public updateBay(
     locationId: string,
     bayId: string,

@@ -1,0 +1,1211 @@
+{
+  "version": 1,
+  "users": [
+    {
+      "id": "usr_host1",
+      "email": "host@parkeazy.com",
+      "passwordHash": "418b18cdc4b6cd2f9fd25032ac77688474a69e9b8ac42acd295d77c9ce70106e",
+      "fullName": "Marcus Vance",
+      "phone": "+1 (206) 555-0192",
+      "role": "host",
+      "status": "active",
+      "avatarUrl": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80",
+      "isEmailVerified": true,
+      "createdAt": "2026-01-10T08:00:00.000Z",
+      "updatedAt": "2026-02-15T10:00:00.000Z",
+      "businessDetails": {
+        "businessName": "Metro Parking Management LLC",
+        "registrationNumber": "WA-CORP-948102",
+        "taxId": "91-3829104",
+        "payoutBankName": "Silicon Valley Bank / First Republic",
+        "payoutAccountNumber": "****8492",
+        "payoutRoutingNumber": "121000358",
+        "stripeConnectAccountId": "acct_1NZVb4KJ910aBCDe",
+        "isVerified": true
+      }
+    },
+    {
+      "id": "usr_host2",
+      "email": "sarah.host@parkeazy.com",
+      "passwordHash": "418b18cdc4b6cd2f9fd25032ac77688474a69e9b8ac42acd295d77c9ce70106e",
+      "fullName": "Sarah Jenkins",
+      "phone": "+1 (206) 555-0144",
+      "role": "host",
+      "status": "active",
+      "isEmailVerified": true,
+      "createdAt": "2026-01-20T08:00:00.000Z",
+      "updatedAt": "2026-02-18T10:00:00.000Z",
+      "businessDetails": {
+        "businessName": "EcoPark Pacific Bays Inc",
+        "registrationNumber": "WA-CORP-810294",
+        "taxId": "91-5510294",
+        "payoutBankName": "JPMorgan Chase Bank",
+        "payoutAccountNumber": "****1920",
+        "payoutRoutingNumber": "021000021",
+        "stripeConnectAccountId": "acct_1MZVa8KJ940zWXYz",
+        "isVerified": true
+      }
+    },
+    {
+      "id": "usr_cust1",
+      "email": "alex.driver@example.com",
+      "passwordHash": "b27a4c53e6a4ac59686db6261e7744f40100c25f7c4b395b24fbae40ea726982",
+      "fullName": "Alex Driver",
+      "phone": "+1 (206) 555-0188",
+      "role": "customer",
+      "status": "active",
+      "avatarUrl": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80",
+      "isEmailVerified": true,
+      "createdAt": "2026-01-15T08:00:00.000Z",
+      "updatedAt": "2026-02-10T10:00:00.000Z"
+    },
+    {
+      "id": "usr_admin1",
+      "email": "admin@parkeazy.com",
+      "passwordHash": "4355816fbb6afccb50ac62dc074267fafdcaeed149a662b4fecb19ffc014f084",
+      "fullName": "Sarah Connor (Admin)",
+      "phone": "+1 (206) 555-9999",
+      "role": "admin",
+      "status": "active",
+      "isEmailVerified": true,
+      "createdAt": "2025-12-01T08:00:00.000Z",
+      "updatedAt": "2026-01-01T10:00:00.000Z"
+    }
+  ],
+  "facilities": [
+    {
+      "id": "fac_metro_downtown",
+      "hostId": "usr_host1",
+      "name": "Downtown Metro Tech Center Garage",
+      "description": "Prime underground multi-level parking located at 400 Pine St, directly connected to Tech Plaza. 24/7 automated barrier access, CCTV surveillance, on-site security, and 22kW EV fast charging.",
+      "address": "400 Pine Street",
+      "city": "Seattle",
+      "state": "WA",
+      "postalCode": "98101",
+      "country": "USA",
+      "latitude": 47.6115,
+      "longitude": -122.3364,
+      "accessInstructions": "Drive up to the automated barrier on 4th Ave entrance. Hold your QR code up to the scanner on the driver pedestal or type the 4-digit PIN code.",
+      "gateType": "automated_barrier",
+      "defaultGateCode": "4921#",
+      "clearanceHeightMeters": 2.2,
+      "operatingHours": {
+        "is24x7": true,
+        "monday": {
+          "open": "00:00",
+          "close": "23:59",
+          "isOpen": true
+        },
+        "tuesday": {
+          "open": "00:00",
+          "close": "23:59",
+          "isOpen": true
+        },
+        "wednesday": {
+          "open": "00:00",
+          "close": "23:59",
+          "isOpen": true
+        },
+        "thursday": {
+          "open": "00:00",
+          "close": "23:59",
+          "isOpen": true
+        },
+        "friday": {
+          "open": "00:00",
+          "close": "23:59",
+          "isOpen": true
+        },
+        "saturday": {
+          "open": "00:00",
+          "close": "23:59",
+          "isOpen": true
+        },
+        "sunday": {
+          "open": "00:00",
+          "close": "23:59",
+          "isOpen": true
+        }
+      },
+      "amenities": {
+        "covered": true,
+        "cctv": true,
+        "securityGuard": true,
+        "evCharging": true,
+        "lighting": true,
+        "wheelchairAccessible": true,
+        "valetAssist": false,
+        "automatedBarrier": true
+      },
+      "photos": [
+        "https://images.unsplash.com/photo-1506521781263-d8422e82f27a?auto=format&fit=crop&w=1200&q=80",
+        "https://images.unsplash.com/photo-1590674899484-d5640e854abe?auto=format&fit=crop&w=1200&q=80",
+        "https://images.unsplash.com/photo-1573348722427-f1d6819fdf98?auto=format&fit=crop&w=1200&q=80"
+      ],
+      "status": "active",
+      "totalBays": 8,
+      "activeBays": 8,
+      "createdAt": "2026-01-12T10:00:00.000Z",
+      "updatedAt": "2026-02-01T12:00:00.000Z"
+    },
+    {
+      "id": "fac_waterfront_lot",
+      "hostId": "usr_host1",
+      "name": "Pike Place Waterfront Parking Lot",
+      "description": "Convenient ground-level outdoor parking lot steps from Pike Place Market and the Seattle Great Wheel. License plate recognition and automatic gate arms.",
+      "address": "1500 Alaskan Way",
+      "city": "Seattle",
+      "state": "WA",
+      "postalCode": "98101",
+      "country": "USA",
+      "latitude": 47.608,
+      "longitude": -122.3415,
+      "accessInstructions": "Entrance on Alaskan Way. The LPR camera reads your registered license plate and automatically opens the boom gate.",
+      "gateType": "license_plate_recognition",
+      "defaultGateCode": "8833#",
+      "clearanceHeightMeters": 3.5,
+      "operatingHours": {
+        "is24x7": false,
+        "monday": {
+          "open": "06:00",
+          "close": "23:00",
+          "isOpen": true
+        },
+        "tuesday": {
+          "open": "06:00",
+          "close": "23:00",
+          "isOpen": true
+        },
+        "wednesday": {
+          "open": "06:00",
+          "close": "23:00",
+          "isOpen": true
+        },
+        "thursday": {
+          "open": "06:00",
+          "close": "23:00",
+          "isOpen": true
+        },
+        "friday": {
+          "open": "06:00",
+          "close": "23:59",
+          "isOpen": true
+        },
+        "saturday": {
+          "open": "06:00",
+          "close": "23:59",
+          "isOpen": true
+        },
+        "sunday": {
+          "open": "07:00",
+          "close": "22:00",
+          "isOpen": true
+        }
+      },
+      "amenities": {
+        "covered": false,
+        "cctv": true,
+        "securityGuard": false,
+        "evCharging": true,
+        "lighting": true,
+        "wheelchairAccessible": true,
+        "valetAssist": false,
+        "automatedBarrier": true
+      },
+      "photos": [
+        "https://images.unsplash.com/photo-1545179605-1296651e4d53?auto=format&fit=crop&w=1200&q=80",
+        "https://images.unsplash.com/photo-1526628953301-3e589a6a8b74?auto=format&fit=crop&w=1200&q=80"
+      ],
+      "status": "active",
+      "totalBays": 6,
+      "activeBays": 6,
+      "createdAt": "2026-01-18T10:00:00.000Z",
+      "updatedAt": "2026-02-05T12:00:00.000Z"
+    },
+    {
+      "id": "fac_capitol_hill",
+      "hostId": "usr_host2",
+      "name": "Capitol Hill Transit Hub Parking",
+      "description": "Secure multi-story parking adjacent to Capitol Hill light rail station. Eco-friendly with solar roof canopy.",
+      "address": "920 E Pine St",
+      "city": "Seattle",
+      "state": "WA",
+      "postalCode": "98122",
+      "country": "USA",
+      "latitude": 47.6151,
+      "longitude": -122.3195,
+      "accessInstructions": "Scan mobile access pass QR code at the entry column.",
+      "gateType": "qr_scanner",
+      "defaultGateCode": "1192#",
+      "clearanceHeightMeters": 2.1,
+      "operatingHours": {
+        "is24x7": true,
+        "monday": {
+          "open": "00:00",
+          "close": "23:59",
+          "isOpen": true
+        },
+        "tuesday": {
+          "open": "00:00",
+          "close": "23:59",
+          "isOpen": true
+        },
+        "wednesday": {
+          "open": "00:00",
+          "close": "23:59",
+          "isOpen": true
+        },
+        "thursday": {
+          "open": "00:00",
+          "close": "23:59",
+          "isOpen": true
+        },
+        "friday": {
+          "open": "00:00",
+          "close": "23:59",
+          "isOpen": true
+        },
+        "saturday": {
+          "open": "00:00",
+          "close": "23:59",
+          "isOpen": true
+        },
+        "sunday": {
+          "open": "00:00",
+          "close": "23:59",
+          "isOpen": true
+        }
+      },
+      "amenities": {
+        "covered": true,
+        "cctv": true,
+        "securityGuard": true,
+        "evCharging": true,
+        "lighting": true,
+        "wheelchairAccessible": true,
+        "valetAssist": false,
+        "automatedBarrier": true
+      },
+      "photos": [
+        "https://images.unsplash.com/photo-1486006920555-c77dce18193b?auto=format&fit=crop&w=1200&q=80"
+      ],
+      "status": "under_review",
+      "moderationNotes": "Pending review of entrance clearance documentation and fire safety certificate.",
+      "totalBays": 5,
+      "activeBays": 5,
+      "createdAt": "2026-02-14T10:00:00.000Z",
+      "updatedAt": "2026-02-14T10:00:00.000Z"
+    }
+  ],
+  "bays": [
+    {
+      "id": "bay_m1",
+      "facilityId": "fac_metro_downtown",
+      "identifier": "L1-A01",
+      "zone": "Level 1",
+      "vehicleCompatibility": [
+        "sedan",
+        "compact"
+      ],
+      "dimensions": {
+        "lengthMeters": 5,
+        "widthMeters": 2.4,
+        "heightMeters": 2.2
+      },
+      "isAccessibleADA": false,
+      "hasEvCharger": false,
+      "amenities": [
+        "Covered",
+        "Direct Elevator Access"
+      ],
+      "status": "available",
+      "hourlyRateMultiplier": 1,
+      "createdAt": "2026-01-12T10:00:00.000Z",
+      "updatedAt": "2026-01-12T10:00:00.000Z"
+    },
+    {
+      "id": "bay_m2",
+      "facilityId": "fac_metro_downtown",
+      "identifier": "L1-A02 (EV Fast)",
+      "zone": "Level 1",
+      "vehicleCompatibility": [
+        "sedan",
+        "suv",
+        "ev"
+      ],
+      "dimensions": {
+        "lengthMeters": 5.2,
+        "widthMeters": 2.6,
+        "heightMeters": 2.2
+      },
+      "isAccessibleADA": false,
+      "hasEvCharger": true,
+      "evChargerDetails": {
+        "powerKw": 22,
+        "plugType": "Type2"
+      },
+      "amenities": [
+        "EV Charging 22kW",
+        "Covered"
+      ],
+      "status": "available",
+      "hourlyRateMultiplier": 1.2,
+      "createdAt": "2026-01-12T10:00:00.000Z",
+      "updatedAt": "2026-01-12T10:00:00.000Z"
+    },
+    {
+      "id": "bay_m3",
+      "facilityId": "fac_metro_downtown",
+      "identifier": "L1-A03 (ADA)",
+      "zone": "Level 1",
+      "vehicleCompatibility": [
+        "sedan",
+        "suv",
+        "van_truck"
+      ],
+      "dimensions": {
+        "lengthMeters": 5.5,
+        "widthMeters": 3.5,
+        "heightMeters": 2.2
+      },
+      "isAccessibleADA": true,
+      "hasEvCharger": false,
+      "amenities": [
+        "ADA Compliant",
+        "Extra Wide Space",
+        "Ground Floor Ramp"
+      ],
+      "status": "available",
+      "hourlyRateMultiplier": 1,
+      "createdAt": "2026-01-12T10:00:00.000Z",
+      "updatedAt": "2026-01-12T10:00:00.000Z"
+    },
+    {
+      "id": "bay_m4",
+      "facilityId": "fac_metro_downtown",
+      "identifier": "L1-A04 (SUV)",
+      "zone": "Level 1",
+      "vehicleCompatibility": [
+        "suv",
+        "van_truck",
+        "sedan"
+      ],
+      "dimensions": {
+        "lengthMeters": 5.8,
+        "widthMeters": 2.8,
+        "heightMeters": 2.2
+      },
+      "isAccessibleADA": false,
+      "hasEvCharger": false,
+      "amenities": [
+        "Oversized Vehicle Fit",
+        "Covered"
+      ],
+      "status": "occupied",
+      "statusReason": "Customer in-bay",
+      "hourlyRateMultiplier": 1.1,
+      "createdAt": "2026-01-12T10:00:00.000Z",
+      "updatedAt": "2026-02-15T11:00:00.000Z"
+    },
+    {
+      "id": "bay_m5",
+      "facilityId": "fac_metro_downtown",
+      "identifier": "L2-B01",
+      "zone": "Level 2",
+      "vehicleCompatibility": [
+        "compact",
+        "sedan"
+      ],
+      "dimensions": {
+        "lengthMeters": 4.8,
+        "widthMeters": 2.4,
+        "heightMeters": 2.2
+      },
+      "isAccessibleADA": false,
+      "hasEvCharger": false,
+      "amenities": [
+        "Covered",
+        "Well Lit"
+      ],
+      "status": "reserved",
+      "hourlyRateMultiplier": 1,
+      "createdAt": "2026-01-12T10:00:00.000Z",
+      "updatedAt": "2026-10-20T12:31:02.029Z"
+    },
+    {
+      "id": "bay_m6",
+      "facilityId": "fac_metro_downtown",
+      "identifier": "L2-B02",
+      "zone": "Level 2",
+      "vehicleCompatibility": [
+        "compact",
+        "sedan",
+        "suv"
+      ],
+      "dimensions": {
+        "lengthMeters": 5,
+        "widthMeters": 2.5,
+        "heightMeters": 2.2
+      },
+      "isAccessibleADA": false,
+      "hasEvCharger": false,
+      "amenities": [
+        "Covered"
+      ],
+      "status": "maintenance",
+      "statusReason": "Sensor recalibration",
+      "hourlyRateMultiplier": 1,
+      "createdAt": "2026-01-12T10:00:00.000Z",
+      "updatedAt": "2026-02-10T10:00:00.000Z"
+    },
+    {
+      "id": "bay_m7",
+      "facilityId": "fac_metro_downtown",
+      "identifier": "L2-B03 (Moto)",
+      "zone": "Level 2",
+      "vehicleCompatibility": [
+        "motorcycle"
+      ],
+      "dimensions": {
+        "lengthMeters": 2.5,
+        "widthMeters": 1.5,
+        "heightMeters": 2.2
+      },
+      "isAccessibleADA": false,
+      "hasEvCharger": false,
+      "amenities": [
+        "Anchor Ring",
+        "Ground Floor"
+      ],
+      "status": "available",
+      "hourlyRateMultiplier": 0.6,
+      "createdAt": "2026-01-12T10:00:00.000Z",
+      "updatedAt": "2026-01-12T10:00:00.000Z"
+    },
+    {
+      "id": "bay_m8",
+      "facilityId": "fac_metro_downtown",
+      "identifier": "L2-B04",
+      "zone": "Level 2",
+      "vehicleCompatibility": [
+        "sedan",
+        "suv"
+      ],
+      "dimensions": {
+        "lengthMeters": 5,
+        "widthMeters": 2.5,
+        "heightMeters": 2.2
+      },
+      "isAccessibleADA": false,
+      "hasEvCharger": false,
+      "amenities": [
+        "Covered"
+      ],
+      "status": "available",
+      "hourlyRateMultiplier": 1,
+      "createdAt": "2026-01-12T10:00:00.000Z",
+      "updatedAt": "2026-01-12T10:00:00.000Z"
+    },
+    {
+      "id": "bay_w1",
+      "facilityId": "fac_waterfront_lot",
+      "identifier": "WF-01 (EV)",
+      "zone": "Zone North",
+      "vehicleCompatibility": [
+        "ev",
+        "sedan",
+        "suv"
+      ],
+      "dimensions": {
+        "lengthMeters": 5.2,
+        "widthMeters": 2.6,
+        "heightMeters": 3.5
+      },
+      "isAccessibleADA": false,
+      "hasEvCharger": true,
+      "evChargerDetails": {
+        "powerKw": 22,
+        "plugType": "Tesla"
+      },
+      "amenities": [
+        "Tesla Supercharger compatible",
+        "Waterfront view"
+      ],
+      "status": "available",
+      "hourlyRateMultiplier": 1.15,
+      "createdAt": "2026-01-18T10:00:00.000Z",
+      "updatedAt": "2026-01-18T10:00:00.000Z"
+    },
+    {
+      "id": "bay_w2",
+      "facilityId": "fac_waterfront_lot",
+      "identifier": "WF-02",
+      "zone": "Zone North",
+      "vehicleCompatibility": [
+        "sedan",
+        "suv",
+        "van_truck"
+      ],
+      "dimensions": {
+        "lengthMeters": 5.5,
+        "widthMeters": 2.7,
+        "heightMeters": 3.5
+      },
+      "isAccessibleADA": false,
+      "hasEvCharger": false,
+      "amenities": [
+        "Open Air"
+      ],
+      "status": "available",
+      "hourlyRateMultiplier": 1,
+      "createdAt": "2026-01-18T10:00:00.000Z",
+      "updatedAt": "2026-01-18T10:00:00.000Z"
+    },
+    {
+      "id": "bay_w3",
+      "facilityId": "fac_waterfront_lot",
+      "identifier": "WF-03 (ADA)",
+      "zone": "Zone North",
+      "vehicleCompatibility": [
+        "sedan",
+        "suv",
+        "van_truck"
+      ],
+      "dimensions": {
+        "lengthMeters": 5.5,
+        "widthMeters": 3.6,
+        "heightMeters": 3.5
+      },
+      "isAccessibleADA": true,
+      "hasEvCharger": false,
+      "amenities": [
+        "ADA Compliant",
+        "Direct boardwalk access"
+      ],
+      "status": "available",
+      "hourlyRateMultiplier": 1,
+      "createdAt": "2026-01-18T10:00:00.000Z",
+      "updatedAt": "2026-01-18T10:00:00.000Z"
+    },
+    {
+      "id": "bay_w4",
+      "facilityId": "fac_waterfront_lot",
+      "identifier": "WF-04",
+      "zone": "Zone South",
+      "vehicleCompatibility": [
+        "sedan",
+        "compact"
+      ],
+      "dimensions": {
+        "lengthMeters": 4.9,
+        "widthMeters": 2.4,
+        "heightMeters": 3.5
+      },
+      "isAccessibleADA": false,
+      "hasEvCharger": false,
+      "amenities": [
+        "Standard Bay"
+      ],
+      "status": "available",
+      "hourlyRateMultiplier": 1,
+      "createdAt": "2026-01-18T10:00:00.000Z",
+      "updatedAt": "2026-01-18T10:00:00.000Z"
+    },
+    {
+      "id": "bay_w5",
+      "facilityId": "fac_waterfront_lot",
+      "identifier": "WF-05",
+      "zone": "Zone South",
+      "vehicleCompatibility": [
+        "sedan",
+        "suv"
+      ],
+      "dimensions": {
+        "lengthMeters": 5.2,
+        "widthMeters": 2.5,
+        "heightMeters": 3.5
+      },
+      "isAccessibleADA": false,
+      "hasEvCharger": false,
+      "amenities": [
+        "Standard Bay"
+      ],
+      "status": "available",
+      "hourlyRateMultiplier": 1,
+      "createdAt": "2026-01-18T10:00:00.000Z",
+      "updatedAt": "2026-01-18T10:00:00.000Z"
+    },
+    {
+      "id": "bay_w6",
+      "facilityId": "fac_waterfront_lot",
+      "identifier": "WF-06",
+      "zone": "Zone South",
+      "vehicleCompatibility": [
+        "motorcycle",
+        "compact"
+      ],
+      "dimensions": {
+        "lengthMeters": 3.5,
+        "widthMeters": 2,
+        "heightMeters": 3.5
+      },
+      "isAccessibleADA": false,
+      "hasEvCharger": false,
+      "amenities": [
+        "Compact Bay"
+      ],
+      "status": "available",
+      "hourlyRateMultiplier": 0.8,
+      "createdAt": "2026-01-18T10:00:00.000Z",
+      "updatedAt": "2026-01-18T10:00:00.000Z"
+    }
+  ],
+  "pricingRules": [
+    {
+      "id": "prc_rule_metro",
+      "facilityId": "fac_metro_downtown",
+      "name": "Tech Center Smart Dynamic Tariff",
+      "baseHourlyRate": 4.5,
+      "dailyMaxRate": 32,
+      "overnightFlatRate": 18,
+      "surgeMultiplier": 1.35,
+      "peakHours": [
+        {
+          "start": "08:00",
+          "end": "10:00",
+          "daysOfWeek": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ]
+        },
+        {
+          "start": "16:00",
+          "end": "19:00",
+          "daysOfWeek": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ]
+        }
+      ],
+      "weekendHourlyRate": 5,
+      "specialEvents": [
+        {
+          "eventName": "Convention Week Peak",
+          "startDate": "2026-11-01T00:00:00.000Z",
+          "endDate": "2026-11-05T23:59:59.000Z",
+          "flatRateSurcharge": 10
+        }
+      ],
+      "discounts": [
+        {
+          "minHours": 24,
+          "discountPercent": 15
+        },
+        {
+          "minHours": 72,
+          "discountPercent": 25
+        }
+      ],
+      "isActive": true,
+      "createdAt": "2026-01-12T10:00:00.000Z",
+      "updatedAt": "2026-01-12T10:00:00.000Z"
+    },
+    {
+      "id": "prc_rule_waterfront",
+      "facilityId": "fac_waterfront_lot",
+      "name": "Waterfront Weekend & Tourist Rates",
+      "baseHourlyRate": 6,
+      "dailyMaxRate": 40,
+      "overnightFlatRate": 22,
+      "surgeMultiplier": 1.3,
+      "peakHours": [
+        {
+          "start": "11:00",
+          "end": "15:00",
+          "daysOfWeek": [
+            6,
+            0
+          ]
+        }
+      ],
+      "weekendHourlyRate": 7.5,
+      "specialEvents": [],
+      "discounts": [
+        {
+          "minHours": 12,
+          "discountPercent": 10
+        }
+      ],
+      "isActive": true,
+      "createdAt": "2026-01-18T10:00:00.000Z",
+      "updatedAt": "2026-01-18T10:00:00.000Z"
+    }
+  ],
+  "holds": [
+    {
+      "id": "hld_3c10471d",
+      "bayId": "bay_m5",
+      "facilityId": "fac_metro_downtown",
+      "userId": "usr_cust1",
+      "startTime": "2026-10-20T14:00:00.000Z",
+      "endTime": "2026-10-20T18:00:00.000Z",
+      "heldAt": "2026-10-20T12:30:52.242Z",
+      "expiresAt": "2026-10-20T12:45:52.242Z"
+    }
+  ],
+  "bookings": [
+    {
+      "id": "bk_active_1",
+      "bookingReference": "PKZ-784910",
+      "facilityId": "fac_metro_downtown",
+      "bayId": "bay_m4",
+      "customerId": "usr_cust1",
+      "customerName": "Alex Driver",
+      "customerPhone": "+1 (206) 555-0188",
+      "customerEmail": "alex.driver@example.com",
+      "licensePlate": "WA-7BCK99",
+      "vehicleMakeModel": "Tesla Model Y (Deep Blue)",
+      "startTime": "2026-10-20T04:00:00.000Z",
+      "endTime": "2026-10-20T10:00:00.000Z",
+      "actualCheckInTime": "2026-10-20T04:12:00.000Z",
+      "grossAmount": 29.7,
+      "platformFee": 3.56,
+      "hostNetEarnings": 26.14,
+      "taxAmount": 2.38,
+      "status": "checked_in",
+      "qrCodeToken": "PKZ_QR_849204910248492",
+      "gateAccessCode": "4921#",
+      "idempotencyKey": "idemp_seed_bk_1",
+      "createdAt": "2026-10-20T03:30:00.000Z",
+      "updatedAt": "2026-10-20T04:12:00.000Z"
+    },
+    {
+      "id": "bk_upcoming_1",
+      "bookingReference": "PKZ-619283",
+      "facilityId": "fac_metro_downtown",
+      "bayId": "bay_m1",
+      "customerId": "usr_cust1",
+      "customerName": "Alex Driver",
+      "customerPhone": "+1 (206) 555-0188",
+      "customerEmail": "alex.driver@example.com",
+      "licensePlate": "WA-7BCK99",
+      "vehicleMakeModel": "Tesla Model Y (Deep Blue)",
+      "startTime": "2026-10-20T14:00:00.000Z",
+      "endTime": "2026-10-20T18:00:00.000Z",
+      "grossAmount": 18,
+      "platformFee": 2.16,
+      "hostNetEarnings": 15.84,
+      "taxAmount": 1.44,
+      "status": "confirmed",
+      "qrCodeToken": "PKZ_QR_920194829104829",
+      "gateAccessCode": "4921#",
+      "idempotencyKey": "idemp_seed_bk_2",
+      "createdAt": "2026-10-20T02:00:00.000Z",
+      "updatedAt": "2026-10-20T02:00:00.000Z"
+    },
+    {
+      "id": "bk_completed_1",
+      "bookingReference": "PKZ-492019",
+      "facilityId": "fac_metro_downtown",
+      "bayId": "bay_m2",
+      "customerId": "usr_cust1",
+      "customerName": "Alex Driver",
+      "customerPhone": "+1 (206) 555-0188",
+      "customerEmail": "alex.driver@example.com",
+      "licensePlate": "WA-7BCK99",
+      "vehicleMakeModel": "Tesla Model Y (Deep Blue)",
+      "startTime": "2026-10-18T09:00:00.000Z",
+      "endTime": "2026-10-18T13:00:00.000Z",
+      "actualCheckInTime": "2026-10-18T09:02:00.000Z",
+      "actualCheckOutTime": "2026-10-18T12:55:00.000Z",
+      "grossAmount": 21.6,
+      "platformFee": 2.59,
+      "hostNetEarnings": 19.01,
+      "taxAmount": 1.73,
+      "status": "completed",
+      "qrCodeToken": "PKZ_QR_COMPLETED_1",
+      "gateAccessCode": "4921#",
+      "createdAt": "2026-10-17T18:00:00.000Z",
+      "updatedAt": "2026-10-18T12:55:00.000Z"
+    },
+    {
+      "id": "bk_174c885b",
+      "bookingReference": "PKZ-279652",
+      "facilityId": "fac_metro_downtown",
+      "bayId": "bay_m5",
+      "customerId": "usr_cust1",
+      "customerName": "Alex Driver",
+      "customerPhone": "+1 (206) 555-0188",
+      "customerEmail": "alex.driver@example.com",
+      "licensePlate": "WA-99TEST",
+      "vehicleMakeModel": "BMW i4 (Silver)",
+      "startTime": "2026-10-20T14:00:00.000Z",
+      "endTime": "2026-10-20T18:00:00.000Z",
+      "grossAmount": 18,
+      "platformFee": 2.16,
+      "hostNetEarnings": 15.84,
+      "taxAmount": 1.44,
+      "status": "confirmed",
+      "qrCodeToken": "PKZ_QR_dcf22e129ea4cd2b8e95aba57d794cc2",
+      "gateAccessCode": "6262#",
+      "idempotencyKey": "test_idemp_key_001",
+      "createdAt": "2026-10-20T12:31:02.029Z",
+      "updatedAt": "2026-10-20T12:31:02.029Z"
+    }
+  ],
+  "ledger": [
+    {
+      "id": "tx_seed_1",
+      "idempotencyKey": "idemp_tx_1",
+      "hostId": "usr_host1",
+      "facilityId": "fac_metro_downtown",
+      "bookingId": "bk_completed_1",
+      "type": "booking_income",
+      "amount": 19.01,
+      "balanceAfter": 19.01,
+      "currency": "USD",
+      "description": "Net earnings for booking PKZ-492019 (L1-A02)",
+      "status": "completed",
+      "createdAt": "2026-10-17T18:00:00.000Z"
+    },
+    {
+      "id": "tx_seed_2",
+      "idempotencyKey": "idemp_tx_2",
+      "hostId": "usr_host1",
+      "facilityId": "fac_metro_downtown",
+      "bookingId": "bk_upcoming_1",
+      "type": "booking_income",
+      "amount": 15.84,
+      "balanceAfter": 34.85,
+      "currency": "USD",
+      "description": "Net earnings for booking PKZ-619283 (L1-A01)",
+      "status": "completed",
+      "createdAt": "2026-10-20T02:00:00.000Z"
+    },
+    {
+      "id": "tx_seed_3",
+      "idempotencyKey": "idemp_tx_3",
+      "hostId": "usr_host1",
+      "facilityId": "fac_metro_downtown",
+      "bookingId": "bk_active_1",
+      "type": "booking_income",
+      "amount": 26.14,
+      "balanceAfter": 60.99,
+      "currency": "USD",
+      "description": "Net earnings for booking PKZ-784910 (L1-A04)",
+      "status": "completed",
+      "createdAt": "2026-10-20T03:30:00.000Z"
+    },
+    {
+      "id": "tx_16f749de",
+      "idempotencyKey": "ledg_test_idemp_key_001",
+      "hostId": "usr_host1",
+      "facilityId": "fac_metro_downtown",
+      "bookingId": "bk_174c885b",
+      "type": "booking_income",
+      "amount": 15.84,
+      "balanceAfter": 76.83,
+      "currency": "USD",
+      "description": "Net earnings for booking PKZ-279652 (L2-B01)",
+      "status": "completed",
+      "createdAt": "2026-10-20T12:31:02.029Z"
+    },
+    {
+      "id": "tx_9c876d87",
+      "idempotencyKey": "payout_tx_po_b5010a8a",
+      "hostId": "usr_host1",
+      "type": "host_payout",
+      "amount": -25,
+      "balanceAfter": 51.83,
+      "currency": "USD",
+      "description": "Payout to Silicon Valley Bank (****8492) (PO-96591956)",
+      "status": "completed",
+      "createdAt": "2026-10-20T12:31:13.280Z"
+    }
+  ],
+  "payouts": [
+    {
+      "id": "po_seed_1",
+      "hostId": "usr_host1",
+      "amount": 450,
+      "method": "ach_bank_transfer",
+      "destinationAccount": "Chase Bank (****8492)",
+      "status": "paid",
+      "referenceNumber": "PO-84920192",
+      "requestedAt": "2026-10-10T14:20:00.000Z",
+      "completedAt": "2026-10-12T09:00:00.000Z",
+      "notes": "ACH Regular Transfer cleared"
+    },
+    {
+      "id": "po_b5010a8a",
+      "hostId": "usr_host1",
+      "amount": 25,
+      "method": "stripe_instant",
+      "destinationAccount": "Silicon Valley Bank (****8492)",
+      "status": "paid",
+      "referenceNumber": "PO-96591956",
+      "requestedAt": "2026-10-20T12:31:13.280Z",
+      "completedAt": "2026-10-20T12:31:13.280Z",
+      "notes": "Transferred via Stripe Instant Payouts"
+    }
+  ],
+  "reviews": [
+    {
+      "id": "rev_1",
+      "facilityId": "fac_metro_downtown",
+      "customerId": "usr_cust1",
+      "customerName": "Alex Driver",
+      "bookingId": "bk_completed_1",
+      "rating": 5,
+      "comment": "Super easy access! The boom gate opened instantly when I scanned the QR code. Clean, bright, and the 22kW EV charger gave me a full charge while I was in meetings.",
+      "createdAt": "2026-10-18T14:30:00.000Z",
+      "hostResponse": {
+        "text": "Thank you Alex! Glad the EV charger was convenient. We look forward to hosting you again at Downtown Metro Tech Center.",
+        "respondedAt": "2026-10-18T16:00:00.000Z"
+      }
+    }
+  ],
+  "messages": [
+    {
+      "id": "thread_1",
+      "facilityId": "fac_metro_downtown",
+      "hostId": "usr_host1",
+      "customerId": "usr_cust1",
+      "bookingId": "bk_active_1",
+      "subject": "Inquiry regarding oversized clearance",
+      "lastMessageAt": "2026-10-20T03:45:00.000Z",
+      "messages": [
+        {
+          "id": "m1",
+          "senderId": "usr_cust1",
+          "senderName": "Alex Driver",
+          "senderRole": "customer",
+          "text": "Hi Marcus, just wanted to verify if the Level 1 clearance is sufficient for a Model Y with a roof rack?",
+          "timestamp": "2026-10-20T03:40:00.000Z"
+        },
+        {
+          "id": "m2",
+          "senderId": "usr_host1",
+          "senderName": "Marcus Vance",
+          "senderRole": "host",
+          "text": "Hello Alex! Yes, Level 1 has a generous 2.2 meter (7.2 ft) clearance, so your Model Y with roof rack fits with ample headroom. Have a safe drive!",
+          "timestamp": "2026-10-20T03:45:00.000Z"
+        }
+      ]
+    }
+  ],
+  "notifications": [
+    {
+      "id": "notif_0ed3c7ea",
+      "userId": "usr_cust1",
+      "title": "Booking Confirmed!",
+      "message": "Your reservation PKZ-279652 is confirmed. Gate code: 6262#",
+      "type": "booking",
+      "isRead": false,
+      "createdAt": "2026-10-20T12:31:02.029Z",
+      "link": "/customer/bookings"
+    },
+    {
+      "id": "notif_c0f56d73",
+      "userId": "usr_host1",
+      "title": "New Booking Received",
+      "message": "Alex Driver booked L2-B01 at Downtown Metro Tech Center Garage for $18.00.",
+      "type": "booking",
+      "isRead": false,
+      "createdAt": "2026-10-20T12:31:02.029Z",
+      "link": "/host/bookings"
+    },
+    {
+      "id": "notif_1",
+      "userId": "usr_host1",
+      "title": "New Booking Active",
+      "message": "Alex Driver checked in to Bay L1-A04 at Downtown Metro Tech Center Garage.",
+      "type": "booking",
+      "isRead": false,
+      "createdAt": "2026-10-20T04:12:00.000Z",
+      "link": "/host/bookings"
+    },
+    {
+      "id": "notif_2",
+      "userId": "usr_host1",
+      "title": "Earnings Credited",
+      "message": "$26.14 was credited to your available balance for booking PKZ-784910.",
+      "type": "payout",
+      "isRead": true,
+      "createdAt": "2026-10-20T03:30:00.000Z",
+      "link": "/host/earnings"
+    }
+  ],
+  "disputes": [],
+  "providers": [
+    {
+      "id": "prov_access_barrier",
+      "category": "access_control",
+      "name": "ParkBarrier Cloud IoT API",
+      "provider": "ParkBarrier IoT Cloud",
+      "isEnabled": true,
+      "settings": {
+        "endpointUrl": "https://api.parkbarrier-iot.com/v2/gateways",
+        "apiKey": "pb_live_984b2*********91a",
+        "deviceControllerId": "CTRL-SEA-001",
+        "autoOpenOnLprMatch": "true"
+      },
+      "lastTestedAt": "2026-10-20T12:30:44.684Z",
+      "testStatus": "healthy",
+      "testMessage": "Connected successfully (HTTP 200 OK, latency: 66ms)"
+    },
+    {
+      "id": "prov_payment_stripe",
+      "category": "payment_gateway",
+      "name": "Stripe Payment Processing",
+      "provider": "Stripe Inc.",
+      "isEnabled": true,
+      "settings": {
+        "publishableKey": "pk_live_51M08f**********kL9",
+        "secretKey": "sk_live_51M08f**********Q4x",
+        "webhookSigningSecret": "whsec_981a**********3f0",
+        "statementDescriptor": "PARKEAZY*PARKING"
+      },
+      "lastTestedAt": "2026-10-20T04:00:00.000Z",
+      "testStatus": "healthy",
+      "testMessage": "Connected successfully (API v2024-12, latency: 62ms)"
+    },
+    {
+      "id": "prov_payout_stripe_connect",
+      "category": "payout_service",
+      "name": "Stripe Connect Payouts & Transfers",
+      "provider": "Stripe Connect",
+      "isEnabled": true,
+      "settings": {
+        "clientId": "ca_984102941092",
+        "instantPayoutsEnabled": "true",
+        "payoutSchedule": "daily_automatic",
+        "currency": "USD"
+      },
+      "lastTestedAt": "2026-10-20T04:00:00.000Z",
+      "testStatus": "healthy",
+      "testMessage": "Connected successfully (Instant transfer capability verified)"
+    },
+    {
+      "id": "prov_maps_mapbox",
+      "category": "mapping",
+      "name": "Mapbox Navigation & Geocoding",
+      "provider": "Mapbox Inc.",
+      "isEnabled": true,
+      "settings": {
+        "accessToken": "pk.eyJ1IjoicGFya2VhenkiLCJhIjoia3Vs********fQ.91823",
+        "defaultStyle": "mapbox://styles/mapbox/streets-v12",
+        "geocodingForward": "enabled"
+      },
+      "lastTestedAt": "2026-10-20T04:00:00.000Z",
+      "testStatus": "healthy",
+      "testMessage": "Map tiles & Geocoder service healthy (latency: 35ms)"
+    },
+    {
+      "id": "prov_comms_twilio",
+      "category": "communications",
+      "name": "Twilio SMS & SendGrid Notification Engine",
+      "provider": "Twilio & SendGrid",
+      "isEnabled": true,
+      "settings": {
+        "twilioAccountSid": "AC98410284910284",
+        "twilioAuthToken": "tw_auth_910**********0a8",
+        "fromPhoneNumber": "+18885550199",
+        "sendGridApiKey": "SG.984102.**********"
+      },
+      "lastTestedAt": "2026-10-20T04:00:00.000Z",
+      "testStatus": "healthy",
+      "testMessage": "SMS Gateway and SMTP Dispatch operational"
+    },
+    {
+      "id": "prov_storage_s3",
+      "category": "cloud_storage",
+      "name": "Amazon S3 Facility Asset Storage",
+      "provider": "AWS S3 Cloud Storage",
+      "isEnabled": true,
+      "settings": {
+        "bucketName": "parkeazy-facility-media-prod",
+        "awsRegion": "us-west-2",
+        "accessKeyId": "AKIA984**********QZ",
+        "secretAccessKey": "aws_sec_910**********81p"
+      },
+      "lastTestedAt": "2026-10-20T04:00:00.000Z",
+      "testStatus": "healthy",
+      "testMessage": "Bucket read/write access verified (latency: 55ms)"
+    }
+  ],
+  "auditLogs": [
+    {
+      "id": "aud_1ffc115b-f",
+      "timestamp": "2026-10-20T12:31:13.280Z",
+      "actorId": "usr_host1",
+      "actorName": "Marcus Vance",
+      "actorRole": "host",
+      "action": "PAYOUT_REQUESTED",
+      "entityType": "payout",
+      "entityId": "po_b5010a8a",
+      "details": "Requested payout $25.00 via stripe_instant"
+    },
+    {
+      "id": "aud_baf7ae5b-c",
+      "timestamp": "2026-10-20T12:31:02.029Z",
+      "actorId": "usr_cust1",
+      "actorName": "Alex Driver",
+      "actorRole": "customer",
+      "action": "BOOKING_CREATED",
+      "entityType": "booking",
+      "entityId": "bk_174c885b",
+      "details": "Created booking PKZ-279652 for 18 USD"
+    },
+    {
+      "id": "aud_cdd66b79-2",
+      "timestamp": "2026-10-20T12:30:44.685Z",
+      "actorId": "usr_admin1",
+      "actorName": "Sarah Connor (Admin)",
+      "actorRole": "admin",
+      "action": "PROVIDER_TEST_PING",
+      "entityType": "provider",
+      "entityId": "prov_access_barrier",
+      "details": "Test ping succeeded: 66ms"
+    },
+    {
+      "id": "aud_seed_1",
+      "timestamp": "2026-10-20T04:12:00.000Z",
+      "actorId": "usr_cust1",
+      "actorName": "Alex Driver",
+      "actorRole": "customer",
+      "action": "GATE_CHECK_IN",
+      "entityType": "booking",
+      "entityId": "bk_active_1",
+      "details": "Driver checked in via QR scan at Level 1 entrance"
+    },
+    {
+      "id": "aud_seed_2",
+      "timestamp": "2026-10-20T03:30:00.000Z",
+      "actorId": "usr_cust1",
+      "actorName": "Alex Driver",
+      "actorRole": "customer",
+      "action": "BOOKING_CREATED",
+      "entityType": "booking",
+      "entityId": "bk_active_1",
+      "details": "Booking PKZ-784910 confirmed ($29.70 gross)"
+    },
+    {
+      "id": "aud_seed_3",
+      "timestamp": "2026-10-18T10:00:00.000Z",
+      "actorId": "usr_admin1",
+      "actorName": "Sarah Connor (Admin)",
+      "actorRole": "admin",
+      "action": "FACILITY_APPROVED",
+      "entityType": "facility",
+      "entityId": "fac_metro_downtown",
+      "details": "Approved facility listing after compliance check"
+    }
+  ]
+}

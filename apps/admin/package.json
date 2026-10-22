@@ -1,0 +1,22 @@
+{
+  "name": "@parkeazy/admin",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ParkEazy Platform Administration Panel for superadmins and platform operators",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port=3003",
+    "build": "vite build",
+    "preview": "vite preview --port=3003"
+  },
+  "dependencies": {
+    "@parkeazy/branding": "^0.1.0",
+    "@parkeazy/config": "^0.1.0",
+    "@parkeazy/shared-types": "^0.1.0",
+    "@parkeazy/shared-ui": "^0.1.0",
+    "@parkeazy/api-client": "^0.1.0",
+    "lucide-react": "^0.546.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  }
+}

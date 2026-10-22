@@ -1,0 +1,28 @@
+{
+  "name": "@parkeazy/host",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ParkEazy Host Operations Portal for facility managers and parking space owners",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port=3002",
+    "build": "vite build",
+    "preview": "vite preview --port=3002"
+  },
+  "dependencies": {
+    "@parkeazy/branding": "^0.1.0",
+    "@parkeazy/config": "^0.1.0",
+    "@parkeazy/shared-types": "^0.1.0",
+    "@parkeazy/shared-ui": "^0.1.0",
+    "@parkeazy/api-client": "^0.1.0",
+    "lucide-react": "^0.546.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "vite": "^8.3.0"
+  }
+}

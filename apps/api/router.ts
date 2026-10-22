@@ -13,6 +13,8 @@ import { authService } from './services/auth.service';
 import { PaymentAdapterFactory } from './services/payment-adapter';
 import { NotificationAdapterFactory } from './services/notification-adapter';
 import { vehicleService } from './services/vehicle.service';
+import { pricingService } from './services/pricing.service';
+import { availabilityService } from './services/availability.service';
 import { authGuard, requireResourceOwnership } from './middleware/auth-guard';
 import { openApiSpec } from './docs/openapi';
 import { UserRole, ApiSuccessResponse, BookingStatus } from '../../packages/contracts';
@@ -186,6 +188,13 @@ apiV1Router.post(
   ]),
   (req: Request, res: Response, next: NextFunction) => {
     try {
+      const requestedRoles = req.body.roles || (req.body.role ? [req.body.role] : []);
+      if (
+        requestedRoles.some((r: any) => String(r).toUpperCase().includes('ADMIN')) ||
+        String(req.body.requestedPortal).toLowerCase().includes('admin')
+      ) {
+        throw new AppError('Administrative accounts cannot be registered publicly.', 403, 'FORBIDDEN');
+      }
       const result = authService.registerUser(req.body);
       sendSuccess(res, result, req.correlationId, 201);
     } catch (err) {
@@ -1296,6 +1305,1088 @@ apiV1Router.post(
   }
 );
 
+// 5b.17 Bulk Spaces Creation Endpoint
+apiV1Router.post(
+  '/hosts/:hostId/facilities/:facilityId/spaces/bulk',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'facilityId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'bays', required: true, type: 'array' },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const isAdmin = req.user!.roles.includes(UserRole.ADMIN) || req.user!.roles.includes(UserRole.SUPER_ADMIN);
+      const created = inventoryService.bulkCreateBays(req.params.facilityId, req.user!.id, req.body.bays, isAdmin);
+      sendSuccess(res, created, req.correlationId, 201);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 5b.18 Host Extension Requests (List & Decision)
+apiV1Router.get(
+  '/hosts/:hostId/extension-requests',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const queryRes = await dbManager.query(
+        `SELECT r.*, b.bay_id, b.location_id, b.start_time_utc, b.end_time_utc, 
+                u.first_name as customer_first_name, u.last_name as customer_last_name, u.email as customer_email,
+                loc.name as facility_name, bay.bay_number
+         FROM booking_extension_requests r
+         JOIN bookings b ON b.id = r.booking_id
+         JOIN users u ON u.id = r.customer_id
+         JOIN parking_locations loc ON loc.id = r.facility_id
+         JOIN parking_bays bay ON bay.id = b.bay_id
+         WHERE loc.host_id = $1
+         ORDER BY r.requested_at_utc DESC`,
+        [req.params.hostId]
+      );
+      sendSuccess(res, queryRes.rows || [], req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.post(
+  '/hosts/:hostId/extension-requests/:id/decision',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'decision', required: true, type: 'string' },
+  ]),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { decision, notes } = req.body;
+      const decisionUpper = String(decision).toUpperCase();
+      if (decisionUpper !== 'APPROVE' && decisionUpper !== 'REJECT') {
+        throw new AppError('Decision must be either APPROVE or REJECT', 400, 'INVALID_DECISION');
+      }
+
+      const reqRes = await dbManager.query(
+        `SELECT r.*, loc.host_id, b.end_time_utc, b.bay_id
+         FROM booking_extension_requests r
+         JOIN parking_locations loc ON loc.id = r.facility_id
+         JOIN bookings b ON b.id = r.booking_id
+         WHERE r.id = $1`,
+        [req.params.id]
+      );
+
+      if (!reqRes.rows.length) {
+        throw new AppError('Extension request not found', 404, 'NOT_FOUND');
+      }
+
+      const requestRecord = reqRes.rows[0];
+      const isAdmin = req.user!.roles.includes(UserRole.ADMIN) || req.user!.roles.includes(UserRole.SUPER_ADMIN);
+      if (!isAdmin && requestRecord.host_id !== req.params.hostId) {
+        throw new AppError('You do not own this facility', 403, 'FORBIDDEN');
+      }
+
+      if (decisionUpper === 'APPROVE') {
+        // Calculate new end time
+        const currentEnd = new Date(requestRecord.end_time_utc);
+        const hoursToAdd = Number(requestRecord.requested_additional_hours) || 1;
+        const newEnd = new Date(currentEnd.getTime() + hoursToAdd * 3600 * 1000);
+
+        // Check for conflicts with existing confirmed bookings on same bay
+        const conflictRes = await dbManager.query(
+          `SELECT id FROM bookings
+           WHERE bay_id = $1 AND id != $2 AND status = 'CONFIRMED'
+             AND start_time_utc < $3 AND end_time_utc > $4`,
+          [requestRecord.bay_id, requestRecord.booking_id, newEnd.toISOString(), currentEnd.toISOString()]
+        );
+
+        if (conflictRes.rows.length > 0) {
+          throw new AppError('Cannot approve extension: conflicting confirmed booking exists on this bay.', 409, 'EXTENSION_CONFLICT');
+        }
+
+        // Update booking end time
+        await dbManager.query(
+          `UPDATE bookings SET end_time_utc = $1 WHERE id = $2`,
+          [newEnd.toISOString(), requestRecord.booking_id]
+        );
+
+        // Update request status
+        await dbManager.query(
+          `UPDATE booking_extension_requests
+           SET status = 'APPROVED', decision_at_utc = NOW(), decision_notes = $1
+           WHERE id = $2`,
+          [notes || 'Approved by host', req.params.id]
+        );
+      } else {
+        await dbManager.query(
+          `UPDATE booking_extension_requests
+           SET status = 'REJECTED', decision_at_utc = NOW(), decision_notes = $1
+           WHERE id = $2`,
+          [notes || 'Rejected by host', req.params.id]
+        );
+      }
+
+      sendSuccess(res, { success: true, decision: decisionUpper }, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// Customer Extension Request
+apiV1Router.post(
+  '/bookings/:id/extension-request',
+  authGuard([UserRole.CUSTOMER, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  validate([
+    { field: 'additionalHours', required: true, type: 'number' },
+  ]),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const bRes = await dbManager.query('SELECT * FROM bookings WHERE id = $1', [req.params.id]);
+      if (!bRes.rows.length) {
+        throw new AppError('Booking not found', 404, 'NOT_FOUND');
+      }
+      const booking = bRes.rows[0];
+      if (booking.user_id !== req.user!.id && !req.user!.roles.includes(UserRole.ADMIN)) {
+        throw new AppError('Forbidden: not your booking', 403, 'FORBIDDEN');
+      }
+
+      const id = `ext-${crypto.randomUUID().slice(0, 8)}`;
+      const hours = Number(req.body.additionalHours) || 1;
+      const priceCents = hours * 500;
+      const feeCents = Math.round(priceCents * 0.15);
+
+      await dbManager.query(
+        `INSERT INTO booking_extension_requests (id, booking_id, facility_id, host_id, customer_id, requested_additional_hours, additional_price_cents, platform_fee_cents, status, requested_at_utc)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'PENDING', NOW())`,
+        [id, booking.id, booking.location_id, booking.host_id, req.user!.id, hours, priceCents, feeCents]
+      );
+
+      // Create notification for host
+      await dbManager.query(
+        `INSERT INTO host_notifications (id, host_id, notification_type, title, message, link, created_at_utc)
+         VALUES ($1, $2, 'EXTENSION_REQUEST', 'New Extension Request', $3, '/host/extensions', NOW())`,
+        [`notif-${crypto.randomUUID().slice(0, 8)}`, booking.host_id, `Driver requested +${hours}h extension for booking ${booking.id}.`]
+      ).catch(() => {});
+
+      sendSuccess(res, { id, status: 'PENDING', additionalHours: hours, additionalPriceCents: priceCents }, req.correlationId, 201);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 5b.19 Host Payout Methods & Settlement
+apiV1Router.get(
+  '/hosts/:hostId/payout-methods',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const methods = await dbManager.query(
+        `SELECT id, host_id, payout_type, beneficiary_name, bank_name, routing_number, account_number_masked, is_default, status, created_at_utc
+         FROM host_payout_methods
+         WHERE host_id = $1
+         ORDER BY is_default DESC, created_at_utc DESC`,
+        [req.params.hostId]
+      );
+      sendSuccess(res, methods.rows, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.post(
+  '/hosts/:hostId/payout-methods',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'beneficiaryName', required: true, type: 'string', minLength: 2 },
+    { field: 'bankName', required: true, type: 'string', minLength: 2 },
+    { field: 'accountNumber', required: true, type: 'string', minLength: 4 },
+  ]),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { beneficiaryName, bankName, routingNumber, accountNumber } = req.body;
+      const masked = '•••• ' + String(accountNumber).slice(-4);
+      const id = `pm-${crypto.randomUUID().slice(0, 8)}`;
+
+      // Reset existing defaults if this is default
+      await dbManager.query('UPDATE host_payout_methods SET is_default = FALSE WHERE host_id = $1', [req.params.hostId]);
+
+      await dbManager.query(
+        `INSERT INTO host_payout_methods (id, host_id, payout_type, beneficiary_name, bank_name, routing_number, account_number_masked, is_default, status, created_at_utc, updated_at_utc)
+         VALUES ($1, $2, 'BANK_TRANSFER', $3, $4, $5, $6, TRUE, 'ACTIVE', NOW(), NOW())`,
+        [id, req.params.hostId, beneficiaryName, bankName, routingNumber || '021000021', masked]
+      );
+
+      sendSuccess(res, { id, beneficiaryName, bankName, accountNumberMasked: masked, status: 'ACTIVE' }, req.correlationId, 201);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.get(
+  '/hosts/:hostId/payouts',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const earnings = ledgerService.getHostEarnings(req.params.hostId);
+      const records = await dbManager.query(
+        `SELECT p.*, m.bank_name, m.account_number_masked
+         FROM host_payout_records p
+         LEFT JOIN host_payout_methods m ON m.id = p.payout_method_id
+         WHERE p.host_id = $1
+         ORDER BY p.requested_at_utc DESC`,
+        [req.params.hostId]
+      );
+      sendSuccess(res, { earnings, records: records.rows || [] }, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.post(
+  '/hosts/:hostId/payouts',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'amountCents', required: true, type: 'number' },
+  ]),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const amountCents = Number(req.body.amountCents);
+      if (amountCents <= 0) {
+        throw new AppError('Payout amount must be greater than zero.', 400, 'INVALID_AMOUNT');
+      }
+
+      const earnings = ledgerService.getHostEarnings(req.params.hostId);
+      if (amountCents > earnings.availableForPayoutCents) {
+        throw new AppError(
+          `Requested payout amount ($${(amountCents / 100).toFixed(2)}) exceeds available balance ($${(earnings.availableForPayoutCents / 100).toFixed(2)}).`,
+          400,
+          'INSUFFICIENT_FUNDS'
+        );
+      }
+
+      const methods = await dbManager.query('SELECT id FROM host_payout_methods WHERE host_id = $1 AND status = \'ACTIVE\' LIMIT 1', [req.params.hostId]);
+      const payoutMethodId = methods.rows[0]?.id || null;
+
+      const payoutId = `pay-${crypto.randomUUID().slice(0, 8)}`;
+      const utr = `UTR-ACH-${Date.now().toString().slice(-8)}`;
+
+      await dbManager.query(
+        `INSERT INTO host_payout_records (id, host_id, amount_cents, currency, status, payout_method_id, reference_or_utr, requested_at_utc)
+         VALUES ($1, $2, $3, 'USD', 'PROCESSING', $4, $5, NOW())`,
+        [payoutId, req.params.hostId, amountCents, payoutMethodId, utr]
+      );
+
+      sendSuccess(res, {
+        id: payoutId,
+        amountCents,
+        currency: 'USD',
+        status: 'PROCESSING',
+        referenceOrUtr: utr,
+        message: 'Payout disbursement request received and queued for processing.',
+      }, req.correlationId, 201);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 5b.20 Customer Reviews & Host Replies
+apiV1Router.get(
+  '/hosts/:hostId/reviews',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const reviews = await dbManager.query(
+        `SELECT r.*, u.first_name as customer_first_name, u.last_name as customer_last_name, loc.name as facility_name
+         FROM customer_reviews r
+         JOIN parking_locations loc ON loc.id = r.facility_id
+         JOIN users u ON u.id = r.customer_id
+         WHERE loc.host_id = $1
+         ORDER BY r.created_at_utc DESC`,
+        [req.params.hostId]
+      );
+      sendSuccess(res, reviews.rows || [], req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.post(
+  '/hosts/:hostId/reviews/:id/reply',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'reply', required: true, type: 'string', minLength: 2 },
+  ]),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      await dbManager.query(
+        `UPDATE customer_reviews
+         SET host_reply = $1, updated_at_utc = NOW()
+         WHERE id = $2`,
+        [req.body.reply, req.params.id]
+      );
+      sendSuccess(res, { success: true }, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 5b.21 Notifications Subsystem
+apiV1Router.get(
+  '/hosts/:hostId/notifications',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const notifs = await dbManager.query(
+        `SELECT * FROM host_notifications WHERE host_id = $1 ORDER BY created_at_utc DESC LIMIT 50`,
+        [req.params.hostId]
+      );
+      sendSuccess(res, notifs.rows || [], req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.post(
+  '/hosts/:hostId/notifications/:id/read',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      await dbManager.query('UPDATE host_notifications SET is_read = TRUE WHERE id = $1 AND host_id = $2', [req.params.id, req.params.hostId]);
+      sendSuccess(res, { success: true }, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.post(
+  '/hosts/:hostId/notifications/read-all',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      await dbManager.query('UPDATE host_notifications SET is_read = TRUE WHERE host_id = $1', [req.params.hostId]);
+      sendSuccess(res, { success: true }, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 5b.22 Disputes & Support Inquiries
+apiV1Router.get(
+  '/hosts/:hostId/disputes',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const disputes = await dbManager.query(
+        `SELECT d.*, loc.name as facility_name
+         FROM support_disputes d
+         LEFT JOIN parking_locations loc ON loc.id = d.facility_id
+         WHERE loc.host_id = $1 OR d.raised_by_user_id = $1
+         ORDER BY d.created_at_utc DESC`,
+        [req.params.hostId]
+      );
+      sendSuccess(res, disputes.rows || [], req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.post(
+  '/hosts/:hostId/disputes',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'category', required: true, type: 'string' },
+    { field: 'description', required: true, type: 'string', minLength: 5 },
+  ]),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { category, description, bookingId, facilityId } = req.body;
+      const id = `disp-${crypto.randomUUID().slice(0, 8)}`;
+      await dbManager.query(
+        `INSERT INTO support_disputes (id, booking_id, facility_id, raised_by_user_id, category, description, status, created_at_utc)
+         VALUES ($1, $2, $3, $4, $5, $6, 'OPEN', NOW())`,
+        [id, bookingId || null, facilityId || null, req.params.hostId, category, description]
+      );
+      sendSuccess(res, { id, status: 'OPEN', message: 'Dispute registered and queued for mediation.' }, req.correlationId, 201);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ----------------------------------------------------------------------
+// 5c. HP-05 Pricing & Policies Endpoints
+// ----------------------------------------------------------------------
+
+// 5c.1 Pricing Overview (pe_hw_03_01)
+apiV1Router.get(
+  '/hosts/:hostId/pricing/overview',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const overview = pricingService.getPricingOverview(req.params.hostId);
+      sendSuccess(res, overview, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 5c.2 List Rate Plans (pe_hw_03_02)
+apiV1Router.get(
+  '/hosts/:hostId/pricing/rates',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const facilityId = req.query.facilityId as string | undefined;
+      const rates = pricingService.getRatePlansForHost(req.params.hostId, facilityId);
+      sendSuccess(res, rates, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 5c.3 Create Rate Plan
+apiV1Router.post(
+  '/hosts/:hostId/pricing/rates',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'facilityId', required: true, type: 'string', minLength: 1 },
+    { field: 'name', required: true, type: 'string', minLength: 2 },
+    { field: 'hourlyRateCents', required: true, type: 'number', min: 0 },
+    { field: 'dailyRateCents', required: true, type: 'number', min: 0 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const created = pricingService.createRatePlan(
+        req.params.hostId,
+        req.body,
+        req.user!.id,
+        req.correlationId
+      );
+      sendSuccess(res, created, req.correlationId, 201);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 5c.4 Get Rate Plan By ID
+apiV1Router.get(
+  '/hosts/:hostId/pricing/rates/:rateId',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'rateId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const plan = pricingService.getRatePlanById(req.params.rateId);
+      if (plan.hostId !== req.params.hostId && !req.user!.roles.includes(UserRole.ADMIN)) {
+        throw new AppError('Access denied.', 403, 'FORBIDDEN');
+      }
+      sendSuccess(res, plan, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 5c.5 Update Rate Plan
+apiV1Router.put(
+  '/hosts/:hostId/pricing/rates/:rateId',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'rateId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const updated = pricingService.updateRatePlan(
+        req.params.hostId,
+        req.params.rateId,
+        req.body,
+        req.user!.id,
+        req.correlationId
+      );
+      sendSuccess(res, updated, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 5c.6 Deactivate / Delete Rate Plan
+apiV1Router.delete(
+  '/hosts/:hostId/pricing/rates/:rateId',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'rateId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const deactivated = pricingService.deactivateRatePlan(
+        req.params.hostId,
+        req.params.rateId,
+        req.user!.id,
+        req.correlationId
+      );
+      sendSuccess(res, deactivated, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 5c.7 Operating Hours (pe_hw_03_03)
+apiV1Router.get(
+  '/hosts/:hostId/pricing/schedule/:facilityId',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'facilityId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const hours = pricingService.getOperatingHours(req.params.facilityId);
+      sendSuccess(res, hours, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.put(
+  '/hosts/:hostId/pricing/schedule',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'facilityId', required: true, type: 'string', minLength: 1 },
+    { field: 'schedule', required: true, type: 'array' },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const updated = pricingService.updateOperatingHours(
+        req.params.hostId,
+        req.body,
+        req.user!.id,
+        req.correlationId
+      );
+      sendSuccess(res, updated, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 5c.8 Pricing Policies (pe_hw_03_05)
+apiV1Router.get(
+  '/hosts/:hostId/pricing/policies/:facilityId',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'facilityId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const policy = pricingService.getPolicyForFacility(req.params.facilityId);
+      sendSuccess(res, policy, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.put(
+  '/hosts/:hostId/pricing/policies',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'facilityId', required: true, type: 'string', minLength: 1 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const updated = pricingService.updatePolicy(
+        req.params.hostId,
+        req.body,
+        req.user!.id,
+        req.correlationId
+      );
+      sendSuccess(res, updated, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 5c.9 Facility Closures (pe_hw_03_04)
+apiV1Router.get(
+  '/hosts/:hostId/pricing/closures',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const facilityId = req.query.facilityId as string | undefined;
+      const closures = pricingService.getClosuresForHost(req.params.hostId, facilityId);
+      sendSuccess(res, closures, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.post(
+  '/hosts/:hostId/pricing/closures',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'facilityId', required: true, type: 'string', minLength: 1 },
+    { field: 'title', required: true, type: 'string', minLength: 2 },
+    { field: 'startTimeUtc', required: true, type: 'string' },
+    { field: 'endTimeUtc', required: true, type: 'string' },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const created = pricingService.createClosure(
+        req.params.hostId,
+        req.body,
+        req.user!.id,
+        req.correlationId
+      );
+      sendSuccess(res, created, req.correlationId, 201);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.delete(
+  '/hosts/:hostId/pricing/closures/:closureId',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'closureId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      pricingService.removeClosure(
+        req.params.hostId,
+        req.params.closureId,
+        req.user!.id,
+        req.correlationId
+      );
+      sendSuccess(res, { removed: true, closureId: req.params.closureId }, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 5c.10 Authoritative Price Estimate (pe_hw_03_06)
+apiV1Router.post(
+  '/hosts/:hostId/pricing/estimate',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.CUSTOMER]),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'facilityId', required: true, type: 'string', minLength: 1 },
+    { field: 'startTimeUtc', required: true, type: 'string' },
+    { field: 'endTimeUtc', required: true, type: 'string' },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const estimate = pricingService.calculateAuthoritativeEstimate(req.body);
+      sendSuccess(res, estimate, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 5c.11 Bulk Pricing Updates Preview & Apply (pe_hw_03_07)
+apiV1Router.post(
+  '/hosts/:hostId/pricing/bulk/preview',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'targetType', required: true, type: 'string' },
+    { field: 'rateAdjustment', required: true, type: 'object' },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const preview = pricingService.previewBulkUpdate(req.params.hostId, req.body);
+      sendSuccess(res, preview, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.post(
+  '/hosts/:hostId/pricing/bulk/apply',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'targetType', required: true, type: 'string' },
+    { field: 'rateAdjustment', required: true, type: 'object' },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const result = pricingService.applyBulkUpdate(
+        req.params.hostId,
+        req.body,
+        req.user!.id,
+        req.correlationId
+      );
+      sendSuccess(res, result, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 5c.12 Pricing Conflicts (pe_hw_03_08)
+apiV1Router.get(
+  '/hosts/:hostId/pricing/conflicts',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const conflicts = pricingService.getPricingConflicts(req.params.hostId);
+      sendSuccess(res, conflicts, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 5c.13 Pricing Audit History (pe_hw_03_09)
+apiV1Router.get(
+  '/hosts/:hostId/pricing/history',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const history = pricingService.getPricingHistory(req.params.hostId);
+      sendSuccess(res, history, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ----------------------------------------------------------------------
+// 5d. HP-06 Availability & Calendar Endpoints
+// ----------------------------------------------------------------------
+
+// 5d.1 Authoritative Space Availability Interval Query
+apiV1Router.get(
+  '/hosts/:hostId/availability',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.CUSTOMER]),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'facilityId', location: 'query', required: true, type: 'string' },
+    { field: 'startTimeUtc', location: 'query', required: true, type: 'string' },
+    { field: 'endTimeUtc', location: 'query', required: true, type: 'string' },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const facilityId = req.query.facilityId as string;
+      const startTimeUtc = req.query.startTimeUtc as string;
+      const endTimeUtc = req.query.endTimeUtc as string;
+      const spaceId = req.query.spaceId as string | undefined;
+
+      const summary = availabilityService.calculateSpaceAvailability(
+        facilityId,
+        startTimeUtc,
+        endTimeUtc,
+        spaceId
+      );
+      sendSuccess(res, summary, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 5d.2 Calendar Events Feed (pe_hw_04_01)
+apiV1Router.get(
+  '/hosts/:hostId/availability/calendar',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'facilityId', location: 'query', required: true, type: 'string' },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const facilityId = req.query.facilityId as string;
+      const startRangeUtc = (req.query.startRangeUtc as string) || new Date(Date.now() - 7 * 86400000).toISOString();
+      const endRangeUtc = (req.query.endRangeUtc as string) || new Date(Date.now() + 30 * 86400000).toISOString();
+      const spaceId = req.query.spaceId as string | undefined;
+
+      const events = availabilityService.getCalendarEvents(
+        req.params.hostId,
+        facilityId,
+        startRangeUtc,
+        endRangeUtc,
+        spaceId
+      );
+      sendSuccess(res, events, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 5d.3 Recurring Schedules (pe_hw_04_02)
+apiV1Router.get(
+  '/hosts/:hostId/availability/schedules/:facilityId',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'facilityId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const schedules = availabilityService.getRecurringSchedules(
+        req.params.hostId,
+        req.params.facilityId
+      );
+      sendSuccess(res, schedules, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.post(
+  '/hosts/:hostId/availability/schedules',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'facilityId', required: true, type: 'string', minLength: 1 },
+    { field: 'schedules', required: true, type: 'array' },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const updated = availabilityService.setRecurringSchedule(
+        req.params.hostId,
+        req.body.facilityId,
+        req.body.schedules
+      );
+      sendSuccess(res, updated, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 5d.4 Date Overrides (pe_hw_04_03)
+apiV1Router.get(
+  '/hosts/:hostId/availability/overrides/:facilityId',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'facilityId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const overrides = availabilityService.getDateOverrides(
+        req.params.hostId,
+        req.params.facilityId
+      );
+      sendSuccess(res, overrides, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.post(
+  '/hosts/:hostId/availability/overrides',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'facilityId', required: true, type: 'string', minLength: 1 },
+    { field: 'date', required: true, type: 'string' },
+    { field: 'reason', required: true, type: 'string', minLength: 2 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const created = availabilityService.createDateOverride(
+        req.params.hostId,
+        req.body
+      );
+      sendSuccess(res, created, req.correlationId, 201);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.delete(
+  '/hosts/:hostId/availability/overrides/:overrideId',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'overrideId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      availabilityService.removeDateOverride(req.params.hostId, req.params.overrideId);
+      sendSuccess(res, { removed: true, overrideId: req.params.overrideId }, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 5d.5 Maintenance Blocks (pe_hw_04_04)
+apiV1Router.get(
+  '/hosts/:hostId/availability/blocks',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const facilityId = req.query.facilityId as string | undefined;
+      const blocks = availabilityService.getMaintenanceBlocks(req.params.hostId, facilityId);
+      sendSuccess(res, blocks, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.post(
+  '/hosts/:hostId/availability/blocks',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'facilityId', required: true, type: 'string', minLength: 1 },
+    { field: 'spaceId', required: true, type: 'string', minLength: 1 },
+    { field: 'title', required: true, type: 'string', minLength: 2 },
+    { field: 'startTimeUtc', required: true, type: 'string' },
+    { field: 'endTimeUtc', required: true, type: 'string' },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const created = availabilityService.createMaintenanceBlock(
+        req.params.hostId,
+        req.body
+      );
+      sendSuccess(res, created, req.correlationId, 201);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.delete(
+  '/hosts/:hostId/availability/blocks/:blockId',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'blockId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      availabilityService.removeMaintenanceBlock(req.params.hostId, req.params.blockId);
+      sendSuccess(res, { removed: true, blockId: req.params.blockId }, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 5d.6 Validate Availability Change (pe_hw_04_05)
+apiV1Router.post(
+  '/hosts/:hostId/availability/validate',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'facilityId', required: true, type: 'string', minLength: 1 },
+    { field: 'startTimeUtc', required: true, type: 'string' },
+    { field: 'endTimeUtc', required: true, type: 'string' },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const validation = availabilityService.validateAvailabilityChange(
+        req.params.hostId,
+        req.body
+      );
+      sendSuccess(res, validation, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
 // ----------------------------------------------------------------------
 // 6. Payment & Notification Adapter Endpoints (Workstream 2.6)
 // ----------------------------------------------------------------------
@@ -1448,11 +2539,55 @@ apiV1Router.get(
 );
 
 apiV1Router.get(
+  '/admin/integrations/audit-history',
+  authGuard([UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  (req: Request, res: Response) => {
+    const history = integrationsService.getAuditHistory();
+    sendSuccess(res, history, req.correlationId);
+  }
+);
+
+apiV1Router.get(
   '/admin/integrations/active-gateway',
   authGuard([UserRole.ADMIN, UserRole.SUPER_ADMIN]),
   (req: Request, res: Response) => {
     const active = integrationsService.getActiveGatewayConfig();
     sendSuccess(res, active, req.correlationId);
+  }
+);
+
+apiV1Router.get(
+  '/admin/integrations/:id',
+  authGuard([UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  validate([
+    { field: 'id', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const config = integrationsService.getConfigById(req.params.id);
+      if (!config) {
+        throw new AppError(`Integration with id '${req.params.id}' not found.`, 404, 'INTEGRATION_NOT_FOUND');
+      }
+      sendSuccess(res, config, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.get(
+  '/admin/integrations/:id/audit-history',
+  authGuard([UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  validate([
+    { field: 'id', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+  ]),
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const history = integrationsService.getAuditHistory(req.params.id);
+      sendSuccess(res, history, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
   }
 );
 

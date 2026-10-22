@@ -117,6 +117,19 @@ class BookingService {
     return this.bookings.filter((b) => b.hostId === hostId);
   }
 
+  public getActiveHolds(): BookingHold[] {
+    const now = Date.now();
+    const active: BookingHold[] = [];
+    for (const [holdId, hold] of this.holds.entries()) {
+      if (new Date(hold.holdExpiresAtUtc).getTime() > now) {
+        active.push(hold);
+      } else {
+        this.holds.delete(holdId);
+      }
+    }
+    return active;
+  }
+
   public cancelBooking(
     bookingId: string,
     actorId: string,

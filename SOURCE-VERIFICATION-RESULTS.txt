@@ -1,0 +1,33 @@
+ParkEazy Point 01 — User Website source verification
+Date: 2026-10-13
+Scope: Existing User Website only
+
+Passed in this workspace:
+- TypeScript/TSX syntax transpilation: 194 files checked, 0 syntax diagnostics.
+- node scripts/verify-design-inventory.mjs: 54 approved screen rows, 54/54 page components present.
+- Final source package contains 293 project files; node_modules, build output and Git metadata are excluded from delivery.
+
+Applied in this delivery:
+- Eight known TypeScript-error corrections based on the user's PowerShell diagnostics.
+- Login returnTo handling fixed for private-route redirects.
+- Browser geolocation wired into the existing search API payload and coordinates preserved across split/list/map views.
+- Map pins use returned facility coordinates for relative placement, the road background is labelled schematic, and loading/error/retry/empty states are visible.
+- Misleading support-ticket, attachment, availability-alert, refund-processing and discovery guarantee claims corrected where identified.
+- User Website CSS tokens and legacy color literals normalized to the approved emerald/mint/ink/slate/surface palette; Host/Admin/shared packages were not changed.
+- No backend/API contract or third-party integration changes.
+
+Blocked / not verified:
+- npm ci: an online install attempt did not complete within the workspace time limit; dependencies remain incomplete.
+- npm run typecheck: missing vite/client type definitions because dependencies are not installed. The eight known fixes were applied, but semantic typecheck was not successfully rerun here.
+- npm test: vitest executable not installed. The user's earlier PowerShell log reported 156/156 tests passing before this latest source pass; that result does not verify this final package.
+- npm run build:all: vite executable not installed. The user's earlier log did not confirm completion of the full API build.
+- Browser navigation, form, authentication, booking and API failure-state tests: not run in this workspace.
+- Exact screenshot comparison against all 54 approved designs: not completed. The approved design archive is present in Project Library but its raw contents are not accessible to this workspace; the source ZIP contains no screen.png/code.html references.
+
+Important:
+- Syntax transpilation is not a semantic TypeScript check.
+- Inventory verification checks component presence only.
+- This delivery does not claim visual fidelity or full runtime acceptance.
+- Point 01 remains NOT ACCEPTED until dependency installation, semantic typecheck, tests, full build, browser interaction checks and all 54 design comparisons pass.
+
+See POINT-01-IMPLEMENTATION-AUDIT-2026-10-13.md, POINT-01-DELIVERY-NOTES-2026-10-13.md and DESIGN-SCREEN-TRACEABILITY.csv.
