@@ -18,6 +18,16 @@ import {
   ReadinessCheckItem,
 } from '@parkeazy/shared-types';
 
+export interface FacilityPhotoItem {
+  id?: string;
+  url: string;
+  caption?: string;
+  category?: string;
+  isCover?: boolean;
+  isPrimary?: boolean;
+  uploadedAt?: string;
+}
+
 @Injectable()
 export class FacilitiesService {
   private readonly logger = new Logger(FacilitiesService.name);
@@ -481,14 +491,27 @@ export class FacilitiesService {
     facilityId: string,
     hostId: string,
     tenantId: string = 'default',
-    payload: BulkCreateSpacesPayload
+    payload: BulkCreateSpacesPayload | { spaces: CreateSpacePayload[] }
   ): Promise<ParkingSpace[]> {
     await this.getFacility(facilityId, hostId, tenantId);
     const created: ParkingSpace[] = [];
 
-    for (let i = payload.startNumber; i <= payload.endNumber; i++) {
+    if ('spaces' in payload && Array.isArray(payload.spaces)) {
+      for (const spaceData of payload.spaces) {
+        const space = await this.createSpace(facilityId, hostId, tenantId, spaceData);
+        created.push(space);
+      }
+      return created;
+    }
+
+    const bulkPayload = payload as any;
+    const startNum = bulkPayload.startNumber ?? 1;
+    const endNum = bulkPayload.endNumber ?? (bulkPayload.count ? startNum + bulkPayload.count - 1 : startNum);
+    const prefix = typeof bulkPayload.prefix === 'string' ? bulkPayload.prefix : 'BAY-';
+
+    for (let i = startNum; i <= endNum; i++) {
       const bayNum = i < 10 ? `0${i}` : `${i}`;
-      const bayIdentifier = `${payload.prefix}-${bayNum}`;
+      const bayIdentifier = prefix.endsWith('-') ? `${prefix}${bayNum}` : `${prefix}-${bayNum}`;
 
       // Skip duplicates if any
       const existing = this.databaseAvailable()
@@ -497,12 +520,12 @@ export class FacilitiesService {
       if (!existing) {
         const space = await this.createSpace(facilityId, hostId, tenantId, {
           bayIdentifier,
-          floorLevel: payload.floorLevel,
-          vehicleCategory: payload.vehicleCategory,
-          hourlyRateInr: payload.hourlyRateInr,
-          classification: payload.classification,
-          hasEvCharger: payload.hasEvCharger,
-          isDisabledAccessible: payload.isDisabledAccessible,
+          floorLevel: bulkPayload.floorLevel,
+          vehicleCategory: bulkPayload.vehicleCategory,
+          hourlyRateInr: bulkPayload.hourlyRateInr,
+          classification: bulkPayload.classification,
+          hasEvCharger: bulkPayload.hasEvCharger,
+          isDisabledAccessible: bulkPayload.isDisabledAccessible,
         });
         created.push(space);
       }
@@ -653,8 +676,340 @@ export class FacilitiesService {
       return this.mapFacilityRow(rows[0]);
     }
     if (!this.demoMode) throw new ServiceUnavailableException('Facility storage is unavailable; configure PostgreSQL or explicitly enable demo mode.');
-    facility.status = 'published'; facility.updatedAt = new Date().toISOString();
-    this.logger.log(`Facility ${facility.facilityCode} (${facilityId}) published to marketplace`); return facility;
+    const now = new Date().toISOString();
+    facility.status = 'published';
+    (facility as any).publishedAt = now;
+    facility.updatedAt = now;
+    this.logger.log(`Facility ${facility.facilityCode} (${facilityId}) published to marketplace`);
+    return facility;
+  }
+
+  public async unpublishFacility(
+    facilityId: string,
+    hostId: string,
+    tenantId: string = 'default'
+  ): Promise<ParkingFacility> {
+    const facility = await this.getFacility(facilityId, hostId, tenantId);
+    if (this.databaseAvailable()) {
+      const rows = await this.databaseService!.query<any>(
+        `UPDATE parking_facilities SET status='draft', updated_at=NOW() WHERE id=$1 AND tenant_id=$2 AND host_id=$3 RETURNING *, (SELECT COUNT(*)::int FROM parking_spaces s WHERE s.facility_id=parking_facilities.id) AS total_spaces, (SELECT COUNT(*)::int FROM parking_spaces s WHERE s.facility_id=parking_facilities.id AND s.is_active=TRUE) AS active_spaces`,
+        [facilityId, tenantId, hostId]
+      );
+      if (!rows[0]) throw new NotFoundException(`Facility with ID ${facilityId} not found`);
+      return this.mapFacilityRow(rows[0]);
+    }
+    if (!this.demoMode) throw new ServiceUnavailableException('Facility storage is unavailable; configure PostgreSQL or explicitly enable demo mode.');
+    facility.status = 'draft';
+    facility.updatedAt = new Date().toISOString();
+    this.logger.log(`Facility ${facility.facilityCode} (${facilityId}) unpublished to draft`);
+    return facility;
+  }
+
+  public async updateFacilityStatus(
+    facilityId: string,
+    hostId: string,
+    tenantId: string = 'default',
+    status: 'draft' | 'published' | 'suspended' | 'archived' | 'under_review'
+  ): Promise<ParkingFacility> {
+    const allowed = ['draft', 'published', 'suspended', 'archived', 'under_review'];
+    if (!allowed.includes(status)) {
+      throw new BadRequestException(`Invalid publication status '${status}'. Permitted statuses are: ${allowed.join(', ')}`);
+    }
+
+    if (status === 'published') {
+      return this.publishFacility(facilityId, hostId, tenantId);
+    }
+
+    const facility = await this.getFacility(facilityId, hostId, tenantId);
+    if (this.databaseAvailable()) {
+      const rows = await this.databaseService!.query<any>(
+        `UPDATE parking_facilities SET status=$1, updated_at=NOW() WHERE id=$2 AND tenant_id=$3 AND host_id=$4 RETURNING *, (SELECT COUNT(*)::int FROM parking_spaces s WHERE s.facility_id=parking_facilities.id) AS total_spaces, (SELECT COUNT(*)::int FROM parking_spaces s WHERE s.facility_id=parking_facilities.id AND s.is_active=TRUE) AS active_spaces`,
+        [status, facilityId, tenantId, hostId]
+      );
+      if (!rows[0]) throw new NotFoundException(`Facility with ID ${facilityId} not found`);
+      return this.mapFacilityRow(rows[0]);
+    }
+    if (!this.demoMode) throw new ServiceUnavailableException('Facility storage is unavailable; configure PostgreSQL or explicitly enable demo mode.');
+    facility.status = status as any;
+    facility.updatedAt = new Date().toISOString();
+    return facility;
+  }
+
+  public async deleteFacility(
+    facilityId: string,
+    hostId: string,
+    tenantId: string = 'default'
+  ): Promise<{ success: boolean; message: string }> {
+    await this.getFacility(facilityId, hostId, tenantId);
+
+    if (this.databaseAvailable()) {
+      // Check for active or confirmed bookings
+      const activeBookings = await this.databaseService!.query<any>(
+        `SELECT id FROM bookings WHERE facility_id=$1 AND tenant_id=$2 AND status IN ('confirmed', 'active') LIMIT 1`,
+        [facilityId, tenantId]
+      );
+      if (activeBookings && activeBookings.length > 0) {
+        throw new BadRequestException('Cannot delete facility with active or confirmed bookings. Please suspend or unpublish the facility instead.');
+      }
+
+      const pool = this.databaseService?.getPool();
+      if (!pool) throw new ServiceUnavailableException('Database pool is unavailable');
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query('DELETE FROM parking_spaces WHERE facility_id=$1 AND tenant_id=$2', [facilityId, tenantId]);
+        await client.query('DELETE FROM parking_facilities WHERE id=$1 AND tenant_id=$2 AND host_id=$3', [facilityId, tenantId, hostId]);
+        await client.query('COMMIT');
+      } catch (err: any) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw err;
+      } finally {
+        client.release();
+      }
+    }
+
+    if (this.demoMode) {
+      this.spaces = this.spaces.filter((s) => s.facilityId !== facilityId);
+      this.facilities = this.facilities.filter((f) => f.id !== facilityId);
+    }
+
+    return { success: true, message: `Facility ${facilityId} removed successfully.` };
+  }
+
+  public async deleteSpace(
+    spaceId: string,
+    hostId: string,
+    tenantId: string = 'default'
+  ): Promise<{ success: boolean; message: string }> {
+    const space = await this.getSpace(spaceId, tenantId, hostId);
+    const facility = await this.getFacility(space.facilityId, hostId, tenantId);
+
+    if (this.databaseAvailable()) {
+      const activeBookings = await this.databaseService!.query<any>(
+        `SELECT id FROM bookings WHERE space_id=$1 AND tenant_id=$2 AND status IN ('confirmed', 'active') LIMIT 1`,
+        [spaceId, tenantId]
+      );
+      if (activeBookings && activeBookings.length > 0) {
+        throw new BadRequestException('Cannot delete space with active or confirmed bookings.');
+      }
+
+      await this.databaseService!.query('DELETE FROM parking_spaces WHERE id=$1 AND tenant_id=$2', [spaceId, tenantId]);
+    }
+
+    if (this.demoMode) {
+      this.spaces = this.spaces.filter((s) => s.id !== spaceId);
+      facility.totalSpaces = this.spaces.filter((s) => s.facilityId === space.facilityId).length;
+      facility.activeSpaces = this.spaces.filter((s) => s.facilityId === space.facilityId && s.isActive).length;
+    }
+
+    return { success: true, message: `Parking space ${space.bayIdentifier} removed successfully.` };
+  }
+
+  public async bulkUpdateSpaces(
+    facilityId: string,
+    hostId: string,
+    tenantId: string = 'default',
+    updates: (Partial<UpdateSpacePayload> & { id: string })[]
+  ): Promise<ParkingSpace[]> {
+    if (!Array.isArray(updates) || updates.length === 0) {
+      throw new BadRequestException('An array of space update items is required.');
+    }
+
+    await this.getFacility(facilityId, hostId, tenantId);
+
+    // Validate that all spaces belong to this facility
+    for (const update of updates) {
+      if (!update.id) {
+        throw new BadRequestException('Each space update must include a valid space id.');
+      }
+      const existing = await this.getSpace(update.id, tenantId, hostId);
+      if (existing.facilityId !== facilityId) {
+        throw new BadRequestException(`Space '${update.id}' does not belong to facility '${facilityId}'. Reassignment is rejected.`);
+      }
+    }
+
+    if (this.databaseAvailable()) {
+      const pool = this.databaseService?.getPool();
+      if (!pool) throw new ServiceUnavailableException('Database pool is unavailable');
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const columns: Record<string, string> = {
+          bayIdentifier: 'bay_identifier',
+          floorLevel: 'floor_level',
+          vehicleCategory: 'vehicle_category',
+          hasEvCharger: 'has_ev_charger',
+          evChargerPowerKw: 'ev_charger_power_kw',
+          isDisabledAccessible: 'is_disabled_accessible',
+          hourlyRateInr: 'hourly_rate_inr',
+          isActive: 'is_active',
+          classification: 'classification',
+          stallPosition: 'stall_position',
+          maneuverabilityAngle: 'maneuverability_angle',
+          surfaceFlooring: 'surface_flooring',
+          sensorId: 'sensor_id',
+          maxLengthMeters: 'max_length_meters',
+          maxWidthMeters: 'max_width_meters',
+          maxHeightMeters: 'max_height_meters',
+          maxWeightTonnes: 'max_weight_tonnes',
+          allowedVehicleCategories: 'allowed_vehicle_categories',
+          fuelCompatibility: 'fuel_compatibility',
+          evPlugType: 'ev_plug_type',
+          accessMethod: 'access_method',
+          amenities: 'amenities',
+          photos: 'photos',
+        };
+
+        const updatedSpaces: ParkingSpace[] = [];
+        for (const update of updates) {
+          const sets: string[] = [];
+          const values: unknown[] = [update.id, tenantId, facilityId];
+
+          for (const [key, column] of Object.entries(columns)) {
+            if ((update as any)[key] !== undefined) {
+              const isJson = ['allowedVehicleCategories', 'fuelCompatibility', 'amenities', 'photos'].includes(key);
+              values.push(isJson ? JSON.stringify((update as any)[key]) : (update as any)[key]);
+              sets.push(`${column}=$${values.length}${isJson ? '::jsonb' : ''}`);
+            }
+          }
+
+          if (sets.length > 0) {
+            sets.push('updated_at=NOW()');
+            const res = await client.query<any>(
+              `UPDATE parking_spaces SET ${sets.join(', ')} WHERE id=$1 AND tenant_id=$2 AND facility_id=$3 RETURNING *`,
+              values
+            );
+            if (res.rows[0]) {
+              updatedSpaces.push(this.mapSpaceRow(res.rows[0]));
+            }
+          } else {
+            const current = await this.getSpace(update.id, tenantId, hostId);
+            updatedSpaces.push(current);
+          }
+        }
+        await client.query('COMMIT');
+        return updatedSpaces;
+      } catch (err: any) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw err;
+      } finally {
+        client.release();
+      }
+    }
+
+    if (!this.demoMode) throw new ServiceUnavailableException('Space storage is unavailable; configure PostgreSQL or explicitly enable demo mode.');
+    const results: ParkingSpace[] = [];
+    for (const update of updates) {
+      const space = await this.getSpace(update.id, tenantId, hostId);
+      const safe = { ...update };
+      delete (safe as any).id;
+      delete (safe as any).facilityId;
+      delete (safe as any).tenantId;
+      Object.assign(space, safe, { updatedAt: new Date().toISOString() });
+      results.push(space);
+    }
+    return results;
+  }
+
+  public async addFacilityPhoto(
+    facilityId: string,
+    hostId: string,
+    tenantId: string = 'default',
+    photo: Partial<FacilityPhotoItem>
+  ): Promise<ParkingFacility> {
+    if (!photo.url || typeof photo.url !== 'string' || photo.url.trim().length === 0) {
+      throw new BadRequestException('A valid photo url is required.');
+    }
+
+    const facility = await this.getFacility(facilityId, hostId, tenantId);
+    const photos: any[] = Array.isArray(facility.photos) ? [...facility.photos] : [];
+    const isFirst = photos.length === 0;
+    const isCover = photo.isCover !== undefined ? photo.isCover : isFirst;
+
+    if (isCover) {
+      photos.forEach((p) => { p.isCover = false; p.isPrimary = false; });
+    }
+
+    const newPhoto = {
+      id: photo.id || `pho-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+      url: photo.url,
+      caption: photo.caption || undefined,
+      category: photo.category || 'overview',
+      isCover,
+      isPrimary: isCover,
+      createdAt: new Date().toISOString(),
+    };
+    photos.push(newPhoto);
+
+    return this.updateFacility(facilityId, hostId, tenantId, { photos });
+  }
+
+  public async deleteFacilityPhoto(
+    facilityId: string,
+    hostId: string,
+    tenantId: string = 'default',
+    photoId: string
+  ): Promise<ParkingFacility> {
+    const facility = await this.getFacility(facilityId, hostId, tenantId);
+    const photos: any[] = Array.isArray(facility.photos) ? [...facility.photos] : [];
+    const idx = photos.findIndex((p) => p.id === photoId);
+    if (idx === -1) {
+      throw new NotFoundException(`Photo with ID '${photoId}' not found on facility.`);
+    }
+
+    const wasCover = photos[idx].isCover || photos[idx].isPrimary;
+    photos.splice(idx, 1);
+    if (wasCover && photos.length > 0) {
+      photos[0].isCover = true;
+      photos[0].isPrimary = true;
+    }
+
+    return this.updateFacility(facilityId, hostId, tenantId, { photos });
+  }
+
+  public async addSpacePhoto(
+    spaceId: string,
+    hostId: string,
+    tenantId: string = 'default',
+    photo: Partial<FacilityPhotoItem>
+  ): Promise<ParkingSpace> {
+    if (!photo.url || typeof photo.url !== 'string' || photo.url.trim().length === 0) {
+      throw new BadRequestException('A valid photo url is required.');
+    }
+
+    const space = await this.getSpace(spaceId, tenantId, hostId);
+    await this.getFacility(space.facilityId, hostId, tenantId);
+
+    const photos: any[] = Array.isArray(space.photos) ? [...space.photos] : [];
+    const newPhoto = {
+      id: photo.id || `pho-sp-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+      url: photo.url,
+      caption: photo.caption || undefined,
+      isCover: photos.length === 0,
+      createdAt: new Date().toISOString(),
+    };
+    photos.push(newPhoto);
+
+    return this.updateSpace(spaceId, hostId, tenantId, { photos });
+  }
+
+  public async deleteSpacePhoto(
+    spaceId: string,
+    hostId: string,
+    tenantId: string = 'default',
+    photoId: string
+  ): Promise<ParkingSpace> {
+    const space = await this.getSpace(spaceId, tenantId, hostId);
+    await this.getFacility(space.facilityId, hostId, tenantId);
+
+    const photos: any[] = Array.isArray(space.photos) ? [...space.photos] : [];
+    const idx = photos.findIndex((p) => p.id === photoId);
+    if (idx === -1) {
+      throw new NotFoundException(`Photo with ID '${photoId}' not found on space.`);
+    }
+
+    photos.splice(idx, 1);
+    return this.updateSpace(spaceId, hostId, tenantId, { photos });
   }
 
   // --- Public Customer Feed (Redacted) ---

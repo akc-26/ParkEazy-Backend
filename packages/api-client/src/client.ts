@@ -322,6 +322,36 @@ export class ParkEazyApiClient {
       const res = await this.post<{ data: ParkingFacility }>(`/facilities/${facilityId}/publish`);
       return res.data || (res as any);
     },
+
+    unpublish: async (facilityId: string): Promise<ParkingFacility> => {
+      const res = await this.post<{ data: ParkingFacility }>(`/facilities/${facilityId}/unpublish`);
+      return res.data || (res as any);
+    },
+
+    updateStatus: async (facilityId: string, status: string): Promise<ParkingFacility> => {
+      const res = await this.patch<{ data: ParkingFacility }>(`/facilities/${facilityId}/status`, { status });
+      return res.data || (res as any);
+    },
+
+    delete: async (facilityId: string): Promise<{ success: boolean }> => {
+      const res = await this.delete<{ data: { success: boolean } }>(`/facilities/${facilityId}`);
+      return res.data || (res as any);
+    },
+
+    bulkUpdateSpaces: async (facilityId: string, spaces: Partial<ParkingSpace>[]): Promise<ParkingSpace[]> => {
+      const res = await this.put<{ data: ParkingSpace[] }>(`/facilities/${facilityId}/spaces/bulk`, { spaces });
+      return res.data || (res as any);
+    },
+
+    addPhoto: async (facilityId: string, payload: { url: string; caption?: string; isPrimary?: boolean }): Promise<any> => {
+      const res = await this.post<{ data: any }>(`/facilities/${facilityId}/photos`, payload);
+      return res.data || (res as any);
+    },
+
+    deletePhoto: async (facilityId: string, photoId: string): Promise<{ success: boolean }> => {
+      const res = await this.delete<{ data: { success: boolean } }>(`/facilities/${facilityId}/photos/${photoId}`);
+      return res.data || (res as any);
+    },
   };
 
   // --- Spaces Subsystem (PH05) ---
@@ -338,6 +368,21 @@ export class ParkEazyApiClient {
 
     updateStatus: async (id: string, status: SpaceStatus): Promise<ParkingSpace> => {
       const res = await this.patch<{ data: ParkingSpace }>(`/spaces/${id}/status`, { status });
+      return res.data || (res as any);
+    },
+
+    delete: async (id: string): Promise<{ success: boolean }> => {
+      const res = await this.delete<{ data: { success: boolean } }>(`/spaces/${id}`);
+      return res.data || (res as any);
+    },
+
+    addPhoto: async (id: string, payload: { url: string; caption?: string; isPrimary?: boolean }): Promise<any> => {
+      const res = await this.post<{ data: any }>(`/spaces/${id}/photos`, payload);
+      return res.data || (res as any);
+    },
+
+    deletePhoto: async (id: string, photoId: string): Promise<{ success: boolean }> => {
+      const res = await this.delete<{ data: { success: boolean } }>(`/spaces/${id}/photos/${photoId}`);
       return res.data || (res as any);
     },
   };

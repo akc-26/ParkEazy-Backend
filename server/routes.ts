@@ -378,6 +378,57 @@ apiRouter.post('/facilities/:id/toggle-status', requireHost, async (req, res) =>
   }
 });
 
+apiRouter.post('/facilities/:id/publish', requireHost, async (req, res) => {
+  try {
+    const user = (req as any).user as User;
+    const facility = await db.getFacilityById(req.params.id);
+    if (!facility) return res.status(404).json({ error: 'Facility not found' });
+    if (facility.hostId !== user.id && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied: You do not own this facility.' });
+    }
+    const bays = await db.getBaysByFacility(facility.id);
+    if (bays.length === 0) {
+      return res.status(400).json({ error: 'Facility must have at least one parking space before publishing.' });
+    }
+    const updated = await db.updateFacility(facility.id, { status: 'active', publishedAt: new Date().toISOString() } as any, user);
+    return res.json(updated);
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message });
+  }
+});
+
+apiRouter.post('/facilities/:id/unpublish', requireHost, async (req, res) => {
+  try {
+    const user = (req as any).user as User;
+    const facility = await db.getFacilityById(req.params.id);
+    if (!facility) return res.status(404).json({ error: 'Facility not found' });
+    if (facility.hostId !== user.id && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied: You do not own this facility.' });
+    }
+    const updated = await db.updateFacility(facility.id, { status: 'draft' }, user);
+    return res.json(updated);
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message });
+  }
+});
+
+apiRouter.patch('/facilities/:id/status', requireHost, async (req, res) => {
+  try {
+    const user = (req as any).user as User;
+    const facility = await db.getFacilityById(req.params.id);
+    if (!facility) return res.status(404).json({ error: 'Facility not found' });
+    if (facility.hostId !== user.id && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied: You do not own this facility.' });
+    }
+    const { status } = req.body;
+    if (!status) return res.status(400).json({ error: 'Status is required' });
+    const updated = await db.updateFacility(facility.id, { status }, user);
+    return res.json(updated);
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message });
+  }
+});
+
 // ----------------- PARKING BAYS -----------------
 apiRouter.get('/facilities/:id/bays', async (req, res) => {
   const facility = await db.getFacilityById(req.params.id);
@@ -445,6 +496,25 @@ apiRouter.post('/facilities/:id/bays/bulk', requireHost, async (req, res) => {
     );
 
     return res.status(201).json({ count: created.length, bays: created });
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message });
+  }
+});
+
+apiRouter.put('/facilities/:id/bays/bulk', requireHost, async (req, res) => {
+  try {
+    const user = (req as any).user as User;
+    const facility = await db.getFacilityById(req.params.id);
+    if (!facility) return res.status(404).json({ error: 'Facility not found' });
+    if (facility.hostId !== user.id && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied: You do not own this facility.' });
+    }
+    const updates = Array.isArray(req.body) ? req.body : (req.body.bays || req.body.spaces || []);
+    if (!Array.isArray(updates) || updates.length === 0) {
+      return res.status(400).json({ error: 'A non-empty list of bay updates is required' });
+    }
+    const updated = await db.updateBulkBays(req.params.id, updates, user);
+    return res.json({ count: updated.length, bays: updated });
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
   }

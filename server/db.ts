@@ -1613,6 +1613,49 @@ export class Database {
     return created;
   }
 
+  public async updateBulkBays(
+    facilityId: string,
+    updates: Array<{ id: string } & Partial<ParkingBay>>,
+    actor: User
+  ): Promise<ParkingBay[]> {
+    const facility = await this.getFacilityById(facilityId);
+    if (!facility) throw new Error('Facility not found');
+    if (actor.role === 'host' && facility.hostId !== actor.id) throw new Error('Unauthorized');
+
+    const facilityBays = await this.getBaysByFacility(facilityId);
+    const bayMap = new Map(facilityBays.map(b => [b.id, b]));
+
+    for (const update of updates) {
+      if (!update.id || !bayMap.has(update.id)) {
+        throw new Error(`Bay '${update.id}' does not belong to facility '${facilityId}'. Unauthorized reassignment.`);
+      }
+    }
+
+    const updatedBays: ParkingBay[] = [];
+    const now = new Date().toISOString();
+
+    for (const update of updates) {
+      const bay = bayMap.get(update.id)!;
+      const safeUpdates = { ...update };
+      delete (safeUpdates as any).id;
+      delete (safeUpdates as any).facilityId;
+      delete (safeUpdates as any).createdAt;
+
+      Object.assign(bay, safeUpdates, { updatedAt: now });
+      updatedBays.push(bay);
+    }
+
+    await this.withTransaction(async (client) => {
+      for (const bay of updatedBays) {
+        await this.persistEntity('bays', bay.id, bay, client);
+      }
+      await this.syncFacilityBayCount(facilityId, client);
+      await this.logAudit(actor.id, actor.fullName, actor.role, 'BULK_BAYS_UPDATED', 'bay', facilityId, `Updated ${updatedBays.length} bays in ${facility.name}`, client);
+    });
+
+    return updatedBays;
+  }
+
   public async updateBay(bayId: string, updates: Partial<ParkingBay>, actor: User): Promise<ParkingBay> {
     const bay = await this.getBayById(bayId);
     if (!bay) throw new Error('Bay not found');

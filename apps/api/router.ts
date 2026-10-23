@@ -1466,24 +1466,90 @@ apiV1Router.post(
   }
 );
 
-// 5b.17 Bulk Spaces Creation Endpoint
-apiV1Router.post(
+// 5b.17 Bulk Spaces Update Endpoint
+apiV1Router.put(
   '/hosts/:hostId/facilities/:facilityId/spaces/bulk',
   authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
   requireResourceOwnership('hostId'),
   validate([
     { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
     { field: 'facilityId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
-    { field: 'bays', required: true, type: 'array' },
   ]),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const isAdmin = req.user!.roles.includes(UserRole.ADMIN) || req.user!.roles.includes(UserRole.SUPER_ADMIN);
-      const created = inventoryService.bulkCreateBays(req.params.facilityId, req.user!.id, req.body.bays, isAdmin);
-      for (const b of created) {
-        await inventoryService.syncBayToPostgres(b);
-      }
-      sendSuccess(res, created, req.correlationId, 201);
+      const updates = Array.isArray(req.body) ? req.body : (req.body.spaces || req.body.bays || []);
+      const updated = inventoryService.bulkUpdateBays(req.params.facilityId, req.user!.id, updates, isAdmin);
+      await inventoryService.syncBulkBaysToPostgres(updated);
+      sendSuccess(res, updated, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 5b.17a Update Facility Publication Status Endpoint
+apiV1Router.patch(
+  '/hosts/:hostId/facilities/:facilityId/status',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'facilityId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'status', required: true, type: 'string', minLength: 1 },
+  ]),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const isAdmin = req.user!.roles.includes(UserRole.ADMIN) || req.user!.roles.includes(UserRole.SUPER_ADMIN);
+      const updated = inventoryService.updateLocationStatus(req.params.facilityId, req.user!.id, req.body.status as LocationStatus, isAdmin);
+      await inventoryService.syncLocationToPostgres(updated);
+      sendSuccess(res, updated, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 5b.17b Add Space Photo Endpoint
+apiV1Router.post(
+  '/hosts/:hostId/facilities/:facilityId/spaces/:spaceId/photos',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'facilityId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'spaceId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'url', required: true, type: 'string', minLength: 1 },
+  ]),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const isAdmin = req.user!.roles.includes(UserRole.ADMIN) || req.user!.roles.includes(UserRole.SUPER_ADMIN);
+      const updated = inventoryService.addBayPhoto(req.params.facilityId, req.params.spaceId, req.user!.id, req.body, isAdmin);
+      await inventoryService.syncBayToPostgres(updated);
+      sendSuccess(res, updated, req.correlationId, 201);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// 5b.17c Delete Space Photo Endpoint
+apiV1Router.delete(
+  '/hosts/:hostId/facilities/:facilityId/spaces/:spaceId/photos/:photoId',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'facilityId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'spaceId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'photoId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+  ]),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const isAdmin = req.user!.roles.includes(UserRole.ADMIN) || req.user!.roles.includes(UserRole.SUPER_ADMIN);
+      const updated = inventoryService.removeBayPhoto(req.params.facilityId, req.params.spaceId, req.params.photoId, req.user!.id, isAdmin);
+      await inventoryService.syncBayToPostgres(updated);
+      sendSuccess(res, updated, req.correlationId);
     } catch (err) {
       next(err);
     }

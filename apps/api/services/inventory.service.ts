@@ -1173,6 +1173,87 @@ export class InventoryService {
     return created;
   }
 
+  public bulkUpdateBays(
+    locationId: string,
+    hostId: string,
+    updates: (UpdateBayRequest & { id: string })[],
+    isAdmin = false
+  ): ParkingBay[] {
+    const location = this.getLocationForHost(locationId, hostId, isAdmin);
+    if (!Array.isArray(updates) || updates.length === 0) {
+      throw new AppError('A non-empty list of bay updates is required.', 400, 'VALIDATION_ERROR');
+    }
+
+    const locationBays = this.getBaysByLocationId(locationId);
+    const locationBayMap = new Map<string, ParkingBay>(locationBays.map((b) => [b.id, b]));
+
+    // Validate that all target bays belong to this location
+    for (const update of updates) {
+      if (!update.id) {
+        throw new AppError('Bay id is required for each update.', 400, 'VALIDATION_ERROR');
+      }
+      const existing = locationBayMap.get(update.id);
+      if (!existing) {
+        throw new AppError(
+          `Parking bay '${update.id}' does not belong to facility '${locationId}'. Unauthorized reassignment.`,
+          403,
+          'FORBIDDEN'
+        );
+      }
+    }
+
+    const now = new Date().toISOString();
+    const updatedBays: ParkingBay[] = [];
+
+    for (const update of updates) {
+      const bay = locationBayMap.get(update.id)!;
+      if (update.bayNumber !== undefined) {
+        const normalized = update.bayNumber.trim();
+        if (normalized.length === 0) {
+          throw new AppError('Bay identifier cannot be empty.', 400, 'VALIDATION_ERROR');
+        }
+        const duplicate = locationBays.some(
+          (b) => b.id !== bay.id && b.bayNumber.toLowerCase() === normalized.toLowerCase()
+        );
+        if (duplicate) {
+          throw new AppError(
+            `A parking space with identifier '${normalized}' already exists in this facility.`,
+            409,
+            'DUPLICATE_BAY_IDENTIFIER'
+          );
+        }
+        bay.bayNumber = normalized;
+      }
+      if (update.bayType !== undefined) bay.bayType = update.bayType;
+      if (update.levelOrFloor !== undefined) bay.levelOrFloor = update.levelOrFloor.trim() || undefined;
+      if (update.status !== undefined) bay.status = update.status;
+      if (update.maxVehicleHeightMeters !== undefined) bay.maxVehicleHeightMeters = update.maxVehicleHeightMeters;
+      if (update.maxVehicleLengthMeters !== undefined) bay.maxVehicleLengthMeters = update.maxVehicleLengthMeters;
+      if (update.maxVehicleWidthMeters !== undefined) bay.maxVehicleWidthMeters = update.maxVehicleWidthMeters;
+      if (Array.isArray(update.supportedVehicles)) bay.supportedVehicles = update.supportedVehicles;
+      if (update.isEvCharging !== undefined) {
+        bay.isEvCharging = Boolean(update.isEvCharging);
+        if (update.isEvCharging && typeof update.evChargerKw === 'number') {
+          bay.evChargerKw = update.evChargerKw;
+        } else if (!update.isEvCharging) {
+          bay.evChargerKw = undefined;
+        }
+      }
+      if (update.hasCctv !== undefined) bay.hasCctv = Boolean(update.hasCctv);
+      if (update.isAccessible !== undefined) bay.isAccessible = Boolean(update.isAccessible);
+      if (update.isCovered !== undefined) bay.isCovered = Boolean(update.isCovered);
+      if (update.notes !== undefined) bay.notes = update.notes.trim() || undefined;
+      if (update.instructions !== undefined) bay.instructions = update.instructions.trim() || undefined;
+      bay.updatedAt = now;
+      updatedBays.push(bay);
+    }
+
+    location.updatedAt = now;
+    this.saveToDisk();
+
+    return updatedBays;
+  }
+
   public updateBay(
     locationId: string,
     bayId: string,
@@ -1478,6 +1559,85 @@ export class InventoryService {
     location.updatedAt = new Date().toISOString();
     this.saveToDisk();
     return location;
+  }
+
+  public updateLocationStatus(
+    locationId: string,
+    hostId: string,
+    status: LocationStatus,
+    isAdmin = false
+  ): ParkingLocation {
+    const location = this.getLocationForHost(locationId, hostId, isAdmin);
+    const validStatuses = [LocationStatus.DRAFT, LocationStatus.ACTIVE, LocationStatus.SUSPENDED, LocationStatus.PENDING_APPROVAL];
+    if (!validStatuses.includes(status)) {
+      throw new AppError(`Invalid status '${status}'.`, 400, 'VALIDATION_ERROR');
+    }
+    if (status === LocationStatus.ACTIVE && !isAdmin) {
+      return this.publishLocation(locationId, hostId, isAdmin).facility;
+    }
+    location.status = status;
+    location.updatedAt = new Date().toISOString();
+    this.saveToDisk();
+    return location;
+  }
+
+  public addBayPhoto(
+    locationId: string,
+    bayId: string,
+    hostId: string,
+    photo: Partial<FacilityPhoto>,
+    isAdmin = false
+  ): ParkingBay {
+    const bay = this.getBayForHost(locationId, bayId, hostId, isAdmin);
+    if (!photo.url || typeof photo.url !== 'string') {
+      throw new AppError('A valid image URL is required.', 400, 'VALIDATION_ERROR');
+    }
+    if (!Array.isArray(bay.photos)) {
+      bay.photos = [];
+    }
+    const isFirst = bay.photos.length === 0;
+    const isPrimary = photo.isPrimary !== undefined ? photo.isPrimary : isFirst;
+    if (isPrimary) {
+      bay.photos.forEach((p) => {
+        p.isPrimary = false;
+      });
+    }
+    const newPhoto: FacilityPhoto = {
+      id: photo.id || `pho-${crypto.randomBytes(4).toString('hex')}`,
+      url: photo.url,
+      caption: photo.caption?.trim() || undefined,
+      isPrimary,
+      uploadedAt: new Date().toISOString(),
+    };
+    bay.photos.push(newPhoto);
+    bay.updatedAt = new Date().toISOString();
+    this.saveToDisk();
+    return bay;
+  }
+
+  public removeBayPhoto(
+    locationId: string,
+    bayId: string,
+    photoId: string,
+    hostId: string,
+    isAdmin = false
+  ): ParkingBay {
+    const bay = this.getBayForHost(locationId, bayId, hostId, isAdmin);
+    if (!Array.isArray(bay.photos) || bay.photos.length === 0) {
+      throw new NotFoundError('No photos found for this space.');
+    }
+    const index = bay.photos.findIndex((p) => p.id === photoId);
+    if (index === -1) {
+      throw new NotFoundError(`Photo '${photoId}' not found.`);
+    }
+    const wasPrimary = bay.photos[index].isPrimary;
+    bay.photos.splice(index, 1);
+    if (wasPrimary && bay.photos.length > 0) {
+      bay.photos[0].isPrimary = true;
+    }
+    bay.updatedAt = new Date().toISOString();
+    this.saveToDisk();
+    return bay;
   }
 }
 

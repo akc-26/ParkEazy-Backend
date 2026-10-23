@@ -32,6 +32,7 @@ export default defineConfig({
       'tests/validation-exports.test.ts',
       'tests/validation.test.ts',
       'tests/payout-financial-integrity.test.ts',
+      'tests/section-3a-facilities-bays-media.test.ts',
     ],
     exclude: ['**/node_modules/**', '**/dist/**', '**/.git/**'],
     env: {

@@ -4,6 +4,7 @@ import {
   Post,
   Put,
   Patch,
+  Delete,
   Param,
   Body,
   Headers,
@@ -153,6 +154,96 @@ export class FacilitiesController {
     return { data };
   }
 
+  @Post('facilities/:id/unpublish')
+  @Roles('host', 'superadmin')
+  async unpublishFacility(
+    @Param('id') id: string,
+    @Req() req: any,
+    @Headers('x-tenant-id') tenantId: string = 'default'
+  ) {
+    const ctx = this.getEffectiveHost(req, tenantId);
+    const data = await this.facilitiesService.unpublishFacility(id, ctx.hostId, ctx.tenantId);
+    return { data };
+  }
+
+  @Patch('facilities/:id/status')
+  @Roles('host', 'superadmin')
+  async updateFacilityStatus(
+    @Param('id') id: string,
+    @Body('status') status: any,
+    @Req() req: any,
+    @Headers('x-tenant-id') tenantId: string = 'default'
+  ) {
+    const ctx = this.getEffectiveHost(req, tenantId);
+    const data = await this.facilitiesService.updateFacilityStatus(id, ctx.hostId, ctx.tenantId, status);
+    return { data };
+  }
+
+  @Delete('facilities/:id')
+  @Roles('host', 'superadmin')
+  async deleteFacility(
+    @Param('id') id: string,
+    @Req() req: any,
+    @Headers('x-tenant-id') tenantId: string = 'default'
+  ) {
+    const ctx = this.getEffectiveHost(req, tenantId);
+    const data = await this.facilitiesService.deleteFacility(id, ctx.hostId, ctx.tenantId);
+    return { data };
+  }
+
+  @Put('facilities/:id/spaces/bulk')
+  @Roles('host', 'superadmin')
+  async bulkUpdateSpaces(
+    @Param('id') id: string,
+    @Body() body: any,
+    @Req() req: any,
+    @Headers('x-tenant-id') tenantId: string = 'default'
+  ) {
+    const ctx = this.getEffectiveHost(req, tenantId);
+    const spaces = Array.isArray(body) ? body : (body.spaces || []);
+    const data = await this.facilitiesService.bulkUpdateSpaces(id, ctx.hostId, ctx.tenantId, spaces);
+    return { data };
+  }
+
+  @Delete('facilities/:id/spaces/:spaceId')
+  @Roles('host', 'superadmin')
+  async deleteFacilitySpace(
+    @Param('id') _facilityId: string,
+    @Param('spaceId') spaceId: string,
+    @Req() req: any,
+    @Headers('x-tenant-id') tenantId: string = 'default'
+  ) {
+    const ctx = this.getEffectiveHost(req, tenantId);
+    const data = await this.facilitiesService.deleteSpace(spaceId, ctx.hostId, ctx.tenantId);
+    return { data };
+  }
+
+  @Post('facilities/:id/photos')
+  @Roles('host', 'superadmin')
+  async addFacilityPhoto(
+    @Param('id') id: string,
+    @Body() payload: { url: string; caption?: string; isPrimary?: boolean },
+    @Req() req: any,
+    @Headers('x-tenant-id') tenantId: string = 'default'
+  ) {
+    const ctx = this.getEffectiveHost(req, tenantId);
+    const data = await this.facilitiesService.addFacilityPhoto(id, ctx.hostId, ctx.tenantId, payload);
+    return { data };
+  }
+
+  @Delete('facilities/:id/photos/:photoId')
+  @Roles('host', 'superadmin')
+  async deleteFacilityPhoto(
+    @Param('id') id: string,
+    @Param('photoId') photoId: string,
+    @Req() req: any,
+    @Headers('x-tenant-id') tenantId: string = 'default'
+  ) {
+    const ctx = this.getEffectiveHost(req, tenantId);
+    const data = await this.facilitiesService.deleteFacilityPhoto(id, photoId, ctx.hostId, ctx.tenantId);
+    return { data };
+  }
+
   // Spaces Endpoints
   @Get('spaces/:id')
   @Roles('host', 'superadmin')
@@ -189,6 +280,44 @@ export class FacilitiesController {
   ) {
     const ctx = this.getEffectiveHost(req, tenantId);
     const data = await this.facilitiesService.updateSpaceStatus(id, ctx.hostId, ctx.tenantId, status);
+    return { data };
+  }
+
+  @Delete('spaces/:id')
+  @Roles('host', 'superadmin')
+  async deleteSpace(
+    @Param('id') id: string,
+    @Req() req: any,
+    @Headers('x-tenant-id') tenantId: string = 'default'
+  ) {
+    const ctx = this.getEffectiveHost(req, tenantId);
+    const data = await this.facilitiesService.deleteSpace(id, ctx.hostId, ctx.tenantId);
+    return { data };
+  }
+
+  @Post('spaces/:id/photos')
+  @Roles('host', 'superadmin')
+  async addSpacePhoto(
+    @Param('id') id: string,
+    @Body() payload: { url: string; caption?: string; isPrimary?: boolean },
+    @Req() req: any,
+    @Headers('x-tenant-id') tenantId: string = 'default'
+  ) {
+    const ctx = this.getEffectiveHost(req, tenantId);
+    const data = await this.facilitiesService.addSpacePhoto(id, ctx.hostId, ctx.tenantId, payload);
+    return { data };
+  }
+
+  @Delete('spaces/:id/photos/:photoId')
+  @Roles('host', 'superadmin')
+  async deleteSpacePhoto(
+    @Param('id') id: string,
+    @Param('photoId') photoId: string,
+    @Req() req: any,
+    @Headers('x-tenant-id') tenantId: string = 'default'
+  ) {
+    const ctx = this.getEffectiveHost(req, tenantId);
+    const data = await this.facilitiesService.deleteSpacePhoto(id, photoId, ctx.hostId, ctx.tenantId);
     return { data };
   }
 

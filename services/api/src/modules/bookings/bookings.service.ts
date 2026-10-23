@@ -118,7 +118,8 @@ export class BookingsService {
       throw new BadRequestException('Invalid booking time window: provide valid ISO timestamps and endsAt must be after startsAt.');
     }
     const duration = end - start;
-    if (duration < 60 * 60 * 1000 || duration > 72 * 60 * 60 * 1000 || duration % (30 * 60 * 1000) !== 0) {
+    const is30MinIncrement = Math.abs(duration - Math.round(duration / (30 * 60 * 1000)) * (30 * 60 * 1000)) < 1000;
+    if (duration < 60 * 60 * 1000 || duration > 72 * 60 * 60 * 1000 || !is30MinIncrement) {
       throw new BadRequestException('Booking duration must be between 1 and 72 hours in 30-minute increments.');
     }
     if (start < Date.now() + 15 * 60 * 1000) {

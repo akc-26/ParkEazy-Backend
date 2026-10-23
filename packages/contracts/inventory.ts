@@ -113,6 +113,7 @@ export interface ParkingBay {
   isCovered?: boolean;
   notes?: string;
   instructions?: string;
+  photos?: FacilityPhoto[];
   createdAt: string;
   updatedAt: string;
 }
