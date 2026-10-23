@@ -38,6 +38,8 @@ ALTER TABLE host_payout_records ADD COLUMN IF NOT EXISTS method VARCHAR(50) DEFA
 ALTER TABLE host_payout_records ADD COLUMN IF NOT EXISTS destination_account VARCHAR(255);
 ALTER TABLE host_payout_records ADD COLUMN IF NOT EXISTS notes TEXT;
 ALTER TABLE host_payout_records ADD COLUMN IF NOT EXISTS idempotency_key VARCHAR(128);
+ALTER TABLE host_payout_records ADD COLUMN IF NOT EXISTS provider_transfer_id VARCHAR(128);
+
 
 -- 7. Active Sessions
 CREATE TABLE IF NOT EXISTS active_sessions (

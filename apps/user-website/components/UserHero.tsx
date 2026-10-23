@@ -21,7 +21,7 @@ export const UserHero: React.FC<UserHeroProps> = ({ onSearch, onOpenHostPortal }
 
   return (
     <section className="relative bg-[#F4F8F7] pt-6 pb-10 sm:pt-8 sm:pb-14 lg:pt-12 lg:pb-16 border-b border-slate-200">
-      <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="w-full max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8">
         {/* Two-Column Balanced Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-stretch">
           {/* Left Column: Headline, Value Proposition & Search Card */}

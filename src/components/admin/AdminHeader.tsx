@@ -22,7 +22,7 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({
 }) => {
   return (
     <header className="sticky top-0 z-40 bg-[#0F1E2E] text-white border-b border-slate-800">
-      <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+      <div className="w-full max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
         {/* Brand Wordmark with Admin Badge */}
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2.5">

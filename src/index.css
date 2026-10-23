@@ -1,1 +1,46 @@
 @import "tailwindcss";
+
+/* ParkEazy responsive workspace sizing: retain the design while using large displays better. */
+@media (min-width: 1440px) {
+  .max-w-5xl { max-width: min(92vw, 1440px); }
+  .max-w-\[1680px\] { max-width: min(94vw, 1680px); }
+  .max-w-6xl { max-width: min(92vw, 1500px); }
+  .max-w-7xl { max-width: min(94vw, 1600px); }
+}
+
+@media (min-width: 1920px) {
+  .max-w-5xl { max-width: min(90vw, 1520px); }
+  .max-w-\[1680px\] { max-width: min(94vw, 1760px); }
+  .max-w-6xl { max-width: min(92vw, 1640px); }
+  .max-w-7xl { max-width: min(94vw, 1760px); }
+}
+
+/* Prevent fixed-width content from creating horizontal overflow on smaller screens. */
+@media (max-width: 639px) {
+  html, body, #root { max-width: 100%; overflow-x: clip; }
+  img, video, canvas, svg { max-width: 100%; }
+}
+
+
+/* Responsive content widths: the host/admin apps are mounted through the root dispatcher,
+   so these global rules must be present in the root stylesheet too. */
+*, *::before, *::after { box-sizing: border-box; }
+html, body, #root { width: 100%; min-width: 0; margin: 0; }
+img, video, canvas { max-width: 100%; height: auto; }
+
+@media (min-width: 1440px) {
+  .max-w-5xl { max-width: min(94vw, 1440px) !important; }
+  .max-w-6xl { max-width: min(94vw, 1500px) !important; }
+  .max-w-7xl { max-width: min(94vw, 1600px) !important; }
+  .max-w-\[1680px\] { max-width: min(96vw, 1680px) !important; }
+}
+@media (min-width: 1920px) {
+  .max-w-5xl { max-width: min(92vw, 1600px) !important; }
+  .max-w-6xl { max-width: min(94vw, 1720px) !important; }
+  .max-w-7xl { max-width: min(94vw, 1800px) !important; }
+  .max-w-\[1680px\] { max-width: min(96vw, 1840px) !important; }
+}
+@media (max-width: 767px) {
+  html, body, #root { max-width: 100%; overflow-x: clip; }
+  .max-w-5xl, .max-w-6xl, .max-w-7xl, .max-w-\[1680px\] { max-width: 100% !important; }
+}

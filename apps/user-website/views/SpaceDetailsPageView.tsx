@@ -176,7 +176,7 @@ export const SpaceDetailsPageView: React.FC<SpaceDetailsPageViewProps> = ({
   // Loading State
   if (isLoading) {
     return (
-      <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-8 animate-pulse">
+      <div className="w-full max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-8 animate-pulse">
         <div className="h-6 bg-slate-200 rounded w-1/4" />
         <div className="h-96 bg-slate-200 rounded-2xl" />
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
@@ -193,7 +193,7 @@ export const SpaceDetailsPageView: React.FC<SpaceDetailsPageViewProps> = ({
   // Error / Not Found State
   if (errorMsg || !location) {
     return (
-      <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-20 text-center space-y-6">
+      <div className="w-full max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-20 text-center space-y-6">
         <div className="w-14 h-14 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto border border-amber-200">
           <AlertCircle className="w-7 h-7" />
         </div>
@@ -233,7 +233,7 @@ export const SpaceDetailsPageView: React.FC<SpaceDetailsPageViewProps> = ({
   const availableBaysCount = bays.filter((b) => b.status === BayStatus.AVAILABLE).length;
 
   return (
-    <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10 space-y-8">
+    <div className="w-full max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10 space-y-8">
       {/* 1. Breadcrumb Bar */}
       <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-xs text-slate-500">
         <button

@@ -321,7 +321,7 @@ export const UserWebsiteApp: React.FC<UserWebsiteAppProps> = ({
         />
 
         {/* Main Content Viewport */}
-        <main className="flex-1 w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14 space-y-16 sm:space-y-20">
+        <main className="flex-1 w-full max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14 space-y-16 sm:space-y-20">
           {/* Core Capabilities Bento */}
           <section id="how-it-works" className="space-y-6 sm:space-y-8">
             <div>

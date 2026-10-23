@@ -244,3 +244,24 @@
 .text-on-error-container { color: #93000a; }
 
 .border-outline-variant { border-color: #bdc9c6; }
+
+/* ParkEazy responsive workspace sizing: retain the design while using large displays better. */
+@media (min-width: 1440px) {
+  .max-w-5xl { max-width: min(92vw, 1440px); }
+  .max-w-\[1680px\] { max-width: min(94vw, 1680px); }
+  .max-w-6xl { max-width: min(92vw, 1500px); }
+  .max-w-7xl { max-width: min(94vw, 1600px); }
+}
+
+@media (min-width: 1920px) {
+  .max-w-5xl { max-width: min(90vw, 1520px); }
+  .max-w-\[1680px\] { max-width: min(94vw, 1760px); }
+  .max-w-6xl { max-width: min(92vw, 1640px); }
+  .max-w-7xl { max-width: min(94vw, 1760px); }
+}
+
+/* Prevent fixed-width content from creating horizontal overflow on smaller screens. */
+@media (max-width: 639px) {
+  html, body, #root { max-width: 100%; overflow-x: clip; }
+  img, video, canvas, svg { max-width: 100%; }
+}

@@ -13,28 +13,21 @@ export async function getAuthenticatedUser(req: Request): Promise<User | null> {
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.substring(7).trim();
     if (token) {
-      let user = await db.validateSession(token);
+      let user: User | null = await db.validateSession(token);
       if (!user && token.includes('.')) {
         try {
           const payload = authService.verifyToken(token);
           if (payload && payload.sub) {
-            user = await db.findUserById(payload.sub);
-            if (!user) {
-              const sessionUser = authService.getUserById(payload.sub);
-              if (sessionUser) {
-                user = {
-                  id: sessionUser.id,
-                  email: sessionUser.email,
-                  fullName: `${sessionUser.firstName} ${sessionUser.lastName}`.trim(),
-                  role: sessionUser.roles.includes('superadmin' as any) || sessionUser.roles.includes('admin' as any) ? 'admin' : sessionUser.roles.includes('host' as any) ? 'host' : 'customer',
-                  status: 'active',
-                  createdAt: sessionUser.createdAt,
-                  updatedAt: sessionUser.createdAt,
-                };
-              }
+            const dbUser = (await db.findUserById(payload.sub)) || (payload.email ? await db.findUserByEmail(payload.email) : undefined);
+            if (dbUser && dbUser.status !== 'suspended' && dbUser.status !== 'closed') {
+              user = dbUser;
+            } else {
+              user = null;
             }
           }
-        } catch {}
+        } catch {
+          user = null;
+        }
       }
       if (user) return user;
     }

@@ -31,6 +31,7 @@ export default defineConfig({
       'tests/user-website-all-54-screens.test.ts',
       'tests/validation-exports.test.ts',
       'tests/validation.test.ts',
+      'tests/payout-financial-integrity.test.ts',
     ],
     exclude: ['**/node_modules/**', '**/dist/**', '**/.git/**'],
     env: {

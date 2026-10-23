@@ -175,7 +175,7 @@ export const CustomerHome: React.FC<CustomerHomeProps> = ({
     <div className="w-full space-y-16 sm:space-y-20">
       {/* Hero Section with Search Interface and Invariants Strip */}
       <section className="relative overflow-hidden bg-[#F4F8F7] pt-8 sm:pt-12 pb-12 sm:pb-16 border-b border-[#DEE7E6]">
-        <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="w-full max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
             {/* Left Column: Contextual Value Proposition & Search Card */}
             <div className="lg:col-span-7 flex flex-col justify-center">
@@ -347,7 +347,7 @@ export const CustomerHome: React.FC<CustomerHomeProps> = ({
       </section>
 
       {/* Core Capabilities Bento */}
-      <section id="how-it-works" className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 space-y-6 sm:space-y-8">
+      <section id="how-it-works" className="w-full max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 space-y-6 sm:space-y-8">
         <div>
           <div className="text-xs font-bold text-[#075762] uppercase tracking-wider mb-2">
             Architecture & Invariants
@@ -412,7 +412,7 @@ export const CustomerHome: React.FC<CustomerHomeProps> = ({
       </section>
 
       {/* Verified Locations Section */}
-      <section id="locations" className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
+      <section id="locations" className="w-full max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
           <div>
             <div className="text-xs font-bold text-[#075762] uppercase tracking-wider mb-2">

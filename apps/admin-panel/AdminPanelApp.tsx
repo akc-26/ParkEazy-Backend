@@ -234,7 +234,7 @@ export const AdminPanelApp: React.FC<AdminPanelAppProps> = ({
         </header>
 
         {/* 3. Main Admin Viewport */}
-        <main className="flex-1 p-6 lg:p-8 max-w-[1440px] mx-auto w-full space-y-6">
+        <main className="flex-1 p-6 lg:p-8 max-w-[1680px] mx-auto w-full space-y-6">
           {authError && (
             <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-center gap-2">
               <AlertCircle className="w-4 h-4 shrink-0" />

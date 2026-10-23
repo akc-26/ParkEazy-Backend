@@ -157,7 +157,7 @@ export const BookingDetailPageView: React.FC<BookingDetailPageViewProps> = ({
     booking && (booking.status === BookingStatus.CONFIRMED || booking.status === BookingStatus.ACTIVE);
 
   return (
-    <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-8">
+    <div className="w-full max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-8">
       {/* Breadcrumb Navigation */}
       <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-xs text-slate-500">
         <button

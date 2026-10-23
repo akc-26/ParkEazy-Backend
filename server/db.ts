@@ -372,9 +372,9 @@ export class Database {
 
       for (const payout of schema.payouts || []) {
         await client.query(
-          `INSERT INTO host_payout_records (id, host_id, amount_cents, currency, status, method, destination_account, reference_or_utr, requested_at_utc, notes, idempotency_key)
-           VALUES ($1, $2, $3, 'USD', $4, $5, $6, $7, $8, $9, $10)
-           ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, notes = EXCLUDED.notes`,
+          `INSERT INTO host_payout_records (id, host_id, amount_cents, currency, status, method, destination_account, reference_or_utr, provider_transfer_id, requested_at_utc, notes, idempotency_key)
+           VALUES ($1, $2, $3, 'USD', $4, $5, $6, $7, $8, $9, $10, $11)
+           ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, notes = EXCLUDED.notes, provider_transfer_id = COALESCE(EXCLUDED.provider_transfer_id, host_payout_records.provider_transfer_id)`,
           [
             payout.id,
             payout.hostId,
@@ -383,6 +383,7 @@ export class Database {
             payout.method,
             payout.destinationAccount,
             payout.referenceNumber,
+            payout.providerTransferId || null,
             payout.requestedAt,
             payout.notes || null,
             (payout as any).idempotencyKey || ('payout_' + payout.id)
@@ -634,13 +635,14 @@ export class Database {
         );
       } else if (collection === 'payouts') {
         await client.query(
-          `INSERT INTO host_payout_records (id, host_id, amount_cents, currency, status, method, destination_account, reference_or_utr, requested_at_utc, settled_at_utc, notes, idempotency_key)
-           VALUES ($1, $2, $3, 'USD', $4, $5, $6, $7, $8, $9, $10, $11)
+          `INSERT INTO host_payout_records (id, host_id, amount_cents, currency, status, method, destination_account, reference_or_utr, provider_transfer_id, requested_at_utc, settled_at_utc, notes, idempotency_key)
+           VALUES ($1, $2, $3, 'USD', $4, $5, $6, $7, $8, $9, $10, $11, $12)
            ON CONFLICT (id) DO UPDATE SET
              status = EXCLUDED.status,
              notes = EXCLUDED.notes,
              settled_at_utc = CASE WHEN EXCLUDED.status = 'PAID' THEN COALESCE(EXCLUDED.settled_at_utc, NOW()) ELSE host_payout_records.settled_at_utc END,
-             reference_or_utr = EXCLUDED.reference_or_utr`,
+             reference_or_utr = EXCLUDED.reference_or_utr,
+             provider_transfer_id = COALESCE(EXCLUDED.provider_transfer_id, host_payout_records.provider_transfer_id)`,
           [
             entity.id,
             entity.hostId,
@@ -649,6 +651,7 @@ export class Database {
             entity.method || 'ach_bank_transfer',
             entity.destinationAccount || '',
             entity.referenceNumber || '',
+            entity.providerTransferId || null,
             entity.requestedAt || new Date().toISOString(),
             entity.completedAt || null,
             entity.notes || null,

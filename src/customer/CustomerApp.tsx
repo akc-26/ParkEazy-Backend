@@ -219,7 +219,7 @@ export default function App() {
           onNavigateToCustomer={() => navigate('/')}
         />
 
-        <main className="flex-1 w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <main className="flex-1 w-full max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex flex-col md:flex-row items-start gap-6">
             {/* Left Sidebar Navigation */}
             <HostSidebar
@@ -346,7 +346,7 @@ export default function App() {
           onNavigateToCustomer={() => navigate('/')}
         />
 
-        <main className="flex-1 w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <main className="flex-1 w-full max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <AdminConsole
             currentUser={adminUser}
             onRefreshAll={() => {}}
@@ -381,7 +381,7 @@ export default function App() {
               onNavigateToHostPortal={() => navigate('/host')}
             />
           ) : (
-            <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <div className="w-full max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 py-4">
               <CustomerBookings
                 currentUser={activeCustomer}
                 onRefresh={() => {}}
