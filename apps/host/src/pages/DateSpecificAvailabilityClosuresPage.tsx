@@ -69,16 +69,23 @@ export function DateSpecificAvailabilityClosuresPage({ currentUser, onNavigate }
       return;
     }
 
+    const title = newTitle.trim() || 'Scheduled Facility Closure';
+    const startsAt = newStart.includes('T') ? newStart : `${newStart}T00:00:00.000Z`;
+    const endsAt = newEnd.includes('T') ? newEnd : `${newEnd}T23:59:59.000Z`;
+
     const payload = {
       facilityId: selectedFacilityId,
+      title,
+      reason: newTitle.trim() || 'maintenance',
+      startsAt,
+      endsAt,
       startDate: newStart,
       endDate: newEnd,
-      reason: newTitle.trim() || undefined
     };
 
     const val = validateClosure(payload);
-    if (!val.isValid) {
-      setErrorNotice(val.errors[0]?.message || 'Invalid closure dates.');
+    if (!val.success) {
+      setErrorNotice(val.errors[0] || 'Invalid closure dates.');
       return;
     }
 
@@ -96,7 +103,7 @@ export function DateSpecificAvailabilityClosuresPage({ currentUser, onNavigate }
       setNewEnd('');
     } catch (err: any) {
       // Conflict reporting (e.g. HTTP 409 or overlapping reservations)
-      setErrorNotice(err?.message || 'Failed to create facility closure.');
+      setErrorNotice(err?.message || 'Failed to create facility closure. Closure draft saved in this browser only.');
     } finally {
       setSaving(false);
     }
@@ -212,14 +219,14 @@ export function DateSpecificAvailabilityClosuresPage({ currentUser, onNavigate }
                   <div className="flex items-start gap-3">
                     <div className="text-2xl mt-0.5">🗓️</div>
                     <div>
-                      <h3 className="font-bold text-sm text-[#141B2C]">{c.reason || 'Scheduled Facility Closure'}</h3>
+                      <h3 className="font-bold text-sm text-[#141B2C]">{c.title || c.reason || 'Scheduled Facility Closure'}</h3>
                       <div className="flex items-center gap-3 text-xs text-[#64748B] mt-1">
-                        <span>From: <strong className="font-mono text-[#141B2C]">{c.startDate}</strong></span>
-                        <span>To: <strong className="font-mono text-[#141B2C]">{c.endDate}</strong></span>
-                        {c.affectedBayIds && c.affectedBayIds.length > 0 && (
+                        <span>From: <strong className="font-mono text-[#141B2C]">{c.startsAt ? c.startsAt.substring(0, 10) : (c.startDate || '—')}</strong></span>
+                        <span>To: <strong className="font-mono text-[#141B2C]">{c.endsAt ? c.endsAt.substring(0, 10) : (c.endDate || '—')}</strong></span>
+                        {(c.spaceId || (c.affectedBayIds && c.affectedBayIds.length > 0)) && (
                           <>
                             <span>•</span>
-                            <span className="font-medium text-[#0F766E]">{c.affectedBayIds.length} Bays Affected</span>
+                            <span className="font-medium text-[#0F766E]">{c.spaceId ? 'Bay Scoped' : `${c.affectedBayIds?.length} Bays Affected`}</span>
                           </>
                         )}
                       </div>

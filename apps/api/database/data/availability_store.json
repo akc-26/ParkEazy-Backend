@@ -26,6 +26,104 @@
   "dateOverrides": [],
   "maintenanceBlocks": [
     {
+      "id": "mb-ccab1469",
+      "hostId": "usr_host1",
+      "facilityId": "fac_metro_downtown",
+      "spaceId": "bay_m1",
+      "spaceNumber": "L1-A01",
+      "title": "Level 2 EV Hardware Check",
+      "description": "Scheduled preventive maintenance",
+      "startTimeUtc": "2026-12-20T10:00:00.000Z",
+      "endTimeUtc": "2026-12-20T14:00:00.000Z",
+      "status": "SCHEDULED",
+      "createdAtUtc": "2026-10-23T16:08:32.733Z",
+      "updatedAtUtc": "2026-10-23T16:08:32.733Z"
+    },
+    {
+      "id": "mb-2c422779",
+      "hostId": "usr_host1",
+      "facilityId": "fac_metro_downtown",
+      "spaceId": "bay_m1",
+      "spaceNumber": "L1-A01",
+      "title": "Level 2 EV Hardware Check",
+      "description": "Scheduled preventive maintenance",
+      "startTimeUtc": "2026-12-20T10:00:00.000Z",
+      "endTimeUtc": "2026-12-20T14:00:00.000Z",
+      "status": "SCHEDULED",
+      "createdAtUtc": "2026-10-23T16:08:11.608Z",
+      "updatedAtUtc": "2026-10-23T16:08:11.608Z"
+    },
+    {
+      "id": "mb-d4ac3087",
+      "hostId": "usr_host1",
+      "facilityId": "fac_metro_downtown",
+      "spaceId": "bay_m1",
+      "spaceNumber": "L1-A01",
+      "title": "Level 2 EV Hardware Check",
+      "description": "Scheduled preventive maintenance",
+      "startTimeUtc": "2026-12-20T10:00:00.000Z",
+      "endTimeUtc": "2026-12-20T14:00:00.000Z",
+      "status": "SCHEDULED",
+      "createdAtUtc": "2026-10-23T16:07:53.837Z",
+      "updatedAtUtc": "2026-10-23T16:07:53.837Z"
+    },
+    {
+      "id": "mb-18ce9320",
+      "hostId": "usr_host1",
+      "facilityId": "fac_metro_downtown",
+      "spaceId": "bay_m1",
+      "spaceNumber": "L1-A01",
+      "title": "Level 2 EV Hardware Check",
+      "description": "Scheduled preventive maintenance",
+      "startTimeUtc": "2026-12-20T10:00:00.000Z",
+      "endTimeUtc": "2026-12-20T14:00:00.000Z",
+      "status": "SCHEDULED",
+      "createdAtUtc": "2026-10-23T16:06:49.873Z",
+      "updatedAtUtc": "2026-10-23T16:06:49.873Z"
+    },
+    {
+      "id": "mb-47b4bd56",
+      "hostId": "usr_host1",
+      "facilityId": "fac_metro_downtown",
+      "spaceId": "bay_m1",
+      "spaceNumber": "L1-A01",
+      "title": "Level 2 EV Hardware Check",
+      "description": "Scheduled preventive maintenance",
+      "startTimeUtc": "2026-12-20T10:00:00.000Z",
+      "endTimeUtc": "2026-12-20T14:00:00.000Z",
+      "status": "SCHEDULED",
+      "createdAtUtc": "2026-10-23T16:06:16.377Z",
+      "updatedAtUtc": "2026-10-23T16:06:16.377Z"
+    },
+    {
+      "id": "mb-0dbd1f7c",
+      "hostId": "usr_host1",
+      "facilityId": "fac_metro_downtown",
+      "spaceId": "bay_m1",
+      "spaceNumber": "L1-A01",
+      "title": "Level 2 EV Hardware Check",
+      "description": "Scheduled preventive maintenance",
+      "startTimeUtc": "2026-12-20T10:00:00.000Z",
+      "endTimeUtc": "2026-12-20T14:00:00.000Z",
+      "status": "SCHEDULED",
+      "createdAtUtc": "2026-10-23T16:05:30.680Z",
+      "updatedAtUtc": "2026-10-23T16:05:30.680Z"
+    },
+    {
+      "id": "mb-ceb9691b",
+      "hostId": "usr_host1",
+      "facilityId": "fac_metro_downtown",
+      "spaceId": "bay_m1",
+      "spaceNumber": "L1-A01",
+      "title": "Level 2 EV Hardware Check",
+      "description": "Scheduled preventive maintenance",
+      "startTimeUtc": "2026-12-25T10:00:00.000Z",
+      "endTimeUtc": "2026-12-25T14:00:00.000Z",
+      "status": "SCHEDULED",
+      "createdAtUtc": "2026-10-23T16:05:17.951Z",
+      "updatedAtUtc": "2026-10-23T16:05:17.951Z"
+    },
+    {
       "id": "mb-001",
       "hostId": "usr-host-001",
       "facilityId": "loc-dt-001",
@@ -40,5 +138,5 @@
       "updatedAtUtc": "2026-10-15T10:00:00Z"
     }
   ],
-  "updatedAt": "2026-10-20T14:35:57.966Z"
+  "updatedAt": "2026-10-23T16:08:32.734Z"
 }

@@ -2,6 +2,7 @@ import { TenantConfig } from '@parkeazy/shared-types';
 
 export interface ValidationResult<T> {
   success: boolean;
+  isValid?: boolean;
   data?: T;
   errors: string[];
 }
@@ -10,7 +11,7 @@ export function validateTenantConfig(config: unknown): ValidationResult<TenantCo
   const errors: string[] = [];
 
   if (!config || typeof config !== 'object') {
-    return { success: false, errors: ['Configuration must be a non-null object'] };
+    return { success: false, isValid: false, errors: ['Configuration must be a non-null object'] };
   }
 
   const c = config as Record<string, any>;
@@ -62,8 +63,8 @@ export function validateTenantConfig(config: unknown): ValidationResult<TenantCo
   }
 
   if (errors.length > 0) {
-    return { success: false, errors };
+    return { success: false, isValid: false, errors };
   }
 
-  return { success: true, data: config as TenantConfig, errors: [] };
+  return { success: true, isValid: true, data: config as TenantConfig, errors: [] };
 }

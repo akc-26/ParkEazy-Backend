@@ -165,8 +165,8 @@ export function OperatingHoursWeeklySchedulePage({ currentUser, onNavigate }: Pr
 
     // Validate timezone
     const tzCheck = validateTimezone(timezone);
-    if (!tzCheck.isValid) {
-      setErrorMsg(tzCheck.errors[0]?.message || 'Invalid facility timezone identifier.');
+    if (!tzCheck.success) {
+      setErrorMsg(tzCheck.errors[0] || 'Invalid facility timezone identifier.');
       return;
     }
 
@@ -182,8 +182,8 @@ export function OperatingHoursWeeklySchedulePage({ currentUser, onNavigate }: Pr
 
     // Validate schedules
     const schedCheck = validateOperatingSchedules(payload);
-    if (!schedCheck.isValid) {
-      setErrorMsg(schedCheck.errors[0]?.message || 'Invalid operating schedule values.');
+    if (!schedCheck.success) {
+      setErrorMsg(schedCheck.errors[0] || 'Invalid operating schedule values.');
       return;
     }
 
@@ -194,7 +194,7 @@ export function OperatingHoursWeeklySchedulePage({ currentUser, onNavigate }: Pr
     try {
       await apiClient.facilities.update(selectedFacilityId, { timezone });
       await apiClient.facilities.updateOperatingHours(selectedFacilityId, payload);
-      setSuccessMsg('Operating hours and timezone saved successfully. Availability calculation engine and barrier controllers synchronized.');
+      setSuccessMsg('Operating hours and timezone saved successfully.');
     } catch (err: any) {
       setErrorMsg(err?.message || 'Failed to save operating schedule.');
     } finally {

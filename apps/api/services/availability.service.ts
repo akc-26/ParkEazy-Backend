@@ -164,7 +164,7 @@ export class AvailabilityService {
 
       // 2. Check maintenance blocks
       const overlappingBlock = activeBlocks.find((m) => {
-        if (m.spaceId !== bay.id) return false;
+        if (m.spaceId && m.spaceId !== bay.id) return false;
         const mStart = new Date(m.startTimeUtc).getTime();
         const mEnd = new Date(m.endTimeUtc).getTime();
         return Math.max(reqStart, mStart) < Math.min(reqEnd, mEnd);

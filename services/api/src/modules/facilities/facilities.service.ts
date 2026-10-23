@@ -1678,6 +1678,26 @@ export class FacilitiesService {
     const valid = validation.data!;
 
     if (this.databaseAvailable()) {
+      const spaceClause = valid.spaceId ? ' AND space_id=$5' : '';
+      const params: any[] = [facilityId, tenantId, valid.startsAt, valid.endsAt];
+      if (valid.spaceId) params.push(valid.spaceId);
+
+      const bookingConflicts = await this.databaseService!.query<any>(
+        `SELECT id, booking_reference, starts_at, ends_at FROM bookings
+         WHERE facility_id=$1 AND tenant_id=$2 AND status IN ('confirmed', 'active')
+           AND ends_at > $3::timestamptz AND starts_at < $4::timestamptz${spaceClause}`,
+        params
+      );
+
+      if (bookingConflicts.length > 0) {
+        const details = bookingConflicts
+          .map((b) => `${b.booking_reference || b.id} (${new Date(b.starts_at).toISOString()} to ${new Date(b.ends_at).toISOString()})`)
+          .join(', ');
+        throw new ConflictException(
+          `Cannot schedule maintenance. Confirmed customer reservation(s) exist during this interval: ${details}. Existing bookings cannot be automatically cancelled or altered.`
+        );
+      }
+
       const rows = await this.databaseService!.query<any>(
         `INSERT INTO facility_maintenance_periods (facility_id, tenant_id, space_id, title, description, status, starts_at, ends_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7::timestamptz, $8::timestamptz)

@@ -100,6 +100,7 @@ export function createApp(): Express {
 
   // Mount API routers
   app.use('/api/v1', apiV1Router);
+  app.use('/api/v1', apiRouter);
   app.use('/api', apiRouter);
 
   // Unmatched /api/* route returns 404 JSON with API_NOT_FOUND

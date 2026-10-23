@@ -108,7 +108,12 @@ export class DatabaseManager {
         const filePath = path.join(migrationsDir, file);
         const sql = fs.readFileSync(filePath, 'utf8');
         try {
-          targetPool.query(sql);
+          const res = targetPool.query(sql);
+          if (res && typeof res.catch === 'function') {
+            res.catch((mErr: any) => {
+              console.warn(`[ParkEazy-DB] Migration statement note in ${file}:`, mErr.message);
+            });
+          }
         } catch (mErr: any) {
           // If statement batch error, ignore if idempotent IF NOT EXISTS
           console.warn(`[ParkEazy-DB] Migration statement note in ${file}:`, mErr.message);

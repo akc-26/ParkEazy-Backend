@@ -166,10 +166,14 @@ export interface FacilityClosure {
   facilityId: string;
   tenantId?: string;
   spaceId?: string;
+  bayId?: string;
+  affectedBayIds?: string[];
   title: string;
   reason?: string;
   startsAt: string;
   endsAt: string;
+  startDate?: string;
+  endDate?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -181,11 +185,14 @@ export interface FacilityMaintenance {
   facilityId: string;
   tenantId?: string;
   spaceId?: string;
+  bayId?: string | null;
   title: string;
   description?: string;
   status: MaintenanceStatus;
   startsAt: string;
   endsAt: string;
+  startTime?: string;
+  endTime?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -193,10 +200,14 @@ export interface FacilityMaintenance {
 export interface CreateClosurePayload {
   facilityId?: string;
   spaceId?: string;
-  title: string;
+  bayId?: string;
+  affectedBayIds?: string[];
+  title?: string;
   reason?: string;
-  startsAt: string;
-  endsAt: string;
+  startsAt?: string;
+  endsAt?: string;
+  startDate?: string;
+  endDate?: string;
 }
 
 export interface UpdateClosurePayload {
@@ -204,17 +215,24 @@ export interface UpdateClosurePayload {
   reason?: string;
   startsAt?: string;
   endsAt?: string;
+  startDate?: string;
+  endDate?: string;
   spaceId?: string;
+  bayId?: string;
+  affectedBayIds?: string[];
 }
 
 export interface CreateMaintenancePayload {
   facilityId?: string;
   spaceId?: string;
+  bayId?: string | null;
   title: string;
   description?: string;
   status?: MaintenanceStatus;
-  startsAt: string;
-  endsAt: string;
+  startsAt?: string;
+  endsAt?: string;
+  startTime?: string;
+  endTime?: string;
 }
 
 export interface UpdateMaintenancePayload {
@@ -223,7 +241,10 @@ export interface UpdateMaintenancePayload {
   status?: MaintenanceStatus;
   startsAt?: string;
   endsAt?: string;
+  startTime?: string;
+  endTime?: string;
   spaceId?: string;
+  bayId?: string | null;
 }
 
 export interface ParkingFacility {

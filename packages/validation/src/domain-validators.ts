@@ -445,14 +445,14 @@ export function validateSearchQuery(input: unknown): ValidationResult<ValidatedS
 
 export function validateTimezone(tz: unknown): ValidationResult<string> {
   if (typeof tz !== 'string' || !tz.trim()) {
-    return { success: false, errors: ['Timezone must be a non-empty string'] };
+    return { success: false, isValid: false, errors: ['Timezone must be a non-empty string'] };
   }
   const cleanTz = tz.trim();
   try {
     Intl.DateTimeFormat(undefined, { timeZone: cleanTz });
-    return { success: true, data: cleanTz, errors: [] };
+    return { success: true, isValid: true, data: cleanTz, errors: [] };
   } catch {
-    return { success: false, errors: [`Invalid IANA timezone identifier: "${cleanTz}"`] };
+    return { success: false, isValid: false, errors: [`Invalid IANA timezone identifier: "${cleanTz}"`] };
   }
 }
 
@@ -467,11 +467,11 @@ export interface ValidatedOperatingSchedule {
 export function validateOperatingSchedules(input: unknown): ValidationResult<ValidatedOperatingSchedule[]> {
   const errors: string[] = [];
   if (!Array.isArray(input)) {
-    return { success: false, errors: ['Operating schedules must be provided as an array'] };
+    return { success: false, isValid: false, errors: ['Operating schedules must be provided as an array'] };
   }
 
   if (input.length === 0) {
-    return { success: false, errors: ['Operating schedules array cannot be empty'] };
+    return { success: false, isValid: false, errors: ['Operating schedules array cannot be empty'] };
   }
 
   const timeRegex = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -528,10 +528,10 @@ export function validateOperatingSchedules(input: unknown): ValidationResult<Val
   }
 
   if (errors.length > 0) {
-    return { success: false, errors };
+    return { success: false, isValid: false, errors };
   }
 
-  return { success: true, data: validated, errors: [] };
+  return { success: true, isValid: true, data: validated, errors: [] };
 }
 
 export interface ValidatedClosure {
@@ -539,40 +539,55 @@ export interface ValidatedClosure {
   reason: string;
   startsAt: string;
   endsAt: string;
+  startDate?: string;
+  endDate?: string;
   spaceId?: string;
+  bayId?: string;
 }
 
 export function validateClosure(input: unknown): ValidationResult<ValidatedClosure> {
   const errors: string[] = [];
   if (!input || typeof input !== 'object') {
-    return { success: false, errors: ['Closure payload must be a non-null object'] };
+    return { success: false, isValid: false, errors: ['Closure payload must be a non-null object'] };
   }
 
   const c = input as Record<string, any>;
-  const title = typeof c.title === 'string' ? c.title.trim() : '';
+  const rawTitle = typeof c.title === 'string' ? c.title.trim() : '';
+  const rawReason = typeof c.reason === 'string' ? c.reason.trim() : '';
+  const title = rawTitle || rawReason || 'Scheduled Facility Closure';
+
   if (!title || title.length < 2 || title.length > 255) {
     errors.push('Closure title must be between 2 and 255 characters');
   }
 
-  const reason = typeof c.reason === 'string' ? c.reason.trim() : 'maintenance';
+  const reason = rawReason || 'maintenance';
 
-  const timeWindow = validateTimeWindow(c.startsAt, c.endsAt, { minDurationMinutes: 1, maxDurationDays: 365 });
+  const startsAt = c.startsAt || c.startDate || c.startTime || c.startTimeUtc;
+  const endsAt = c.endsAt || c.endDate || c.endTime || c.endTimeUtc;
+
+  const timeWindow = validateTimeWindow(startsAt, endsAt, { minDurationMinutes: 1, maxDurationDays: 365 });
   if (!timeWindow.success) {
     errors.push(...timeWindow.errors);
   }
 
   if (errors.length > 0) {
-    return { success: false, errors };
+    return { success: false, isValid: false, errors };
   }
+
+  const resolvedSpaceId = c.spaceId ? String(c.spaceId) : (c.bayId ? String(c.bayId) : (c.affectedBayIds && c.affectedBayIds[0] ? String(c.affectedBayIds[0]) : undefined));
 
   return {
     success: true,
+    isValid: true,
     data: {
       title,
       reason,
       startsAt: timeWindow.data!.startsAt,
       endsAt: timeWindow.data!.endsAt,
-      spaceId: c.spaceId ? String(c.spaceId) : undefined,
+      startDate: timeWindow.data!.startsAt,
+      endDate: timeWindow.data!.endsAt,
+      spaceId: resolvedSpaceId,
+      bayId: resolvedSpaceId,
     },
     errors: [],
   };
@@ -584,7 +599,10 @@ export interface ValidatedMaintenance {
   status: 'scheduled' | 'in_progress' | 'completed' | 'cancelled';
   startsAt: string;
   endsAt: string;
+  startTime?: string;
+  endTime?: string;
   spaceId?: string;
+  bayId?: string;
 }
 
 const VALID_MAINTENANCE_STATUSES = ['scheduled', 'in_progress', 'completed', 'cancelled'] as const;
@@ -592,11 +610,12 @@ const VALID_MAINTENANCE_STATUSES = ['scheduled', 'in_progress', 'completed', 'ca
 export function validateMaintenance(input: unknown): ValidationResult<ValidatedMaintenance> {
   const errors: string[] = [];
   if (!input || typeof input !== 'object') {
-    return { success: false, errors: ['Maintenance payload must be a non-null object'] };
+    return { success: false, isValid: false, errors: ['Maintenance payload must be a non-null object'] };
   }
 
   const m = input as Record<string, any>;
-  const title = typeof m.title === 'string' ? m.title.trim() : '';
+  const rawTitle = typeof m.title === 'string' ? m.title.trim() : '';
+  const title = rawTitle || 'Scheduled Maintenance';
   if (!title || title.length < 2 || title.length > 255) {
     errors.push('Maintenance title must be between 2 and 255 characters');
   }
@@ -606,24 +625,33 @@ export function validateMaintenance(input: unknown): ValidationResult<ValidatedM
     errors.push(`Invalid maintenance status '${m.status}'. Permitted: ${VALID_MAINTENANCE_STATUSES.join(', ')}`);
   }
 
-  const timeWindow = validateTimeWindow(m.startsAt, m.endsAt, { minDurationMinutes: 1, maxDurationDays: 365 });
+  const startsAt = m.startsAt || m.startTime || m.startDate || m.startTimeUtc;
+  const endsAt = m.endsAt || m.endTime || m.endDate || m.endTimeUtc;
+
+  const timeWindow = validateTimeWindow(startsAt, endsAt, { minDurationMinutes: 1, maxDurationDays: 365 });
   if (!timeWindow.success) {
     errors.push(...timeWindow.errors);
   }
 
   if (errors.length > 0) {
-    return { success: false, errors };
+    return { success: false, isValid: false, errors };
   }
+
+  const resolvedSpaceId = m.spaceId ? String(m.spaceId) : (m.bayId ? String(m.bayId) : undefined);
 
   return {
     success: true,
+    isValid: true,
     data: {
       title,
       description: typeof m.description === 'string' ? m.description.trim() : undefined,
       status: status as any,
       startsAt: timeWindow.data!.startsAt,
       endsAt: timeWindow.data!.endsAt,
-      spaceId: m.spaceId ? String(m.spaceId) : undefined,
+      startTime: timeWindow.data!.startsAt,
+      endTime: timeWindow.data!.endsAt,
+      spaceId: resolvedSpaceId,
+      bayId: resolvedSpaceId,
     },
     errors: [],
   };
@@ -634,7 +662,7 @@ export function validateMaintenanceTransition(
   nextStatus: 'scheduled' | 'in_progress' | 'completed' | 'cancelled'
 ): ValidationResult<'scheduled' | 'in_progress' | 'completed' | 'cancelled'> {
   if (currentStatus === nextStatus) {
-    return { success: true, data: nextStatus, errors: [] };
+    return { success: true, isValid: true, data: nextStatus, errors: [] };
   }
 
   const validTransitions: Record<string, string[]> = {
@@ -648,12 +676,13 @@ export function validateMaintenanceTransition(
   if (!permitted.includes(nextStatus)) {
     return {
       success: false,
+      isValid: false,
       errors: [
         `Invalid maintenance status transition from '${currentStatus}' to '${nextStatus}'. Terminal states (completed, cancelled) cannot be reopened.`,
       ],
     };
   }
 
-  return { success: true, data: nextStatus, errors: [] };
+  return { success: true, isValid: true, data: nextStatus, errors: [] };
 }
 

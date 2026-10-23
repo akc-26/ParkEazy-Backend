@@ -734,39 +734,80 @@ export class Database {
           ]
         );
       } else if (collection === 'closures') {
+        const startsAt = entity.startsAt || entity.startDate || entity.startTime || entity.startTimeUtc;
+        const endsAt = entity.endsAt || entity.endDate || entity.endTime || entity.endTimeUtc;
+        const spaceId = entity.spaceId || entity.bayId || (entity.affectedBayIds && entity.affectedBayIds[0]) || null;
+        const title = entity.title || entity.reason || 'Scheduled Facility Closure';
+        const reason = entity.reason || 'maintenance';
+        const hostId = entity.hostId || (await this.getEntityFromDb<Facility>('facilities', entity.facilityId))?.hostId || null;
+        const tenantId = entity.tenantId || 'default';
         await client.query(
-          `INSERT INTO facility_closures (id, facility_id, start_date, end_date, reason, affected_bay_ids, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-           ON CONFLICT (id) DO UPDATE SET
-             start_date = EXCLUDED.start_date, end_date = EXCLUDED.end_date, reason = EXCLUDED.reason,
-             affected_bay_ids = EXCLUDED.affected_bay_ids, updated_at = NOW()`,
+          `INSERT INTO facility_closures (
+            id, facility_id, tenant_id, host_id, space_id, bay_id, title, reason,
+            starts_at, ends_at, start_date, end_date, start_time_utc, end_time_utc,
+            affected_bay_ids, created_at, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+          ON CONFLICT (id) DO UPDATE SET
+            host_id = EXCLUDED.host_id, space_id = EXCLUDED.space_id, bay_id = EXCLUDED.bay_id, title = EXCLUDED.title,
+            reason = EXCLUDED.reason, starts_at = EXCLUDED.starts_at, ends_at = EXCLUDED.ends_at,
+            start_date = EXCLUDED.start_date, end_date = EXCLUDED.end_date,
+            start_time_utc = EXCLUDED.start_time_utc, end_time_utc = EXCLUDED.end_time_utc,
+            affected_bay_ids = EXCLUDED.affected_bay_ids, updated_at = NOW()`,
           [
             entity.id,
             entity.facilityId,
-            entity.startDate,
-            entity.endDate,
-            entity.reason || null,
+            tenantId,
+            hostId,
+            spaceId,
+            spaceId,
+            title,
+            reason,
+            startsAt,
+            endsAt,
+            startsAt,
+            endsAt,
+            startsAt,
+            endsAt,
             entity.affectedBayIds || null,
             entity.createdAt || new Date().toISOString(),
             entity.updatedAt || new Date().toISOString()
           ]
         );
       } else if (collection === 'maintenance') {
+        const startsAt = entity.startsAt || entity.startTime || entity.startDate || entity.startTimeUtc;
+        const endsAt = entity.endsAt || entity.endTime || entity.endDate || entity.endTimeUtc;
+        const spaceId = entity.spaceId || entity.bayId || null;
+        const title = entity.title || 'Scheduled Maintenance';
+        const status = entity.status || 'scheduled';
+        const tenantId = entity.tenantId || 'default';
         await client.query(
-          `INSERT INTO facility_maintenance_periods (id, facility_id, bay_id, title, description, start_time, end_time, status, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-           ON CONFLICT (id) DO UPDATE SET
-             bay_id = EXCLUDED.bay_id, title = EXCLUDED.title, description = EXCLUDED.description,
-             start_time = EXCLUDED.start_time, end_time = EXCLUDED.end_time, status = EXCLUDED.status, updated_at = NOW()`,
+          `INSERT INTO facility_maintenance_periods (
+            id, facility_id, tenant_id, space_id, bay_id, title, description,
+            status, starts_at, ends_at, start_time, end_time, start_time_utc, end_time_utc,
+            created_at, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+          ON CONFLICT (id) DO UPDATE SET
+            space_id = EXCLUDED.space_id, bay_id = EXCLUDED.bay_id, title = EXCLUDED.title,
+            description = EXCLUDED.description, status = EXCLUDED.status,
+            starts_at = EXCLUDED.starts_at, ends_at = EXCLUDED.ends_at,
+            start_time = EXCLUDED.start_time, end_time = EXCLUDED.end_time,
+            start_time_utc = EXCLUDED.start_time_utc, end_time_utc = EXCLUDED.end_time_utc,
+            updated_at = NOW()`,
           [
             entity.id,
             entity.facilityId,
-            entity.bayId || null,
-            entity.title || 'Scheduled Maintenance',
+            tenantId,
+            spaceId,
+            spaceId,
+            title,
             entity.description || null,
-            entity.startTime,
-            entity.endTime,
-            entity.status || 'scheduled',
+            status,
+            startsAt,
+            endsAt,
+            startsAt,
+            endsAt,
+            startsAt,
+            endsAt,
             entity.createdAt || new Date().toISOString(),
             entity.updatedAt || new Date().toISOString()
           ]
@@ -1811,8 +1852,8 @@ export class Database {
 
     if (timezone) {
       const tzVal = validateTimezone(timezone);
-      if (!tzVal.isValid) {
-        throw new Error(tzVal.errors[0]?.message || 'Invalid timezone');
+      if (!tzVal.success) {
+        throw new Error(tzVal.errors[0] || 'Invalid timezone');
       }
       facility.timezone = timezone;
     }
@@ -1845,12 +1886,33 @@ export class Database {
       throw new Error('Unauthorized: You do not own this facility.');
     }
     const closures = await this.getCollectionFromDb<FacilityClosure>('closures');
-    return closures.filter(c => c.facilityId === facilityId);
+    return closures
+      .filter(c => c.facilityId === facilityId)
+      .map(c => ({
+        ...c,
+        startsAt: c.startsAt || c.startDate || '',
+        endsAt: c.endsAt || c.endDate || '',
+        startDate: c.startDate || c.startsAt || '',
+        endDate: c.endDate || c.endsAt || '',
+        title: c.title || c.reason || 'Scheduled Facility Closure',
+        spaceId: c.spaceId || c.bayId || (c.affectedBayIds && c.affectedBayIds[0]) || undefined,
+        bayId: c.bayId || c.spaceId || (c.affectedBayIds && c.affectedBayIds[0]) || undefined,
+      }));
   }
 
   public async createFacilityClosure(
     facilityId: string,
-    data: { startDate: string; endDate: string; reason?: string; affectedBayIds?: string[] },
+    data: {
+      startDate?: string;
+      endDate?: string;
+      startsAt?: string;
+      endsAt?: string;
+      title?: string;
+      reason?: string;
+      affectedBayIds?: string[];
+      spaceId?: string;
+      bayId?: string;
+    },
     actor: User
   ): Promise<FacilityClosure> {
     const facility = await this.getFacilityById(facilityId);
@@ -1860,22 +1922,25 @@ export class Database {
     }
 
     const val = validateClosure(data);
-    if (!val.isValid) {
-      throw new Error(val.errors[0]?.message || 'Invalid closure parameters');
+    if (!val.success) {
+      throw new Error(val.errors[0] || 'Invalid closure parameters');
     }
 
-    const start = new Date(data.startDate).toISOString();
-    const end = new Date(data.endDate).toISOString();
+    const valid = val.data!;
+    const start = new Date(valid.startsAt).toISOString();
+    const end = new Date(valid.endsAt).toISOString();
 
     // Check overlap with existing closures
     const closures = await this.getCollectionFromDb<FacilityClosure>('closures');
     const existing = closures.filter(c => c.facilityId === facilityId);
     for (const c of existing) {
-      const cStart = new Date(c.startDate).toISOString();
-      const cEnd = new Date(c.endDate).toISOString();
+      const cStart = new Date(c.startsAt || c.startDate!).toISOString();
+      const cEnd = new Date(c.endsAt || c.endDate!).toISOString();
       if (start < cEnd && end > cStart) {
         // If bay-level, check if affected bays overlap
-        if (!data.affectedBayIds || !c.affectedBayIds || data.affectedBayIds.some(b => c.affectedBayIds!.includes(b))) {
+        const affected = data.affectedBayIds || (valid.spaceId ? [valid.spaceId] : undefined);
+        const cAffected = c.affectedBayIds || (c.spaceId ? [c.spaceId] : (c.bayId ? [c.bayId] : undefined));
+        if (!affected || !cAffected || affected.some(b => cAffected.includes(b))) {
           throw new Error('A closure already exists for this facility that overlaps the specified date range.');
         }
       }
@@ -1890,8 +1955,9 @@ export class Database {
       const bEnd = new Date(b.endTime).toISOString();
       const timeOverlaps = start < bEnd && end > bStart;
       if (!timeOverlaps) return false;
-      if (!data.affectedBayIds || data.affectedBayIds.length === 0) return true;
-      return data.affectedBayIds.includes(b.bayId);
+      const affected = data.affectedBayIds || (valid.spaceId ? [valid.spaceId] : undefined);
+      if (!affected || affected.length === 0) return true;
+      return affected.includes(b.bayId);
     });
 
     if (conflictingBooking) {
@@ -1904,10 +1970,17 @@ export class Database {
     const closure: FacilityClosure = {
       id: 'cls_' + crypto.randomUUID().slice(0, 8),
       facilityId,
-      startDate: data.startDate,
-      endDate: data.endDate,
-      reason: data.reason?.trim() || undefined,
-      affectedBayIds: data.affectedBayIds && data.affectedBayIds.length > 0 ? data.affectedBayIds : undefined,
+      hostId: facility.hostId,
+      tenantId: (facility as any).tenantId || 'default',
+      title: valid.title,
+      reason: valid.reason,
+      startsAt: start,
+      endsAt: end,
+      startDate: valid.startDate || start,
+      endDate: valid.endDate || end,
+      spaceId: valid.spaceId,
+      bayId: valid.bayId,
+      affectedBayIds: data.affectedBayIds && data.affectedBayIds.length > 0 ? data.affectedBayIds : (valid.spaceId ? [valid.spaceId] : undefined),
       createdAt: now,
       updatedAt: now
     };
@@ -1946,11 +2019,19 @@ export class Database {
       throw new Error('Closure not found');
     }
 
-    const startDate = updates.startDate || closure.startDate;
-    const endDate = updates.endDate || closure.endDate;
-    const val = validateClosure({ startDate, endDate, reason: updates.reason ?? closure.reason });
-    if (!val.isValid) {
-      throw new Error(val.errors[0]?.message || 'Invalid closure parameters');
+    const startDate = updates.startDate || updates.startsAt || closure.startDate || closure.startsAt!;
+    const endDate = updates.endDate || updates.endsAt || closure.endDate || closure.endsAt!;
+    const val = validateClosure({
+      title: updates.title || closure.title || updates.reason || closure.reason,
+      startsAt: startDate,
+      endsAt: endDate,
+      startDate,
+      endDate,
+      reason: updates.reason ?? closure.reason,
+      spaceId: updates.spaceId || updates.bayId || closure.spaceId || closure.bayId
+    });
+    if (!val.success) {
+      throw new Error(val.errors[0] || 'Invalid closure parameters');
     }
 
     const start = new Date(startDate).toISOString();
@@ -1960,8 +2041,8 @@ export class Database {
     const closures = await this.getCollectionFromDb<FacilityClosure>('closures');
     for (const c of closures) {
       if (c.id === closureId || c.facilityId !== facilityId) continue;
-      const cStart = new Date(c.startDate).toISOString();
-      const cEnd = new Date(c.endDate).toISOString();
+      const cStart = new Date(c.startsAt || c.startDate!).toISOString();
+      const cEnd = new Date(c.endsAt || c.endDate!).toISOString();
       if (start < cEnd && end > cStart) {
         throw new Error('A closure already exists for this facility that overlaps the specified date range.');
       }
@@ -1985,7 +2066,12 @@ export class Database {
 
     closure.startDate = startDate;
     closure.endDate = endDate;
+    closure.startsAt = start;
+    closure.endsAt = end;
+    if (updates.title !== undefined) closure.title = updates.title;
     if (updates.reason !== undefined) closure.reason = updates.reason;
+    if (updates.spaceId !== undefined) closure.spaceId = updates.spaceId;
+    if (updates.bayId !== undefined) closure.bayId = updates.bayId;
     if (updates.affectedBayIds !== undefined) closure.affectedBayIds = updates.affectedBayIds;
     closure.updatedAt = new Date().toISOString();
 
@@ -2043,7 +2129,17 @@ export class Database {
       throw new Error('Unauthorized: You do not own this facility.');
     }
     const maintenance = await this.getCollectionFromDb<FacilityMaintenance>('maintenance');
-    return maintenance.filter(m => m.facilityId === facilityId);
+    return maintenance
+      .filter(m => m.facilityId === facilityId)
+      .map(m => ({
+        ...m,
+        startsAt: m.startsAt || m.startTime || '',
+        endsAt: m.endsAt || m.endTime || '',
+        startTime: m.startTime || m.startsAt || '',
+        endTime: m.endTime || m.endsAt || '',
+        spaceId: m.spaceId || m.bayId || null,
+        bayId: m.bayId || m.spaceId || null,
+      }));
   }
 
   public async createFacilityMaintenance(
@@ -2051,9 +2147,12 @@ export class Database {
     data: {
       title: string;
       description?: string;
-      startTime: string;
-      endTime: string;
+      startTime?: string;
+      endTime?: string;
+      startsAt?: string;
+      endsAt?: string;
       bayId?: string | null;
+      spaceId?: string | null;
       status?: MaintenanceStatus;
     },
     actor: User
@@ -2065,27 +2164,30 @@ export class Database {
     }
 
     const val = validateMaintenance(data);
-    if (!val.isValid) {
-      throw new Error(val.errors[0]?.message || 'Invalid maintenance parameters');
+    if (!val.success) {
+      throw new Error(val.errors[0] || 'Invalid maintenance parameters');
     }
 
+    const valid = val.data!;
+    const resolvedBayId = valid.spaceId || valid.bayId || null;
+
     let bay: ParkingBay | null = null;
-    if (data.bayId) {
-      bay = await this.getEntityFromDb<ParkingBay>('bays', data.bayId);
+    if (resolvedBayId) {
+      bay = await this.getEntityFromDb<ParkingBay>('bays', resolvedBayId);
       if (!bay || bay.facilityId !== facilityId) {
         throw new Error('Specified parking bay does not exist in this facility.');
       }
     }
 
-    const start = new Date(data.startTime).toISOString();
-    const end = new Date(data.endTime).toISOString();
+    const start = new Date(valid.startsAt).toISOString();
+    const end = new Date(valid.endsAt).toISOString();
 
     // Check confirmed booking conflicts
     const bookings = await this.getCollectionFromDb<Booking>('bookings');
     const conflictingBooking = bookings.find(b => {
       if (b.facilityId !== facilityId) return false;
       if (b.status !== 'confirmed' && b.status !== 'checked_in') return false;
-      if (data.bayId && b.bayId !== data.bayId) return false;
+      if (resolvedBayId && b.bayId !== resolvedBayId) return false;
       const bStart = new Date(b.startTime).toISOString();
       const bEnd = new Date(b.endTime).toISOString();
       return start < bEnd && end > bStart;
@@ -2098,15 +2200,19 @@ export class Database {
     }
 
     const now = new Date().toISOString();
-    const initialStatus = data.status || 'scheduled';
+    const initialStatus = valid.status || 'scheduled';
     const maintenance: FacilityMaintenance = {
       id: 'maint_' + crypto.randomUUID().slice(0, 8),
       facilityId,
-      bayId: data.bayId || null,
-      title: data.title.trim(),
-      description: data.description?.trim() || undefined,
-      startTime: data.startTime,
-      endTime: data.endTime,
+      tenantId: (facility as any).tenantId || 'default',
+      bayId: resolvedBayId,
+      spaceId: resolvedBayId,
+      title: valid.title.trim(),
+      description: valid.description?.trim() || undefined,
+      startTime: valid.startTime || start,
+      endTime: valid.endTime || end,
+      startsAt: start,
+      endsAt: end,
       status: initialStatus,
       createdAt: now,
       updatedAt: now
@@ -2129,8 +2235,8 @@ export class Database {
         actor.fullName,
         actor.role,
         'MAINTENANCE_SCHEDULED',
-        data.bayId ? 'bay' : 'facility',
-        data.bayId || facilityId,
+        resolvedBayId ? 'bay' : 'facility',
+        resolvedBayId || facilityId,
         `Maintenance scheduled: "${maintenance.title}" from ${maintenance.startTime} to ${maintenance.endTime}`,
         client
       );
@@ -2159,32 +2265,42 @@ export class Database {
     // State machine transition validation
     if (updates.status && updates.status !== maintenance.status) {
       const transVal = validateMaintenanceTransition(maintenance.status, updates.status);
-      if (!transVal.isValid) {
-        throw new Error(transVal.errors[0]?.message || 'Invalid maintenance status transition');
+      if (!transVal.success) {
+        throw new Error(transVal.errors[0] || 'Invalid maintenance status transition');
       }
     }
 
-    const startTime = updates.startTime || maintenance.startTime;
-    const endTime = updates.endTime || maintenance.endTime;
+    const startTime = updates.startTime || updates.startsAt || maintenance.startTime || maintenance.startsAt!;
+    const endTime = updates.endTime || updates.endsAt || maintenance.endTime || maintenance.endsAt!;
+    const resolvedBayId = updates.bayId !== undefined ? updates.bayId : (updates.spaceId !== undefined ? updates.spaceId : (maintenance.bayId || maintenance.spaceId));
     const val = validateMaintenance({
       title: updates.title || maintenance.title,
       startTime,
       endTime,
-      description: updates.description ?? maintenance.description
+      startsAt: startTime,
+      endsAt: endTime,
+      status: updates.status || maintenance.status,
+      description: updates.description ?? maintenance.description,
+      spaceId: resolvedBayId || undefined
     });
-    if (!val.isValid) {
-      throw new Error(val.errors[0]?.message || 'Invalid maintenance parameters');
+    if (!val.success) {
+      throw new Error(val.errors[0] || 'Invalid maintenance parameters');
     }
 
+    const valid = val.data!;
     const oldStatus = maintenance.status;
     const newStatus = updates.status || maintenance.status;
     const now = new Date().toISOString();
 
-    maintenance.title = updates.title ? updates.title.trim() : maintenance.title;
+    maintenance.title = valid.title.trim();
     if (updates.description !== undefined) maintenance.description = updates.description ? updates.description.trim() : undefined;
-    maintenance.startTime = startTime;
-    maintenance.endTime = endTime;
+    maintenance.startTime = valid.startTime || startTime;
+    maintenance.endTime = valid.endTime || endTime;
+    maintenance.startsAt = valid.startsAt;
+    maintenance.endsAt = valid.endsAt;
     maintenance.status = newStatus;
+    if (updates.bayId !== undefined) maintenance.bayId = updates.bayId;
+    if (updates.spaceId !== undefined) maintenance.spaceId = updates.spaceId;
     maintenance.updatedAt = now;
 
     await this.withTransaction(async (client) => {

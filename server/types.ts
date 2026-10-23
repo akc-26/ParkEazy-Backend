@@ -81,9 +81,15 @@ export interface Facility {
 export interface FacilityClosure {
   id: string;
   facilityId: string;
-  startDate: string;
-  endDate: string;
+  tenantId?: string;
+  title?: string;
   reason?: string;
+  startDate?: string;
+  endDate?: string;
+  startsAt?: string;
+  endsAt?: string;
+  bayId?: string;
+  spaceId?: string;
   affectedBayIds?: string[];
   createdAt: string;
   updatedAt: string;
@@ -94,11 +100,15 @@ export type MaintenanceStatus = 'scheduled' | 'in_progress' | 'completed' | 'can
 export interface FacilityMaintenance {
   id: string;
   facilityId: string;
+  tenantId?: string;
   bayId?: string | null;
+  spaceId?: string | null;
   title: string;
   description?: string;
-  startTime: string;
-  endTime: string;
+  startTime?: string;
+  endTime?: string;
+  startsAt?: string;
+  endsAt?: string;
   status: MaintenanceStatus;
   createdAt: string;
   updatedAt: string;

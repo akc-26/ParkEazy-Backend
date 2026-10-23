@@ -589,8 +589,249 @@
       "updatedAtUtc": "2026-10-20T14:36:11.036Z"
     }
   ],
-  "closures": [],
+  "closures": [
+    {
+      "id": "cls-5b9eee72",
+      "hostId": "usr_host1",
+      "facilityId": "fac_metro_downtown",
+      "title": "Christmas Day Full Garage Deep Clean",
+      "reason": "MAINTENANCE",
+      "startTimeUtc": "2026-12-25T00:00:00.000Z",
+      "endTimeUtc": "2026-12-25T23:59:59.000Z",
+      "createdAtUtc": "2026-10-23T16:08:32.775Z"
+    },
+    {
+      "id": "cls-e959fe5e",
+      "hostId": "usr_host1",
+      "facilityId": "fac_metro_downtown",
+      "title": "Christmas Day Full Garage Deep Clean",
+      "reason": "MAINTENANCE",
+      "startTimeUtc": "2026-12-25T00:00:00.000Z",
+      "endTimeUtc": "2026-12-25T23:59:59.000Z",
+      "createdAtUtc": "2026-10-23T16:08:11.654Z"
+    },
+    {
+      "id": "cls-0f262bfb",
+      "hostId": "usr_host1",
+      "facilityId": "fac_metro_downtown",
+      "title": "Christmas Day Full Garage Deep Clean",
+      "reason": "MAINTENANCE",
+      "startTimeUtc": "2026-12-25T00:00:00.000Z",
+      "endTimeUtc": "2026-12-25T23:59:59.000Z",
+      "createdAtUtc": "2026-10-23T16:07:53.881Z"
+    },
+    {
+      "id": "cls-c6523ec1",
+      "hostId": "usr_host1",
+      "facilityId": "fac_metro_downtown",
+      "title": "Christmas Day Full Garage Deep Clean",
+      "reason": "MAINTENANCE",
+      "startTimeUtc": "2026-12-25T00:00:00.000Z",
+      "endTimeUtc": "2026-12-25T23:59:59.000Z",
+      "createdAtUtc": "2026-10-23T16:06:49.915Z"
+    },
+    {
+      "id": "cls-ba9bf7bf",
+      "hostId": "usr_host1",
+      "facilityId": "fac_metro_downtown",
+      "title": "Christmas Day Full Garage Deep Clean",
+      "reason": "MAINTENANCE",
+      "startTimeUtc": "2026-12-25T00:00:00.000Z",
+      "endTimeUtc": "2026-12-25T23:59:59.000Z",
+      "createdAtUtc": "2026-10-23T16:06:16.420Z"
+    },
+    {
+      "id": "cls-b8ccbb61",
+      "hostId": "usr_host1",
+      "facilityId": "fac_metro_downtown",
+      "title": "Christmas Day Full Garage Deep Clean",
+      "reason": "MAINTENANCE",
+      "startTimeUtc": "2026-12-25T00:00:00.000Z",
+      "endTimeUtc": "2026-12-25T23:59:59.000Z",
+      "createdAtUtc": "2026-10-23T16:05:30.721Z"
+    },
+    {
+      "id": "cls-26b5d004",
+      "hostId": "usr_host1",
+      "facilityId": "fac_metro_downtown",
+      "title": "Christmas Day Full Garage Deep Clean",
+      "reason": "MAINTENANCE",
+      "startTimeUtc": "2026-12-25T00:00:00.000Z",
+      "endTimeUtc": "2026-12-25T23:59:59.000Z",
+      "createdAtUtc": "2026-10-23T16:05:18.001Z"
+    },
+    {
+      "id": "cls-02159706",
+      "hostId": "usr_host1",
+      "facilityId": "fac_metro_downtown",
+      "title": "Christmas Day Full Garage Deep Clean",
+      "reason": "MAINTENANCE",
+      "startTimeUtc": "2026-12-25T00:00:00.000Z",
+      "endTimeUtc": "2026-12-25T23:59:59.000Z",
+      "createdAtUtc": "2026-10-23T16:04:49.116Z"
+    }
+  ],
   "auditLogs": [
+    {
+      "id": "aud-3822c123",
+      "hostId": "usr_host1",
+      "facilityId": "fac_metro_downtown",
+      "facilityName": "Downtown Metro Tech Center Garage",
+      "action": "CLOSURE_CREATED",
+      "actorId": "usr_host1",
+      "newValue": {
+        "id": "cls-5b9eee72",
+        "hostId": "usr_host1",
+        "facilityId": "fac_metro_downtown",
+        "title": "Christmas Day Full Garage Deep Clean",
+        "reason": "MAINTENANCE",
+        "startTimeUtc": "2026-12-25T00:00:00.000Z",
+        "endTimeUtc": "2026-12-25T23:59:59.000Z",
+        "createdAtUtc": "2026-10-23T16:08:32.775Z"
+      },
+      "diffSummary": "Created closure \"Christmas Day Full Garage Deep Clean\" (2026-12-25T00:00:00.000Z to 2026-12-25T23:59:59.000Z)",
+      "createdAtUtc": "2026-10-23T16:08:32.776Z"
+    },
+    {
+      "id": "aud-eda5a4ac",
+      "hostId": "usr_host1",
+      "facilityId": "fac_metro_downtown",
+      "facilityName": "Downtown Metro Tech Center Garage",
+      "action": "CLOSURE_CREATED",
+      "actorId": "usr_host1",
+      "newValue": {
+        "id": "cls-e959fe5e",
+        "hostId": "usr_host1",
+        "facilityId": "fac_metro_downtown",
+        "title": "Christmas Day Full Garage Deep Clean",
+        "reason": "MAINTENANCE",
+        "startTimeUtc": "2026-12-25T00:00:00.000Z",
+        "endTimeUtc": "2026-12-25T23:59:59.000Z",
+        "createdAtUtc": "2026-10-23T16:08:11.654Z"
+      },
+      "diffSummary": "Created closure \"Christmas Day Full Garage Deep Clean\" (2026-12-25T00:00:00.000Z to 2026-12-25T23:59:59.000Z)",
+      "createdAtUtc": "2026-10-23T16:08:11.654Z"
+    },
+    {
+      "id": "aud-44558f66",
+      "hostId": "usr_host1",
+      "facilityId": "fac_metro_downtown",
+      "facilityName": "Downtown Metro Tech Center Garage",
+      "action": "CLOSURE_CREATED",
+      "actorId": "usr_host1",
+      "newValue": {
+        "id": "cls-0f262bfb",
+        "hostId": "usr_host1",
+        "facilityId": "fac_metro_downtown",
+        "title": "Christmas Day Full Garage Deep Clean",
+        "reason": "MAINTENANCE",
+        "startTimeUtc": "2026-12-25T00:00:00.000Z",
+        "endTimeUtc": "2026-12-25T23:59:59.000Z",
+        "createdAtUtc": "2026-10-23T16:07:53.881Z"
+      },
+      "diffSummary": "Created closure \"Christmas Day Full Garage Deep Clean\" (2026-12-25T00:00:00.000Z to 2026-12-25T23:59:59.000Z)",
+      "createdAtUtc": "2026-10-23T16:07:53.882Z"
+    },
+    {
+      "id": "aud-603c08b0",
+      "hostId": "usr_host1",
+      "facilityId": "fac_metro_downtown",
+      "facilityName": "Downtown Metro Tech Center Garage",
+      "action": "CLOSURE_CREATED",
+      "actorId": "usr_host1",
+      "newValue": {
+        "id": "cls-c6523ec1",
+        "hostId": "usr_host1",
+        "facilityId": "fac_metro_downtown",
+        "title": "Christmas Day Full Garage Deep Clean",
+        "reason": "MAINTENANCE",
+        "startTimeUtc": "2026-12-25T00:00:00.000Z",
+        "endTimeUtc": "2026-12-25T23:59:59.000Z",
+        "createdAtUtc": "2026-10-23T16:06:49.915Z"
+      },
+      "diffSummary": "Created closure \"Christmas Day Full Garage Deep Clean\" (2026-12-25T00:00:00.000Z to 2026-12-25T23:59:59.000Z)",
+      "createdAtUtc": "2026-10-23T16:06:49.916Z"
+    },
+    {
+      "id": "aud-17e8c0d3",
+      "hostId": "usr_host1",
+      "facilityId": "fac_metro_downtown",
+      "facilityName": "Downtown Metro Tech Center Garage",
+      "action": "CLOSURE_CREATED",
+      "actorId": "usr_host1",
+      "newValue": {
+        "id": "cls-ba9bf7bf",
+        "hostId": "usr_host1",
+        "facilityId": "fac_metro_downtown",
+        "title": "Christmas Day Full Garage Deep Clean",
+        "reason": "MAINTENANCE",
+        "startTimeUtc": "2026-12-25T00:00:00.000Z",
+        "endTimeUtc": "2026-12-25T23:59:59.000Z",
+        "createdAtUtc": "2026-10-23T16:06:16.420Z"
+      },
+      "diffSummary": "Created closure \"Christmas Day Full Garage Deep Clean\" (2026-12-25T00:00:00.000Z to 2026-12-25T23:59:59.000Z)",
+      "createdAtUtc": "2026-10-23T16:06:16.420Z"
+    },
+    {
+      "id": "aud-cb0827d9",
+      "hostId": "usr_host1",
+      "facilityId": "fac_metro_downtown",
+      "facilityName": "Downtown Metro Tech Center Garage",
+      "action": "CLOSURE_CREATED",
+      "actorId": "usr_host1",
+      "newValue": {
+        "id": "cls-b8ccbb61",
+        "hostId": "usr_host1",
+        "facilityId": "fac_metro_downtown",
+        "title": "Christmas Day Full Garage Deep Clean",
+        "reason": "MAINTENANCE",
+        "startTimeUtc": "2026-12-25T00:00:00.000Z",
+        "endTimeUtc": "2026-12-25T23:59:59.000Z",
+        "createdAtUtc": "2026-10-23T16:05:30.721Z"
+      },
+      "diffSummary": "Created closure \"Christmas Day Full Garage Deep Clean\" (2026-12-25T00:00:00.000Z to 2026-12-25T23:59:59.000Z)",
+      "createdAtUtc": "2026-10-23T16:05:30.721Z"
+    },
+    {
+      "id": "aud-8cf8f333",
+      "hostId": "usr_host1",
+      "facilityId": "fac_metro_downtown",
+      "facilityName": "Downtown Metro Tech Center Garage",
+      "action": "CLOSURE_CREATED",
+      "actorId": "usr_host1",
+      "newValue": {
+        "id": "cls-26b5d004",
+        "hostId": "usr_host1",
+        "facilityId": "fac_metro_downtown",
+        "title": "Christmas Day Full Garage Deep Clean",
+        "reason": "MAINTENANCE",
+        "startTimeUtc": "2026-12-25T00:00:00.000Z",
+        "endTimeUtc": "2026-12-25T23:59:59.000Z",
+        "createdAtUtc": "2026-10-23T16:05:18.001Z"
+      },
+      "diffSummary": "Created closure \"Christmas Day Full Garage Deep Clean\" (2026-12-25T00:00:00.000Z to 2026-12-25T23:59:59.000Z)",
+      "createdAtUtc": "2026-10-23T16:05:18.002Z"
+    },
+    {
+      "id": "aud-bf88ba36",
+      "hostId": "usr_host1",
+      "facilityId": "fac_metro_downtown",
+      "facilityName": "Downtown Metro Tech Center Garage",
+      "action": "CLOSURE_CREATED",
+      "actorId": "usr_host1",
+      "newValue": {
+        "id": "cls-02159706",
+        "hostId": "usr_host1",
+        "facilityId": "fac_metro_downtown",
+        "title": "Christmas Day Full Garage Deep Clean",
+        "reason": "MAINTENANCE",
+        "startTimeUtc": "2026-12-25T00:00:00.000Z",
+        "endTimeUtc": "2026-12-25T23:59:59.000Z",
+        "createdAtUtc": "2026-10-23T16:04:49.116Z"
+      },
+      "diffSummary": "Created closure \"Christmas Day Full Garage Deep Clean\" (2026-12-25T00:00:00.000Z to 2026-12-25T23:59:59.000Z)",
+      "createdAtUtc": "2026-10-23T16:04:49.116Z"
+    },
     {
       "id": "aud-ab7b8200",
       "hostId": "usr-host-pricing-a",
@@ -1634,5 +1875,5 @@
       "createdAtUtc": "2026-10-20T14:32:34.802Z"
     }
   ],
-  "updatedAt": "2026-10-20T14:36:11.111Z"
+  "updatedAt": "2026-10-23T16:08:32.776Z"
 }
