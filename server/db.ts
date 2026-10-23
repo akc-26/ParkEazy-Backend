@@ -1416,7 +1416,11 @@ export class Database {
     facility.totalBays = facilityBays.length;
     facility.activeBays = facilityBays.filter(b => b.status === 'available' || b.status === 'occupied').length;
 
-    Object.assign(facility, updates, { updatedAt: new Date().toISOString() });
+    const safeUpdates = { ...updates };
+    delete safeUpdates.id;
+    delete safeUpdates.hostId;
+    delete safeUpdates.createdAt;
+    Object.assign(facility, safeUpdates, { updatedAt: new Date().toISOString() });
     await this.withTransaction(async (client) => {
       await this.persistEntity('facilities', facilityId, facility, client);
       await this.logAudit(actor.id, actor.fullName, actor.role, 'FACILITY_UPDATED', 'facility', facilityId, `Facility updated: ${facility.name}`, client);
@@ -1613,7 +1617,12 @@ export class Database {
     if (!facility) throw new Error('Facility not found');
     if (actor.role === 'host' && facility.hostId !== actor.id) throw new Error('Unauthorized');
 
-    Object.assign(bay, updates, { updatedAt: new Date().toISOString() });
+    const safeUpdates = { ...updates };
+    delete (safeUpdates as any).id;
+    delete (safeUpdates as any).facilityId;
+    delete (safeUpdates as any).createdAt;
+
+    Object.assign(bay, safeUpdates, { updatedAt: new Date().toISOString() });
     await this.withTransaction(async (client) => {
       await this.persistEntity('bays', bayId, bay, client);
       await this.syncFacilityBayCount(facility.id, client);
@@ -1686,7 +1695,12 @@ export class Database {
     if (!facility) throw new Error('Facility not found');
     if (actor.role === 'host' && facility.hostId !== actor.id) throw new Error('Unauthorized');
 
-    Object.assign(rule, updates, { updatedAt: new Date().toISOString() });
+    const safeUpdates = { ...updates };
+    delete (safeUpdates as any).id;
+    delete (safeUpdates as any).facilityId;
+    delete (safeUpdates as any).createdAt;
+
+    Object.assign(rule, safeUpdates, { updatedAt: new Date().toISOString() });
     await this.withTransaction(async (client) => {
       await this.persistEntity('pricingRules', ruleId, rule, client);
       await this.logAudit(actor.id, actor.fullName, actor.role, 'PRICING_UPDATED', 'pricing', ruleId, `Updated pricing rule for ${facility.name}`, client);

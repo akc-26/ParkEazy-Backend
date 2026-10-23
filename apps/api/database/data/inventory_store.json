@@ -1,338 +1,95 @@
 {
   "locations": [
     {
-      "id": "loc-dt-001",
-      "hostId": "usr-host-001",
-      "name": "Financial Tower Covered Facility",
-      "description": "Secured underground parking facility with 24/7 CCTV surveillance, automated gate access, and EV charging points in the core financial district.",
-      "propertyType": "UNDERGROUND",
+      "id": "fac_metro_downtown",
+      "hostId": "usr_host1",
+      "name": "Downtown Metro Tech Center Garage",
+      "description": "Prime underground multi-level parking located at 400 Pine St, directly connected to Tech Plaza. 24/7 automated barrier access, CCTV surveillance, on-site security, and 22kW EV fast charging.",
+      "propertyType": "GARAGE",
       "address": {
-        "line1": "450 Montgomery Street",
-        "city": "San Francisco",
-        "state": "CA",
-        "postalCode": "94104",
-        "country": "US",
-        "latitude": 37.7925,
-        "longitude": -122.4032
-      },
-      "timezone": "America/Los_Angeles",
-      "accessMethod": "GATE_CODE",
-      "accessInstructions": "Enter 4-digit PIN at entry keypad. Drive down to B2 level.",
-      "status": "ACTIVE",
-      "totalBays": 4,
-      "hourlyRateCents": 650,
-      "dailyRateCents": 3800,
-      "securityDepositCents": 2500,
-      "amenities": [
-        "EV Charging",
-        "CCTV Security",
-        "Covered Garage",
-        "Elevator Access",
-        "Paved Surface",
-        "24/7 Access"
-      ],
-      "imageUrl": "/assets/images/hero_parking_bay_1792157347279.jpg",
-      "photos": [
-        {
-          "id": "pho-001-a",
-          "url": "/assets/images/hero_parking_bay_1792157347279.jpg",
-          "caption": "Main Underground Facility Entrance",
-          "isPrimary": true,
-          "uploadedAt": "2026-01-10T10:00:00Z"
-        }
-      ],
-      "publishedAt": "2026-01-10T10:00:00Z",
-      "createdAt": "2026-01-10T10:00:00Z",
-      "updatedAt": "2026-02-01T12:00:00Z"
-    },
-    {
-      "id": "loc-res-002",
-      "hostId": "usr-host-001",
-      "name": "Oakridge Residential Driveway & EV Point",
-      "description": "Private suburban double-driveway in a tranquil, quiet neighborhood. Features a dedicated 11kW Level 2 EV charging post.",
-      "propertyType": "DRIVEWAY",
-      "address": {
-        "line1": "1248 Oakridge Boulevard",
-        "city": "Palo Alto",
-        "state": "CA",
-        "postalCode": "94301",
-        "country": "US",
-        "latitude": 37.4419,
-        "longitude": -122.143
+        "line1": "400 Pine Street",
+        "city": "Seattle",
+        "state": "WA",
+        "postalCode": "98101",
+        "country": "USA",
+        "latitude": 47.6115,
+        "longitude": -122.3364
       },
       "timezone": "America/Los_Angeles",
       "accessMethod": "OPEN_ACCESS",
-      "accessInstructions": "Park on the left side of driveway designated by EV Reserved marking.",
       "status": "ACTIVE",
-      "totalBays": 2,
-      "hourlyRateCents": 450,
-      "dailyRateCents": 2800,
-      "securityDepositCents": 1500,
-      "amenities": [
-        "11kW EV Charger",
-        "Driveway Parking",
-        "Well-Lit",
-        "Quiet Street"
-      ],
-      "imageUrl": "/assets/images/host_parking_driveway_1792157348722.jpg",
-      "photos": [
-        {
-          "id": "pho-002-a",
-          "url": "/assets/images/host_parking_driveway_1792157348722.jpg",
-          "caption": "Driveway Frontage with EV Charger",
-          "isPrimary": true,
-          "uploadedAt": "2026-01-20T14:30:00Z"
-        }
-      ],
-      "publishedAt": "2026-01-20T14:30:00Z",
-      "createdAt": "2026-01-20T14:30:00Z",
-      "updatedAt": "2026-02-15T09:15:00Z"
-    },
-    {
-      "id": "loc-hub-003",
-      "hostId": "usr-host-002",
-      "name": "Urban Transit Mobility Hub Bay 12",
-      "description": "Multi-level smart transit center bay adjacent to central rail interchange. Direct skyway connection to terminal.",
-      "propertyType": "GARAGE",
-      "address": {
-        "line1": "200 Terminal Way",
-        "city": "San Francisco",
-        "state": "CA",
-        "postalCode": "94105",
-        "country": "US",
-        "latitude": 37.7891,
-        "longitude": -122.3965
-      },
-      "timezone": "America/Los_Angeles",
-      "accessMethod": "APP_BLE",
-      "accessInstructions": "Bluetooth reader at boom gate triggers access via ParkEazy app.",
-      "status": "ACTIVE",
-      "totalBays": 3,
-      "hourlyRateCents": 800,
-      "dailyRateCents": 4500,
-      "securityDepositCents": 3000,
-      "amenities": [
-        "Transit Access",
-        "High Clearance",
-        "Disabled Parking",
-        "Staffed Kiosk"
-      ],
-      "imageUrl": "/assets/images/admin_facility_aerial_1792157347651.jpg",
-      "photos": [
-        {
-          "id": "pho-003-a",
-          "url": "/assets/images/admin_facility_aerial_1792157347651.jpg",
-          "caption": "Facility Aerial Overview",
-          "isPrimary": true,
-          "uploadedAt": "2026-02-01T08:00:00Z"
-        }
-      ],
-      "publishedAt": "2026-02-01T08:00:00Z",
-      "createdAt": "2026-02-01T08:00:00Z",
-      "updatedAt": "2026-03-01T16:00:00Z"
-    },
-    {
-      "id": "loc-109fcc858a70",
-      "hostId": "usr-host-facility-a",
-      "name": "Grand Metro Centre Car Park (Updated)",
-      "description": "Prime central business district multi-storey covered parking facility with 24/7 access.",
-      "propertyType": "GARAGE",
-      "address": {
-        "line1": "789 Market Street",
-        "city": "San Francisco",
-        "state": "CA",
-        "postalCode": "94103",
-        "country": "US",
-        "latitude": 37.7879,
-        "longitude": -122.4075
-      },
-      "timezone": "America/Los_Angeles",
-      "accessMethod": "GATE_CODE",
-      "accessInstructions": "Enter code 5849# at the security barrier.",
-      "status": "ACTIVE",
-      "totalBays": 2,
-      "hourlyRateCents": 600,
-      "dailyRateCents": 4000,
-      "securityDepositCents": 1500,
-      "amenities": [
-        "CCTV Security",
-        "Covered Garage",
-        "Elevator Access",
-        "EV Charging",
-        "24/7 Access"
-      ],
-      "imageUrl": "https://images.unsplash.com/photo-1506521781263-d8422e82f27a",
-      "photos": [
-        {
-          "id": "pho-1e098dac",
-          "url": "https://images.unsplash.com/photo-1506521781263-d8422e82f27a",
-          "caption": "Facility exterior",
-          "isPrimary": true,
-          "uploadedAt": "2026-10-20T14:36:09.186Z"
-        }
-      ],
-      "createdAt": "2026-10-20T14:36:09.063Z",
-      "updatedAt": "2026-10-20T14:36:09.237Z",
-      "publishedAt": "2026-10-20T14:36:09.237Z"
-    },
-    {
-      "id": "loc-d2ddbc70940f",
-      "hostId": "usr-host-pricing-a",
-      "name": "Alpha Pricing Tower",
-      "description": "Test facility for pricing and rate engine validation.",
-      "propertyType": "GARAGE",
-      "address": {
-        "line1": "100 Market St",
-        "city": "San Francisco",
-        "state": "CA",
-        "postalCode": "94105",
-        "country": "US",
-        "latitude": 37.79,
-        "longitude": -122.4
-      },
-      "timezone": "America/Los_Angeles",
-      "accessMethod": "GATE_CODE",
-      "status": "DRAFT",
-      "totalBays": 1,
-      "hourlyRateCents": 10049,
-      "dailyRateCents": 100199,
+      "totalBays": 8,
+      "hourlyRateCents": 500,
+      "dailyRateCents": 3500,
       "securityDepositCents": 2000,
-      "amenities": [
-        "Covered Garage",
-        "EV Charging"
-      ],
+      "amenities": [],
       "photos": [],
-      "createdAt": "2026-10-20T14:36:10.927Z",
-      "updatedAt": "2026-10-20T14:36:11.110Z"
+      "createdAt": "2026-01-12T10:00:00.000Z",
+      "updatedAt": "2026-02-01T12:00:00.000Z"
+    },
+    {
+      "id": "fac_waterfront_lot",
+      "hostId": "usr_host1",
+      "name": "Pike Place Waterfront Parking Lot",
+      "description": "Convenient ground-level outdoor parking lot steps from Pike Place Market and the Seattle Great Wheel. License plate recognition and automatic gate arms.",
+      "propertyType": "GARAGE",
+      "address": {
+        "line1": "1500 Alaskan Way",
+        "city": "Seattle",
+        "state": "WA",
+        "postalCode": "98101",
+        "country": "USA",
+        "latitude": 47.608,
+        "longitude": -122.3415
+      },
+      "timezone": "America/Los_Angeles",
+      "accessMethod": "OPEN_ACCESS",
+      "status": "ACTIVE",
+      "totalBays": 6,
+      "hourlyRateCents": 500,
+      "dailyRateCents": 3500,
+      "securityDepositCents": 2000,
+      "amenities": [],
+      "photos": [],
+      "createdAt": "2026-01-18T10:00:00.000Z",
+      "updatedAt": "2026-02-05T12:00:00.000Z"
+    },
+    {
+      "id": "fac_capitol_hill",
+      "hostId": "usr_host2",
+      "name": "Capitol Hill Transit Hub Parking",
+      "description": "Secure multi-story parking adjacent to Capitol Hill light rail station. Eco-friendly with solar roof canopy.",
+      "propertyType": "GARAGE",
+      "address": {
+        "line1": "920 E Pine St",
+        "city": "Seattle",
+        "state": "WA",
+        "postalCode": "98122",
+        "country": "USA",
+        "latitude": 47.6151,
+        "longitude": -122.3195
+      },
+      "timezone": "America/Los_Angeles",
+      "accessMethod": "OPEN_ACCESS",
+      "status": "UNDER_REVIEW",
+      "totalBays": 0,
+      "hourlyRateCents": 500,
+      "dailyRateCents": 3500,
+      "securityDepositCents": 2000,
+      "amenities": [],
+      "photos": [],
+      "createdAt": "2026-02-14T10:00:00.000Z",
+      "updatedAt": "2026-02-14T10:00:00.000Z"
     }
   ],
   "bays": [
     {
-      "id": "bay-001-a",
-      "locationId": "loc-dt-001",
-      "bayNumber": "B2-30",
-      "bayType": "COVERED",
-      "levelOrFloor": "B2",
-      "status": "AVAILABLE",
-      "maxVehicleHeightMeters": 2.1,
-      "maxVehicleLengthMeters": 5.2,
-      "maxVehicleWidthMeters": 2.2,
-      "supportedVehicles": [
-        "SEDAN",
-        "SUV",
-        "COMPACT"
-      ],
-      "isEvCharging": false,
-      "hasCctv": true,
-      "isAccessible": false,
-      "isCovered": true,
-      "notes": "Pillar adjacent on passenger side.",
-      "createdAt": "2026-01-10T10:00:00Z",
-      "updatedAt": "2026-02-01T12:00:00Z"
-    },
-    {
-      "id": "bay-001-b",
-      "locationId": "loc-dt-001",
-      "bayNumber": "B2-32",
-      "bayType": "EV_CHARGING",
-      "levelOrFloor": "B2",
-      "status": "AVAILABLE",
-      "maxVehicleHeightMeters": 2.1,
-      "maxVehicleLengthMeters": 5.2,
-      "maxVehicleWidthMeters": 2.2,
-      "supportedVehicles": [
-        "SEDAN",
-        "SUV",
-        "COMPACT"
-      ],
-      "isEvCharging": true,
-      "evChargerKw": 7.4,
-      "hasCctv": true,
-      "isAccessible": false,
-      "isCovered": true,
-      "notes": "Type 2 Mennekes plug available.",
-      "createdAt": "2026-01-10T10:00:00Z",
-      "updatedAt": "2026-02-01T12:00:00Z"
-    },
-    {
-      "id": "bay-001-c",
-      "locationId": "loc-dt-001",
-      "bayNumber": "B2-34",
-      "bayType": "COVERED",
-      "levelOrFloor": "B2",
-      "status": "AVAILABLE",
-      "maxVehicleHeightMeters": 2.1,
-      "maxVehicleLengthMeters": 5.2,
-      "maxVehicleWidthMeters": 2.2,
-      "supportedVehicles": [
-        "SEDAN",
-        "SUV",
-        "COMPACT"
-      ],
-      "isEvCharging": false,
-      "hasCctv": true,
-      "isAccessible": false,
-      "isCovered": true,
-      "createdAt": "2026-01-10T10:00:00Z",
-      "updatedAt": "2026-02-01T12:00:00Z"
-    },
-    {
-      "id": "bay-001-d",
-      "locationId": "loc-dt-001",
-      "bayNumber": "B2-36",
-      "bayType": "STANDARD",
-      "levelOrFloor": "B2",
-      "status": "AVAILABLE",
-      "maxVehicleHeightMeters": 2.1,
-      "maxVehicleLengthMeters": 5.2,
-      "maxVehicleWidthMeters": 2.2,
-      "supportedVehicles": [
-        "SEDAN",
-        "COMPACT"
-      ],
-      "isEvCharging": false,
-      "hasCctv": true,
-      "isAccessible": false,
-      "isCovered": true,
-      "createdAt": "2026-01-10T10:00:00Z",
-      "updatedAt": "2026-02-01T12:00:00Z"
-    },
-    {
-      "id": "bay-002-a",
-      "locationId": "loc-res-002",
-      "bayNumber": "Bay 1 (EV)",
-      "bayType": "EV_CHARGING",
-      "levelOrFloor": "Ground",
-      "status": "AVAILABLE",
-      "maxVehicleHeightMeters": 2.8,
-      "maxVehicleLengthMeters": 6,
-      "maxVehicleWidthMeters": 2.4,
-      "supportedVehicles": [
-        "SEDAN",
-        "SUV",
-        "TRUCK",
-        "VAN",
-        "COMPACT"
-      ],
-      "isEvCharging": true,
-      "evChargerKw": 11,
-      "hasCctv": false,
-      "isAccessible": true,
-      "isCovered": false,
-      "notes": "Tesla wall connector and J1772 adapter on site.",
-      "createdAt": "2026-01-20T14:30:00Z",
-      "updatedAt": "2026-02-15T09:15:00Z"
-    },
-    {
-      "id": "bay-002-b",
-      "locationId": "loc-res-002",
-      "bayNumber": "Bay 2 (Standard)",
+      "id": "bay_m1",
+      "locationId": "fac_metro_downtown",
+      "bayNumber": "L1-A01",
       "bayType": "STANDARD",
       "levelOrFloor": "Ground",
       "status": "AVAILABLE",
-      "maxVehicleHeightMeters": 2.8,
-      "maxVehicleLengthMeters": 6,
-      "maxVehicleWidthMeters": 2.4,
       "supportedVehicles": [
         "SEDAN",
         "SUV",
@@ -342,140 +99,256 @@
       "hasCctv": false,
       "isAccessible": false,
       "isCovered": false,
-      "createdAt": "2026-01-20T14:30:00Z",
-      "updatedAt": "2026-02-15T09:15:00Z"
+      "createdAt": "2026-01-12T10:00:00.000Z",
+      "updatedAt": "2026-01-12T10:00:00.000Z"
     },
     {
-      "id": "bay-003-a",
-      "locationId": "loc-hub-003",
-      "bayNumber": "L3-12",
-      "bayType": "ACCESSIBLE",
-      "levelOrFloor": "Level 3",
-      "status": "AVAILABLE",
-      "maxVehicleHeightMeters": 2.4,
-      "maxVehicleLengthMeters": 5.5,
-      "maxVehicleWidthMeters": 2.8,
-      "supportedVehicles": [
-        "SEDAN",
-        "SUV",
-        "VAN",
-        "COMPACT"
-      ],
-      "isEvCharging": false,
-      "hasCctv": true,
-      "isAccessible": true,
-      "isCovered": true,
-      "notes": "Direct ramp access to elevators.",
-      "createdAt": "2026-02-01T08:00:00Z",
-      "updatedAt": "2026-03-01T16:00:00Z"
-    },
-    {
-      "id": "bay-003-b",
-      "locationId": "loc-hub-003",
-      "bayNumber": "L3-14",
-      "bayType": "COMPACT",
-      "levelOrFloor": "Level 3",
-      "status": "AVAILABLE",
-      "maxVehicleHeightMeters": 2.4,
-      "maxVehicleLengthMeters": 4.5,
-      "maxVehicleWidthMeters": 2,
-      "supportedVehicles": [
-        "COMPACT",
-        "MOTORCYCLE"
-      ],
-      "isEvCharging": false,
-      "hasCctv": true,
-      "isAccessible": false,
-      "isCovered": true,
-      "createdAt": "2026-02-01T08:00:00Z",
-      "updatedAt": "2026-03-01T16:00:00Z"
-    },
-    {
-      "id": "bay-003-c",
-      "locationId": "loc-hub-003",
-      "bayNumber": "L3-16",
-      "bayType": "COVERED",
-      "levelOrFloor": "Level 3",
-      "status": "AVAILABLE",
-      "maxVehicleHeightMeters": 2.4,
-      "maxVehicleLengthMeters": 5.5,
-      "maxVehicleWidthMeters": 2.2,
-      "supportedVehicles": [
-        "SEDAN",
-        "SUV",
-        "COMPACT"
-      ],
-      "isEvCharging": false,
-      "hasCctv": true,
-      "isAccessible": false,
-      "isCovered": true,
-      "createdAt": "2026-02-01T08:00:00Z",
-      "updatedAt": "2026-03-01T16:00:00Z"
-    },
-    {
-      "id": "bay-e99f26eda1e4",
-      "locationId": "loc-109fcc858a70",
-      "bayNumber": "A-101",
+      "id": "bay_m2",
+      "locationId": "fac_metro_downtown",
+      "bayNumber": "L1-A02 (EV Fast)",
       "bayType": "STANDARD",
-      "levelOrFloor": "Level 1",
-      "status": "AVAILABLE",
-      "maxVehicleHeightMeters": 2.1,
-      "maxVehicleLengthMeters": 5.2,
-      "maxVehicleWidthMeters": 2.3,
-      "supportedVehicles": [
-        "SEDAN",
-        "COMPACT",
-        "SUV"
-      ],
-      "isEvCharging": false,
-      "hasCctv": true,
-      "isAccessible": false,
-      "isCovered": true,
-      "notes": "Repainting lines",
-      "createdAt": "2026-10-20T14:36:09.098Z",
-      "updatedAt": "2026-10-20T14:36:09.125Z"
-    },
-    {
-      "id": "bay-7f5f35017ea2",
-      "locationId": "loc-109fcc858a70",
-      "bayNumber": "EV-01",
-      "bayType": "EV_CHARGING",
-      "levelOrFloor": "Level 1",
-      "status": "AVAILABLE",
-      "supportedVehicles": [
-        "SEDAN",
-        "COMPACT",
-        "SUV"
-      ],
-      "isEvCharging": true,
-      "evChargerKw": 22,
-      "hasCctv": true,
-      "isAccessible": false,
-      "isCovered": true,
-      "notes": "22kW Level 2 Type 2 connector",
-      "createdAt": "2026-10-20T14:36:09.109Z",
-      "updatedAt": "2026-10-20T14:36:09.109Z"
-    },
-    {
-      "id": "bay-09d2079e7cc3",
-      "locationId": "loc-d2ddbc70940f",
-      "bayNumber": "P1-10",
-      "bayType": "STANDARD",
-      "levelOrFloor": "1",
+      "levelOrFloor": "Ground",
       "status": "AVAILABLE",
       "supportedVehicles": [
         "SEDAN",
         "SUV",
         "COMPACT"
       ],
-      "isEvCharging": true,
-      "evChargerKw": 11,
+      "isEvCharging": false,
       "hasCctv": false,
       "isAccessible": false,
       "isCovered": false,
-      "createdAt": "2026-10-20T14:36:10.928Z",
-      "updatedAt": "2026-10-20T14:36:10.928Z"
+      "createdAt": "2026-01-12T10:00:00.000Z",
+      "updatedAt": "2026-01-12T10:00:00.000Z"
+    },
+    {
+      "id": "bay_m3",
+      "locationId": "fac_metro_downtown",
+      "bayNumber": "L1-A03 (ADA)",
+      "bayType": "STANDARD",
+      "levelOrFloor": "Ground",
+      "status": "AVAILABLE",
+      "supportedVehicles": [
+        "SEDAN",
+        "SUV",
+        "COMPACT"
+      ],
+      "isEvCharging": false,
+      "hasCctv": false,
+      "isAccessible": false,
+      "isCovered": false,
+      "createdAt": "2026-01-12T10:00:00.000Z",
+      "updatedAt": "2026-01-12T10:00:00.000Z"
+    },
+    {
+      "id": "bay_m4",
+      "locationId": "fac_metro_downtown",
+      "bayNumber": "L1-A04 (SUV)",
+      "bayType": "STANDARD",
+      "levelOrFloor": "Ground",
+      "status": "OCCUPIED",
+      "supportedVehicles": [
+        "SEDAN",
+        "SUV",
+        "COMPACT"
+      ],
+      "isEvCharging": false,
+      "hasCctv": false,
+      "isAccessible": false,
+      "isCovered": false,
+      "createdAt": "2026-01-12T10:00:00.000Z",
+      "updatedAt": "2026-02-15T11:00:00.000Z"
+    },
+    {
+      "id": "bay_m5",
+      "locationId": "fac_metro_downtown",
+      "bayNumber": "L2-B01",
+      "bayType": "STANDARD",
+      "levelOrFloor": "Ground",
+      "status": "AVAILABLE",
+      "supportedVehicles": [
+        "SEDAN",
+        "SUV",
+        "COMPACT"
+      ],
+      "isEvCharging": false,
+      "hasCctv": false,
+      "isAccessible": false,
+      "isCovered": false,
+      "createdAt": "2026-01-12T10:00:00.000Z",
+      "updatedAt": "2026-01-12T10:00:00.000Z"
+    },
+    {
+      "id": "bay_m6",
+      "locationId": "fac_metro_downtown",
+      "bayNumber": "L2-B02",
+      "bayType": "STANDARD",
+      "levelOrFloor": "Ground",
+      "status": "MAINTENANCE",
+      "supportedVehicles": [
+        "SEDAN",
+        "SUV",
+        "COMPACT"
+      ],
+      "isEvCharging": false,
+      "hasCctv": false,
+      "isAccessible": false,
+      "isCovered": false,
+      "createdAt": "2026-01-12T10:00:00.000Z",
+      "updatedAt": "2026-02-10T10:00:00.000Z"
+    },
+    {
+      "id": "bay_m7",
+      "locationId": "fac_metro_downtown",
+      "bayNumber": "L2-B03 (Moto)",
+      "bayType": "STANDARD",
+      "levelOrFloor": "Ground",
+      "status": "AVAILABLE",
+      "supportedVehicles": [
+        "SEDAN",
+        "SUV",
+        "COMPACT"
+      ],
+      "isEvCharging": false,
+      "hasCctv": false,
+      "isAccessible": false,
+      "isCovered": false,
+      "createdAt": "2026-01-12T10:00:00.000Z",
+      "updatedAt": "2026-01-12T10:00:00.000Z"
+    },
+    {
+      "id": "bay_m8",
+      "locationId": "fac_metro_downtown",
+      "bayNumber": "L2-B04",
+      "bayType": "STANDARD",
+      "levelOrFloor": "Ground",
+      "status": "AVAILABLE",
+      "supportedVehicles": [
+        "SEDAN",
+        "SUV",
+        "COMPACT"
+      ],
+      "isEvCharging": false,
+      "hasCctv": false,
+      "isAccessible": false,
+      "isCovered": false,
+      "createdAt": "2026-01-12T10:00:00.000Z",
+      "updatedAt": "2026-01-12T10:00:00.000Z"
+    },
+    {
+      "id": "bay_w5",
+      "locationId": "fac_waterfront_lot",
+      "bayNumber": "WF-05",
+      "bayType": "STANDARD",
+      "levelOrFloor": "Ground",
+      "status": "AVAILABLE",
+      "supportedVehicles": [
+        "SEDAN",
+        "SUV",
+        "COMPACT"
+      ],
+      "isEvCharging": false,
+      "hasCctv": false,
+      "isAccessible": false,
+      "isCovered": false,
+      "createdAt": "2026-01-18T10:00:00.000Z",
+      "updatedAt": "2026-01-18T10:00:00.000Z"
+    },
+    {
+      "id": "bay_w6",
+      "locationId": "fac_waterfront_lot",
+      "bayNumber": "WF-06",
+      "bayType": "STANDARD",
+      "levelOrFloor": "Ground",
+      "status": "AVAILABLE",
+      "supportedVehicles": [
+        "SEDAN",
+        "SUV",
+        "COMPACT"
+      ],
+      "isEvCharging": false,
+      "hasCctv": false,
+      "isAccessible": false,
+      "isCovered": false,
+      "createdAt": "2026-01-18T10:00:00.000Z",
+      "updatedAt": "2026-01-18T10:00:00.000Z"
+    },
+    {
+      "id": "bay_w1",
+      "locationId": "fac_waterfront_lot",
+      "bayNumber": "WF-01 (EV)",
+      "bayType": "STANDARD",
+      "levelOrFloor": "Ground",
+      "status": "AVAILABLE",
+      "supportedVehicles": [
+        "SEDAN",
+        "SUV",
+        "COMPACT"
+      ],
+      "isEvCharging": false,
+      "hasCctv": false,
+      "isAccessible": false,
+      "isCovered": false,
+      "createdAt": "2026-01-18T10:00:00.000Z",
+      "updatedAt": "2026-01-18T10:00:00.000Z"
+    },
+    {
+      "id": "bay_w2",
+      "locationId": "fac_waterfront_lot",
+      "bayNumber": "WF-02",
+      "bayType": "STANDARD",
+      "levelOrFloor": "Ground",
+      "status": "AVAILABLE",
+      "supportedVehicles": [
+        "SEDAN",
+        "SUV",
+        "COMPACT"
+      ],
+      "isEvCharging": false,
+      "hasCctv": false,
+      "isAccessible": false,
+      "isCovered": false,
+      "createdAt": "2026-01-18T10:00:00.000Z",
+      "updatedAt": "2026-01-18T10:00:00.000Z"
+    },
+    {
+      "id": "bay_w3",
+      "locationId": "fac_waterfront_lot",
+      "bayNumber": "WF-03 (ADA)",
+      "bayType": "STANDARD",
+      "levelOrFloor": "Ground",
+      "status": "AVAILABLE",
+      "supportedVehicles": [
+        "SEDAN",
+        "SUV",
+        "COMPACT"
+      ],
+      "isEvCharging": false,
+      "hasCctv": false,
+      "isAccessible": false,
+      "isCovered": false,
+      "createdAt": "2026-01-18T10:00:00.000Z",
+      "updatedAt": "2026-01-18T10:00:00.000Z"
+    },
+    {
+      "id": "bay_w4",
+      "locationId": "fac_waterfront_lot",
+      "bayNumber": "WF-04",
+      "bayType": "STANDARD",
+      "levelOrFloor": "Ground",
+      "status": "AVAILABLE",
+      "supportedVehicles": [
+        "SEDAN",
+        "SUV",
+        "COMPACT"
+      ],
+      "isEvCharging": false,
+      "hasCctv": false,
+      "isAccessible": false,
+      "isCovered": false,
+      "createdAt": "2026-01-18T10:00:00.000Z",
+      "updatedAt": "2026-01-18T10:00:00.000Z"
     }
   ],
-  "updatedAt": "2026-10-20T14:36:11.110Z"
+  "updatedAt": "2026-10-23T11:34:16.498Z"
 }

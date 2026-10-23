@@ -1,6 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { db } from './db';
 import { User, VehicleCompatibility } from './types';
+import { authService } from '../apps/api/services/auth.service';
 
 export const apiRouter = Router();
 
@@ -12,7 +13,29 @@ export async function getAuthenticatedUser(req: Request): Promise<User | null> {
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.substring(7).trim();
     if (token) {
-      const user = await db.validateSession(token);
+      let user = await db.validateSession(token);
+      if (!user && token.includes('.')) {
+        try {
+          const payload = authService.verifyToken(token);
+          if (payload && payload.sub) {
+            user = await db.findUserById(payload.sub);
+            if (!user) {
+              const sessionUser = authService.getUserById(payload.sub);
+              if (sessionUser) {
+                user = {
+                  id: sessionUser.id,
+                  email: sessionUser.email,
+                  fullName: `${sessionUser.firstName} ${sessionUser.lastName}`.trim(),
+                  role: sessionUser.roles.includes('superadmin' as any) || sessionUser.roles.includes('admin' as any) ? 'admin' : sessionUser.roles.includes('host' as any) ? 'host' : 'customer',
+                  status: 'active',
+                  createdAt: sessionUser.createdAt,
+                  updatedAt: sessionUser.createdAt,
+                };
+              }
+            }
+          }
+        } catch {}
+      }
       if (user) return user;
     }
   }
@@ -231,18 +254,32 @@ apiRouter.get('/auth/demo-users', async (req, res) => {
 apiRouter.get('/facilities', async (req, res) => {
   const { hostId, status, city } = req.query;
   const user = await getAuthenticatedUser(req);
-  let effectiveHostId = hostId as string;
+  let effectiveHostId: string | undefined = undefined;
 
-  // Enforce host ownership isolation: A host cannot view another host's facilities by swapping hostId
-  if (user && user.role === 'host') {
-    if (effectiveHostId && effectiveHostId !== user.id) {
-      return res.status(403).json({ error: 'Access denied: You cannot view another host\'s facilities.' });
+  // Enforce host ownership isolation: A host can only view their own facilities
+  if (hostId) {
+    if (!user) {
+      return res.status(401).json({ error: 'Authentication required to query host facilities.' });
     }
+    if (user.role === 'host') {
+      if (hostId !== user.id) {
+        return res.status(403).json({ error: 'Access denied: You cannot view another host\'s facilities.' });
+      }
+      effectiveHostId = user.id;
+    } else if (user.role === 'admin') {
+      effectiveHostId = hostId as string;
+    } else {
+      return res.status(403).json({ error: 'Access denied: Host account privileges required.' });
+    }
+  } else if (user && user.role === 'host' && (req.headers['x-host-portal'] || req.query.portal === 'host')) {
+    effectiveHostId = user.id;
   }
 
+  // Non-owner public callers can only see active facilities
+  const effectiveStatus = effectiveHostId ? (status as string) : 'active';
   const facilities = await db.getFacilities({
     hostId: effectiveHostId,
-    status: status as string,
+    status: effectiveStatus,
     city: city as string
   });
   return res.json(facilities);
@@ -251,6 +288,15 @@ apiRouter.get('/facilities', async (req, res) => {
 apiRouter.get('/facilities/:id', async (req, res) => {
   const facility = await db.getFacilityById(req.params.id);
   if (!facility) return res.status(404).json({ error: 'Facility not found' });
+  const user = await getAuthenticatedUser(req);
+  if (facility.status !== 'active') {
+    if (!user) {
+      return res.status(401).json({ error: 'Authentication required to access non-public facility.' });
+    }
+    if (facility.hostId !== user.id && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied: You do not have permission to access this facility.' });
+    }
+  }
   const bays = await db.getBaysByFacility(facility.id);
   const pricingRules = await db.getPricingRules(facility.id);
   const reviews = await db.getReviews(facility.id);
@@ -260,7 +306,12 @@ apiRouter.get('/facilities/:id', async (req, res) => {
 apiRouter.post('/facilities', requireHost, async (req, res) => {
   try {
     const user = (req as any).user as User;
-    const facility = await db.createFacility(user.id, req.body);
+    const safePayload = { ...req.body };
+    delete safePayload.id;
+    delete safePayload.hostId;
+    delete safePayload.createdAt;
+    delete safePayload.updatedAt;
+    const facility = await db.createFacility(user.id, safePayload);
     return res.status(201).json(facility);
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
@@ -273,9 +324,14 @@ apiRouter.put('/facilities/:id', requireHost, async (req, res) => {
     const existing = await db.getFacilityById(req.params.id);
     if (!existing) return res.status(404).json({ error: 'Facility not found' });
     if (existing.hostId !== user.id && user.role !== 'admin') {
-      return res.status(403).json({ error: 'You do not own this facility' });
+      return res.status(403).json({ error: 'Access denied: You do not own this facility.' });
     }
-    const facility = await db.updateFacility(req.params.id, req.body, user);
+    const safePayload = { ...req.body };
+    delete safePayload.id;
+    delete safePayload.hostId;
+    delete safePayload.createdAt;
+    delete safePayload.updatedAt;
+    const facility = await db.updateFacility(req.params.id, safePayload, user);
     return res.json(facility);
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
@@ -288,7 +344,7 @@ apiRouter.delete('/facilities/:id', requireHost, async (req, res) => {
     const existing = await db.getFacilityById(req.params.id);
     if (!existing) return res.status(404).json({ error: 'Facility not found' });
     if (existing.hostId !== user.id && user.role !== 'admin') {
-      return res.status(403).json({ error: 'You do not own this facility' });
+      return res.status(403).json({ error: 'Access denied: You do not own this facility.' });
     }
     const success = await db.deleteFacility(req.params.id, user);
     return res.json({ success });
@@ -303,7 +359,7 @@ apiRouter.post('/facilities/:id/submit', requireHost, async (req, res) => {
     const existing = await db.getFacilityById(req.params.id);
     if (!existing) return res.status(404).json({ error: 'Facility not found' });
     if (existing.hostId !== user.id && user.role !== 'admin') {
-      return res.status(403).json({ error: 'You do not own this facility' });
+      return res.status(403).json({ error: 'Access denied: You do not own this facility.' });
     }
     const facility = await db.submitFacilityForReview(req.params.id, user);
     return res.json(facility);
@@ -318,7 +374,7 @@ apiRouter.post('/facilities/:id/toggle-status', requireHost, async (req, res) =>
     const facility = await db.getFacilityById(req.params.id);
     if (!facility) return res.status(404).json({ error: 'Facility not found' });
     if (facility.hostId !== user.id && user.role !== 'admin') {
-      return res.status(403).json({ error: 'You do not own this facility' });
+      return res.status(403).json({ error: 'Access denied: You do not own this facility.' });
     }
 
     const nextStatus = facility.status === 'active' ? 'suspended' : 'active';
@@ -331,6 +387,17 @@ apiRouter.post('/facilities/:id/toggle-status', requireHost, async (req, res) =>
 
 // ----------------- PARKING BAYS -----------------
 apiRouter.get('/facilities/:id/bays', async (req, res) => {
+  const facility = await db.getFacilityById(req.params.id);
+  if (!facility) return res.status(404).json({ error: 'Facility not found' });
+  const user = await getAuthenticatedUser(req);
+  if (facility.status !== 'active') {
+    if (!user) {
+      return res.status(401).json({ error: 'Authentication required to view bays of non-public facility.' });
+    }
+    if (facility.hostId !== user.id && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied: You do not own this facility.' });
+    }
+  }
   const bays = await db.getBaysByFacility(req.params.id);
   return res.json(bays);
 });
@@ -338,7 +405,15 @@ apiRouter.get('/facilities/:id/bays', async (req, res) => {
 apiRouter.post('/facilities/:id/bays', requireHost, async (req, res) => {
   try {
     const user = (req as any).user as User;
-    const bay = await db.createBay(req.params.id, req.body, user);
+    const facility = await db.getFacilityById(req.params.id);
+    if (!facility) return res.status(404).json({ error: 'Facility not found' });
+    if (facility.hostId !== user.id && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied: You do not own this facility.' });
+    }
+    const safePayload = { ...req.body };
+    delete safePayload.id;
+    delete safePayload.facilityId;
+    const bay = await db.createBay(req.params.id, safePayload, user);
     return res.status(201).json(bay);
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
@@ -348,6 +423,11 @@ apiRouter.post('/facilities/:id/bays', requireHost, async (req, res) => {
 apiRouter.post('/facilities/:id/bays/bulk', requireHost, async (req, res) => {
   try {
     const user = (req as any).user as User;
+    const facility = await db.getFacilityById(req.params.id);
+    if (!facility) return res.status(404).json({ error: 'Facility not found' });
+    if (facility.hostId !== user.id && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied: You do not own this facility.' });
+    }
     const { prefix, startIndex, count, zone, vehicleCompatibility, dimensions, isAccessibleADA, hasEvCharger, evPowerKw, hourlyRateMultiplier } = req.body;
 
     if (!prefix || !count || count <= 0) {
@@ -359,7 +439,7 @@ apiRouter.post('/facilities/:id/bays/bulk', requireHost, async (req, res) => {
       {
         prefix,
         startIndex: startIndex || 1,
-        count: Math.min(count, 50), // safety limit
+        count: Math.min(count, 50),
         zone: zone || 'General',
         vehicleCompatibility: vehicleCompatibility || ['sedan', 'suv'],
         dimensions: dimensions || { lengthMeters: 5.0, widthMeters: 2.5, heightMeters: 2.2 },
@@ -380,7 +460,17 @@ apiRouter.post('/facilities/:id/bays/bulk', requireHost, async (req, res) => {
 apiRouter.put('/bays/:id', requireHost, async (req, res) => {
   try {
     const user = (req as any).user as User;
-    const bay = await db.updateBay(req.params.id, req.body, user);
+    const existingBay = await db.getBayById(req.params.id);
+    if (!existingBay) return res.status(404).json({ error: 'Parking bay not found' });
+    const facility = await db.getFacilityById(existingBay.facilityId);
+    if (!facility) return res.status(404).json({ error: 'Facility not found' });
+    if (facility.hostId !== user.id && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied: You do not own this parking bay.' });
+    }
+    const safePayload = { ...req.body };
+    delete safePayload.id;
+    delete safePayload.facilityId;
+    const bay = await db.updateBay(req.params.id, safePayload, user);
     return res.json(bay);
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
@@ -390,6 +480,13 @@ apiRouter.put('/bays/:id', requireHost, async (req, res) => {
 apiRouter.put('/bays/:id/status', requireHost, async (req, res) => {
   try {
     const user = (req as any).user as User;
+    const existingBay = await db.getBayById(req.params.id);
+    if (!existingBay) return res.status(404).json({ error: 'Parking bay not found' });
+    const facility = await db.getFacilityById(existingBay.facilityId);
+    if (!facility) return res.status(404).json({ error: 'Facility not found' });
+    if (facility.hostId !== user.id && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied: You do not own this parking bay.' });
+    }
     const { status, reason } = req.body;
     if (!status) return res.status(400).json({ error: 'Status is required' });
     const bay = await db.setBayStatus(req.params.id, status, reason, user);
@@ -402,6 +499,13 @@ apiRouter.put('/bays/:id/status', requireHost, async (req, res) => {
 apiRouter.delete('/bays/:id', requireHost, async (req, res) => {
   try {
     const user = (req as any).user as User;
+    const existingBay = await db.getBayById(req.params.id);
+    if (!existingBay) return res.status(404).json({ error: 'Parking bay not found' });
+    const facility = await db.getFacilityById(existingBay.facilityId);
+    if (!facility) return res.status(404).json({ error: 'Facility not found' });
+    if (facility.hostId !== user.id && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied: You do not own this parking bay.' });
+    }
     const success = await db.deleteBay(req.params.id, user);
     return res.json({ success });
   } catch (err: any) {
@@ -411,6 +515,17 @@ apiRouter.delete('/bays/:id', requireHost, async (req, res) => {
 
 // ----------------- PRICING & QUOTES -----------------
 apiRouter.get('/facilities/:id/pricing-rules', async (req, res) => {
+  const facility = await db.getFacilityById(req.params.id);
+  if (!facility) return res.status(404).json({ error: 'Facility not found' });
+  const user = await getAuthenticatedUser(req);
+  if (facility.status !== 'active') {
+    if (!user) {
+      return res.status(401).json({ error: 'Authentication required to view pricing rules.' });
+    }
+    if (facility.hostId !== user.id && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied: You do not own this facility.' });
+    }
+  }
   const rules = await db.getPricingRules(req.params.id);
   return res.json(rules);
 });
@@ -418,7 +533,15 @@ apiRouter.get('/facilities/:id/pricing-rules', async (req, res) => {
 apiRouter.post('/facilities/:id/pricing-rules', requireHost, async (req, res) => {
   try {
     const user = (req as any).user as User;
-    const rule = await db.createPricingRule(req.params.id, req.body, user);
+    const facility = await db.getFacilityById(req.params.id);
+    if (!facility) return res.status(404).json({ error: 'Facility not found' });
+    if (facility.hostId !== user.id && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied: You do not own this facility.' });
+    }
+    const safePayload = { ...req.body };
+    delete safePayload.id;
+    delete safePayload.facilityId;
+    const rule = await db.createPricingRule(req.params.id, safePayload, user);
     return res.status(201).json(rule);
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
@@ -428,8 +551,18 @@ apiRouter.post('/facilities/:id/pricing-rules', requireHost, async (req, res) =>
 apiRouter.put('/pricing-rules/:id', requireHost, async (req, res) => {
   try {
     const user = (req as any).user as User;
-    const rule = await db.updatePricingRule(req.params.id, req.body, user);
-    return res.json(rule);
+    const rule = await db.getPricingRuleById(req.params.id);
+    if (!rule) return res.status(404).json({ error: 'Pricing rule not found' });
+    const facility = await db.getFacilityById(rule.facilityId);
+    if (!facility) return res.status(404).json({ error: 'Facility not found' });
+    if (facility.hostId !== user.id && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied: You do not own this facility.' });
+    }
+    const safePayload = { ...req.body };
+    delete safePayload.id;
+    delete safePayload.facilityId;
+    const updated = await db.updatePricingRule(req.params.id, safePayload, user);
+    return res.json(updated);
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
   }
@@ -443,7 +576,7 @@ apiRouter.delete('/pricing-rules/:id', requireHost, async (req, res) => {
     const facility = await db.getFacilityById(rule.facilityId);
     if (!facility) return res.status(404).json({ error: 'Facility not found' });
     if (facility.hostId !== user.id && user.role !== 'admin') {
-      return res.status(403).json({ error: 'You do not own this facility' });
+      return res.status(403).json({ error: 'Access denied: You do not own this facility.' });
     }
     const success = await db.deletePricingRule(req.params.id, user);
     return res.json({ success });

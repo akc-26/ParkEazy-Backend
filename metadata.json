@@ -1,6 +1,6 @@
 {
-  "name": "",
-  "description": "",
+  "name": "ParkEazy",
+  "description": "ParkEazy Parking Marketplace - Host & Backend Platform",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

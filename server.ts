@@ -12,6 +12,7 @@ import { dbManager } from './apps/api/database/connection';
 import { redisManager } from './apps/api/cache/redis';
 import { migrationManager } from './apps/api/database/migrator';
 import { db } from './server/db';
+import { inventoryService } from './apps/api/services/inventory.service';
 
 dotenv.config();
 
@@ -135,6 +136,7 @@ async function startServer() {
   // 3. Initialize active database persistence store
   console.log('[ParkEazy] Initializing active application data layer...');
   await db.initialize();
+  await inventoryService.initialize();
 
   const app = createApp();
   const PORT = Number(process.env.APP_PORT || (process.env.PORT !== '8080' ? process.env.PORT : null)) || config.port || 3000;

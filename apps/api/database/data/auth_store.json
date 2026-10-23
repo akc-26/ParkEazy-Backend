@@ -1,0 +1,243 @@
+{
+  "timestamp": "2026-10-23T11:30:13.529Z",
+  "users": [
+    {
+      "id": "usr-customer-001",
+      "email": "driver@parkeazy.com",
+      "firstName": "Alex",
+      "lastName": "Morgan",
+      "roles": [
+        "CUSTOMER"
+      ],
+      "phoneNumber": "+1-555-0199",
+      "isHostVerified": false,
+      "createdAt": "2026-01-15T08:00:00Z"
+    },
+    {
+      "id": "usr-host-001",
+      "email": "host@parkeazy.com",
+      "firstName": "Marcus",
+      "lastName": "Chen",
+      "roles": [
+        "CUSTOMER",
+        "HOST"
+      ],
+      "phoneNumber": "+1-555-0144",
+      "isHostVerified": true,
+      "createdAt": "2026-01-10T09:30:00Z"
+    },
+    {
+      "id": "usr-admin-001",
+      "email": "admin@parkeazy.com",
+      "firstName": "Elena",
+      "lastName": "Rostova",
+      "roles": [
+        "CUSTOMER",
+        "ADMIN",
+        "SUPER_ADMIN"
+      ],
+      "isHostVerified": true,
+      "createdAt": "2025-11-01T12:00:00Z"
+    },
+    {
+      "id": "usr-host-1601667c85b3",
+      "email": "marcus.host1@parkeazy.com",
+      "firstName": "Marcus",
+      "lastName": "Vance",
+      "roles": [
+        "CUSTOMER",
+        "HOST"
+      ],
+      "phoneNumber": "+1-555-8821",
+      "isHostVerified": true,
+      "createdAt": "2026-10-23T11:30:12.453Z"
+    },
+    {
+      "id": "usr-host-836370aee1ea",
+      "email": "host.b@parkeazy.com",
+      "firstName": "Brenda",
+      "lastName": "Song",
+      "roles": [
+        "CUSTOMER",
+        "HOST"
+      ],
+      "isHostVerified": false,
+      "createdAt": "2026-10-23T11:30:13.462Z"
+    }
+  ],
+  "credentials": [
+    {
+      "userId": "usr-customer-001",
+      "hash": "0040a8ec1fa0cd06b6219244cf3f32c085dd93f452c728f306e0416860c842ac",
+      "salt": "parkeazy_salt_2026",
+      "tokenVersion": 1
+    },
+    {
+      "userId": "usr-host-001",
+      "hash": "0040a8ec1fa0cd06b6219244cf3f32c085dd93f452c728f306e0416860c842ac",
+      "salt": "parkeazy_salt_2026",
+      "tokenVersion": 1
+    },
+    {
+      "userId": "usr-admin-001",
+      "hash": "0040a8ec1fa0cd06b6219244cf3f32c085dd93f452c728f306e0416860c842ac",
+      "salt": "parkeazy_salt_2026",
+      "tokenVersion": 1
+    },
+    {
+      "userId": "usr-host-1601667c85b3",
+      "hash": "9fe0035b862945721a8fa7de483dcee963e030e8cd7151b4ff5094178f3c9917",
+      "salt": "d2174a0963e849852935695eba7de7ed",
+      "tokenVersion": 2
+    },
+    {
+      "userId": "usr-host-836370aee1ea",
+      "hash": "db59143c81749e39e897c7b6027f30eaead0ee07c75739c352907fcb3f98c9a6",
+      "salt": "7721c6df70455ee89a7872a16b88c3b9",
+      "tokenVersion": 1
+    }
+  ],
+  "hostProfiles": [
+    {
+      "userId": "usr-host-001",
+      "businessType": "INDIVIDUAL",
+      "businessName": "Marcus Chen Parking Services",
+      "businessRegistrationNumber": "REG-SF-2026-88",
+      "taxId": "XX-XXX4491",
+      "phoneNumber": "+1-555-0144",
+      "addressLine1": "742 Montgomery St",
+      "city": "San Francisco",
+      "state": "CA",
+      "postalCode": "94111",
+      "country": "US",
+      "emergencyContactName": "Sarah Chen",
+      "emergencyContactPhone": "+1-555-0198",
+      "ownershipType": "OWNED",
+      "propertyTypes": [
+        "DRIVEWAY",
+        "COVERED_GARAGE"
+      ],
+      "hasLiabilityInsurance": true,
+      "insurancePolicyNumber": "POL-STATE-99412",
+      "insuranceExpiryDate": "2027-12-31",
+      "acceptsTerms": true,
+      "acceptsHostAgreement": true,
+      "applicationStatus": "VERIFIED",
+      "onboardingStep": "APPROVED",
+      "statusReason": "Fully verified and authorized host partner.",
+      "submittedAtUtc": "2026-01-10T10:00:00Z",
+      "reviewedAtUtc": "2026-01-10T12:00:00Z",
+      "createdAt": "2026-01-10T09:30:00Z",
+      "updatedAt": "2026-01-10T12:00:00Z"
+    },
+    {
+      "userId": "usr-host-1601667c85b3",
+      "businessType": "INDIVIDUAL",
+      "businessName": "Marcus Bay Rentals",
+      "phoneNumber": "+1-555-8821",
+      "addressLine1": "100 California Street",
+      "city": "San Francisco",
+      "state": "CA",
+      "postalCode": "94111",
+      "country": "US",
+      "emergencyContactName": "Laura Vance",
+      "emergencyContactPhone": "+1-555-8829",
+      "ownershipType": "OWNED",
+      "propertyTypes": [
+        "DRIVEWAY",
+        "COVERED_GARAGE"
+      ],
+      "hasLiabilityInsurance": true,
+      "acceptsTerms": true,
+      "acceptsHostAgreement": true,
+      "applicationStatus": "PENDING_REVIEW",
+      "onboardingStep": "SUBMITTED",
+      "createdAt": "2026-10-23T11:30:12.453Z",
+      "updatedAt": "2026-10-23T11:30:13.456Z",
+      "insurancePolicyNumber": "POL-SF-8899",
+      "insuranceExpiryDate": "2028-06-30",
+      "submittedAtUtc": "2026-10-23T11:30:13.456Z",
+      "statusReason": "Application submitted and currently undergoing review by the trust and operations team."
+    },
+    {
+      "userId": "usr-host-836370aee1ea",
+      "businessType": "INDIVIDUAL",
+      "businessName": "Brenda Song Spaces",
+      "phoneNumber": "",
+      "addressLine1": "",
+      "city": "",
+      "state": "",
+      "postalCode": "",
+      "country": "US",
+      "emergencyContactName": "",
+      "emergencyContactPhone": "",
+      "ownershipType": "OWNED",
+      "propertyTypes": [
+        "DRIVEWAY"
+      ],
+      "hasLiabilityInsurance": false,
+      "acceptsTerms": true,
+      "acceptsHostAgreement": true,
+      "applicationStatus": "DRAFT",
+      "onboardingStep": "PROFILE",
+      "createdAt": "2026-10-23T11:30:13.462Z",
+      "updatedAt": "2026-10-23T11:30:13.462Z"
+    }
+  ],
+  "verificationTokens": [
+    {
+      "id": "tok-vrf-65b55849fc41125f",
+      "userId": "usr-host-1601667c85b3",
+      "tokenType": "EMAIL",
+      "tokenHash": "2cad78287eb781a9f7c404ce3e31dcc3f7071177a9491f4ad5394bd87fa3d97e",
+      "targetDestination": "marcus.host1@parkeazy.com",
+      "expiresAt": 1792755912505,
+      "attempts": 0,
+      "createdAt": 1792755012505,
+      "consumedAt": "2026-10-23T11:30:13.152Z"
+    },
+    {
+      "id": "tok-vrf-83430c93e636e88b",
+      "userId": "usr-host-1601667c85b3",
+      "tokenType": "EMAIL",
+      "tokenHash": "26fcbf5e25337881926034d5dc20a1c1d366d80e2c8164ba9fcc7fb87afb4b5c",
+      "targetDestination": "marcus.host1@parkeazy.com",
+      "expiresAt": 1792755913152,
+      "attempts": 1,
+      "createdAt": 1792755013152,
+      "consumedAt": "2026-10-23T11:30:13.175Z"
+    },
+    {
+      "id": "tok-vrf-2b8a8345e63cf3ed",
+      "userId": "usr-host-1601667c85b3",
+      "tokenType": "EMAIL",
+      "tokenHash": "1cb495d1df0cb2619e717b17d189dcc046b69c74c2625c3d0321220a70ecb8ab",
+      "targetDestination": "marcus.host1@parkeazy.com",
+      "expiresAt": 1792755913175,
+      "attempts": 1,
+      "createdAt": 1792755013175,
+      "consumedAt": "2026-10-23T11:30:13.178Z"
+    },
+    {
+      "id": "tok-vrf-4f962ba1aa13a16c",
+      "userId": "usr-host-836370aee1ea",
+      "tokenType": "EMAIL",
+      "tokenHash": "a8f6e442276c94f32b29f4b8ec644581c9e7adee5ce519a63b8f364b95ec4ad9",
+      "targetDestination": "host.b@parkeazy.com",
+      "expiresAt": 1792755913529,
+      "attempts": 0,
+      "createdAt": 1792755013529
+    }
+  ],
+  "passwordResetTokens": [
+    {
+      "id": "tok-rst-540857ceb0df5ff7",
+      "userId": "usr-host-1601667c85b3",
+      "tokenHash": "3c7198fa4dce6d7283cb357bea5debaa82c1e7b758e10af0c9f7968ccdd87779",
+      "expiresAt": 1792755913209,
+      "attempts": 0,
+      "createdAt": 1792755013209,
+      "consumedAt": "2026-10-23T11:30:13.324Z"
+    }
+  ]
+}

@@ -333,25 +333,41 @@ export class InventoryService {
     return InventoryService.instance;
   }
 
+  public isProduction(): boolean {
+    return process.env.NODE_ENV === 'production' || appConfig.nodeEnv === 'production' || appConfig.database.isRequired;
+  }
+
+  public isDemoSeedingPermitted(): boolean {
+    if (this.isProduction()) {
+      return false;
+    }
+    return process.env.NODE_ENV === 'test' || process.env.PARKEAZY_DEMO_MODE === 'true' || process.env.ENABLE_DEMO_SEEDING === 'true';
+  }
+
   private loadFromDisk(): void {
     try {
       if (fs.existsSync(this.storageFilePath)) {
         const raw = fs.readFileSync(this.storageFilePath, 'utf-8');
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed.locations) && parsed.locations.length > 0) {
+        if (Array.isArray(parsed.locations)) {
           this.locations = parsed.locations;
           this.bays = Array.isArray(parsed.bays) ? parsed.bays : [];
           return;
         }
       }
     } catch (err: any) {
-      console.warn('[ParkEazy-Inventory] Notice loading persisted store, falling back to seed:', err.message);
+      console.warn('[ParkEazy-Inventory] Notice loading persisted store:', err.message);
     }
 
-    // Seed defaults
-    this.locations = JSON.parse(JSON.stringify(this.INITIAL_LOCATIONS));
-    this.bays = JSON.parse(JSON.stringify(this.INITIAL_BAYS));
-    this.saveToDisk();
+    // Only seed demo fixtures if strictly permitted in non-production
+    if (this.isDemoSeedingPermitted()) {
+      this.locations = JSON.parse(JSON.stringify(this.INITIAL_LOCATIONS));
+      this.bays = JSON.parse(JSON.stringify(this.INITIAL_BAYS));
+      this.saveToDisk();
+    } else {
+      this.locations = [];
+      this.bays = [];
+    }
   }
 
   private saveToDisk(): void {
@@ -372,8 +388,456 @@ export class InventoryService {
   }
 
   public resetStores(): void {
-    this.locations = JSON.parse(JSON.stringify(this.INITIAL_LOCATIONS));
-    this.bays = JSON.parse(JSON.stringify(this.INITIAL_BAYS));
+    if (this.isProduction()) {
+      throw new Error('resetStores is strictly prohibited in production.');
+    }
+    if (this.isDemoSeedingPermitted()) {
+      this.locations = JSON.parse(JSON.stringify(this.INITIAL_LOCATIONS));
+      this.bays = JSON.parse(JSON.stringify(this.INITIAL_BAYS));
+    } else {
+      this.locations = [];
+      this.bays = [];
+    }
+    this.saveToDisk();
+  }
+
+  public async resetStoresAsync(): Promise<void> {
+    if (this.isProduction()) {
+      throw new Error('resetStoresAsync is strictly prohibited in production.');
+    }
+    this.resetStores();
+    if (dbManager.isPostgresConnected()) {
+      const client = await dbManager.getClient();
+      try {
+        await client.query('BEGIN');
+        await client.query('DELETE FROM parking_bays');
+        await client.query('DELETE FROM parking_locations');
+        await client.query('COMMIT');
+      } catch (err: any) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw err;
+      } finally {
+        client.release();
+      }
+
+      if (this.isDemoSeedingPermitted()) {
+        for (const loc of this.locations) {
+          await this.syncLocationToPostgres(loc);
+        }
+        for (const bay of this.bays) {
+          await this.syncBayToPostgres(bay);
+        }
+      }
+    }
+  }
+
+  public async initialize(): Promise<void> {
+    if (!dbManager.isPostgresConnected()) {
+      if (this.isProduction()) {
+        throw new Error('Authoritative PostgreSQL database is not connected in production mode.');
+      }
+      return;
+    }
+    await this.loadFromPostgres();
+  }
+
+  public async loadFromPostgres(): Promise<void> {
+    if (!dbManager.isPostgresConnected()) return;
+
+    try {
+      const locRes = await dbManager.query('SELECT * FROM parking_locations ORDER BY created_at ASC');
+      const bayRes = await dbManager.query('SELECT * FROM parking_bays ORDER BY created_at ASC');
+
+      if (locRes && Array.isArray(locRes.rows) && locRes.rows.length > 0) {
+        const loadedBays: ParkingBay[] = bayRes && Array.isArray(bayRes.rows)
+          ? bayRes.rows.map((r: any) => ({
+              id: r.id,
+              locationId: r.location_id,
+              bayNumber: r.bay_number,
+              bayType: r.bay_type || BayType.STANDARD,
+              levelOrFloor: r.level_or_floor || 'Ground',
+              status: r.status || BayStatus.AVAILABLE,
+              maxVehicleHeightMeters: r.max_vehicle_height_meters ? parseFloat(r.max_vehicle_height_meters) : undefined,
+              maxVehicleLengthMeters: r.max_vehicle_length_meters ? parseFloat(r.max_vehicle_length_meters) : undefined,
+              maxVehicleWidthMeters: r.max_vehicle_width_meters ? parseFloat(r.max_vehicle_width_meters) : undefined,
+              supportedVehicles: Array.isArray(r.supported_vehicles) ? r.supported_vehicles : [VehicleCategory.SEDAN, VehicleCategory.SUV, VehicleCategory.COMPACT],
+              isEvCharging: Boolean(r.is_ev_charging),
+              evChargerKw: r.ev_charger_kw ? parseFloat(r.ev_charger_kw) : undefined,
+              hasCctv: Boolean(r.has_cctv),
+              isAccessible: Boolean(r.is_accessible),
+              isCovered: Boolean(r.is_covered),
+              notes: r.notes || undefined,
+              instructions: r.instructions || undefined,
+              createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString(),
+              updatedAt: r.updated_at ? new Date(r.updated_at).toISOString() : new Date().toISOString(),
+            }))
+          : [];
+
+        const loadedLocations: ParkingLocation[] = locRes.rows.map((r: any) => {
+          let parsedPhotos = [];
+          if (Array.isArray(r.photos)) {
+            parsedPhotos = r.photos;
+          } else if (typeof r.photos === 'string') {
+            try { parsedPhotos = JSON.parse(r.photos); } catch {}
+          }
+          const loc: ParkingLocation = {
+            id: r.id,
+            hostId: r.host_id,
+            name: r.name,
+            description: r.description || '',
+            propertyType: r.property_type || PropertyType.GARAGE,
+            address: {
+              line1: r.address_line1,
+              line2: r.address_line2 || undefined,
+              city: r.city,
+              state: r.state,
+              postalCode: r.postal_code,
+              country: r.country || 'US',
+              latitude: parseFloat(r.latitude) || 37.7749,
+              longitude: parseFloat(r.longitude) || -122.4194,
+            },
+            timezone: r.timezone || 'America/Los_Angeles',
+            accessMethod: r.access_method || AccessMethod.GATE_CODE,
+            accessInstructions: r.access_instructions || undefined,
+            status: r.status || LocationStatus.DRAFT,
+            totalBays: loadedBays.filter((b) => b.locationId === r.id).length,
+            hourlyRateCents: Number(r.hourly_rate_cents) || 500,
+            dailyRateCents: Number(r.daily_rate_cents) || 3500,
+            securityDepositCents: Number(r.security_deposit_cents) || 2000,
+            amenities: Array.isArray(r.amenities) ? r.amenities : [],
+            imageUrl: r.image_url || undefined,
+            photos: parsedPhotos,
+            publishedAt: r.published_at_utc ? new Date(r.published_at_utc).toISOString() : undefined,
+            createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString(),
+            updatedAt: r.updated_at ? new Date(r.updated_at).toISOString() : new Date().toISOString(),
+          };
+          return loc;
+        });
+
+        this.locations = loadedLocations;
+        this.bays = loadedBays;
+        this.saveToDisk();
+      } else {
+        // Empty database: In production startup NEVER seed demo facilities or bays into empty DB!
+        if (!this.isProduction() && this.isDemoSeedingPermitted() && process.env.SEED_DEMO_DATA === 'true') {
+          for (const loc of this.INITIAL_LOCATIONS) {
+            await this.syncLocationToPostgres(loc);
+          }
+          for (const bay of this.INITIAL_BAYS) {
+            await this.syncBayToPostgres(bay);
+          }
+        } else {
+          this.locations = [];
+          this.bays = [];
+          this.saveToDisk();
+        }
+      }
+    } catch (err: any) {
+      if (this.isProduction()) {
+        throw new Error(`Failed to load inventory from PostgreSQL: ${err.message}`);
+      }
+      console.warn('[ParkEazy-Inventory] Warning reading inventory from PostgreSQL:', err.message);
+    }
+  }
+
+  public async syncLocationToPostgres(loc: ParkingLocation): Promise<void> {
+    const isProd = this.isProduction();
+    if (!dbManager.isPostgresConnected()) {
+      if (isProd) {
+        throw new AppError('Authoritative PostgreSQL database is required in production.', 503, 'DATABASE_UNAVAILABLE');
+      }
+      return;
+    }
+
+    const client = await dbManager.getClient();
+    try {
+      await client.query('BEGIN');
+
+      // Ensure host record exists in users table to satisfy foreign key constraint
+      await client.query(
+        `INSERT INTO users (id, email, first_name, last_name, roles, is_host_verified)
+         VALUES ($1, $2, 'Host', 'Partner', '{"HOST","CUSTOMER"}', true)
+         ON CONFLICT (id) DO NOTHING`,
+        [loc.hostId, `${loc.hostId}@parkeazy.internal`]
+      );
+
+      await client.query(
+        `INSERT INTO parking_locations (
+          id, host_id, name, description, address_line1, address_line2,
+          city, state, postal_code, country, latitude, longitude,
+          timezone, access_method, status, hourly_rate_cents, daily_rate_cents,
+          security_deposit_cents, property_type, access_instructions, amenities,
+          image_url, photos, published_at_utc, created_at, updated_at
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, NOW()
+        )
+        ON CONFLICT (id) DO UPDATE SET
+          name = EXCLUDED.name,
+          description = EXCLUDED.description,
+          address_line1 = EXCLUDED.address_line1,
+          address_line2 = EXCLUDED.address_line2,
+          city = EXCLUDED.city,
+          state = EXCLUDED.state,
+          postal_code = EXCLUDED.postal_code,
+          country = EXCLUDED.country,
+          latitude = EXCLUDED.latitude,
+          longitude = EXCLUDED.longitude,
+          timezone = EXCLUDED.timezone,
+          access_method = EXCLUDED.access_method,
+          status = EXCLUDED.status,
+          hourly_rate_cents = EXCLUDED.hourly_rate_cents,
+          daily_rate_cents = EXCLUDED.daily_rate_cents,
+          security_deposit_cents = EXCLUDED.security_deposit_cents,
+          property_type = EXCLUDED.property_type,
+          access_instructions = EXCLUDED.access_instructions,
+          amenities = EXCLUDED.amenities,
+          image_url = EXCLUDED.image_url,
+          photos = EXCLUDED.photos,
+          published_at_utc = EXCLUDED.published_at_utc,
+          updated_at = NOW()`,
+        [
+          loc.id,
+          loc.hostId,
+          loc.name,
+          loc.description,
+          loc.address.line1,
+          loc.address.line2 || null,
+          loc.address.city,
+          loc.address.state,
+          loc.address.postalCode,
+          loc.address.country || 'US',
+          loc.address.latitude,
+          loc.address.longitude,
+          loc.timezone,
+          loc.accessMethod,
+          loc.status,
+          loc.hourlyRateCents,
+          loc.dailyRateCents,
+          loc.securityDepositCents,
+          loc.propertyType,
+          loc.accessInstructions || null,
+          loc.amenities || [],
+          loc.imageUrl || null,
+          JSON.stringify(loc.photos || []),
+          loc.publishedAt || null,
+          loc.createdAt,
+        ]
+      );
+
+      await client.query('COMMIT');
+    } catch (err: any) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw new AppError(`Failed to persist facility to PostgreSQL: ${err.message}`, 500, 'DATABASE_PERSISTENCE_ERROR');
+    } finally {
+      client.release();
+    }
+  }
+
+  public async deleteLocationFromPostgres(locationId: string): Promise<void> {
+    const isProd = this.isProduction();
+    if (!dbManager.isPostgresConnected()) {
+      if (isProd) {
+        throw new AppError('Authoritative PostgreSQL database is required in production.', 503, 'DATABASE_UNAVAILABLE');
+      }
+      return;
+    }
+
+    const client = await dbManager.getClient();
+    try {
+      await client.query('BEGIN');
+      await client.query('DELETE FROM parking_bays WHERE location_id = $1', [locationId]);
+      await client.query('DELETE FROM parking_locations WHERE id = $1', [locationId]);
+      await client.query('COMMIT');
+    } catch (err: any) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw new AppError(`Failed to delete facility from PostgreSQL: ${err.message}`, 500, 'DATABASE_PERSISTENCE_ERROR');
+    } finally {
+      client.release();
+    }
+  }
+
+  public async syncBayToPostgres(bay: ParkingBay): Promise<void> {
+    const isProd = this.isProduction();
+    if (!dbManager.isPostgresConnected()) {
+      if (isProd) {
+        throw new AppError('Authoritative PostgreSQL database is required in production.', 503, 'DATABASE_UNAVAILABLE');
+      }
+      return;
+    }
+
+    // Ensure parent facility exists in PostgreSQL
+    const parentLoc = this.getLocationById(bay.locationId);
+    if (parentLoc) {
+      await this.syncLocationToPostgres(parentLoc);
+    }
+
+    const client = await dbManager.getClient();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        `INSERT INTO parking_bays (
+          id, location_id, bay_number, bay_type, level_or_floor, status,
+          is_ev_charging, has_cctv, max_vehicle_height_meters, max_vehicle_length_meters,
+          max_vehicle_width_meters, supported_vehicles, ev_charger_kw, is_accessible,
+          is_covered, notes, instructions, created_at, updated_at
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW()
+        )
+        ON CONFLICT (id) DO UPDATE SET
+          bay_number = EXCLUDED.bay_number,
+          bay_type = EXCLUDED.bay_type,
+          level_or_floor = EXCLUDED.level_or_floor,
+          status = EXCLUDED.status,
+          is_ev_charging = EXCLUDED.is_ev_charging,
+          has_cctv = EXCLUDED.has_cctv,
+          max_vehicle_height_meters = EXCLUDED.max_vehicle_height_meters,
+          max_vehicle_length_meters = EXCLUDED.max_vehicle_length_meters,
+          max_vehicle_width_meters = EXCLUDED.max_vehicle_width_meters,
+          supported_vehicles = EXCLUDED.supported_vehicles,
+          ev_charger_kw = EXCLUDED.ev_charger_kw,
+          is_accessible = EXCLUDED.is_accessible,
+          is_covered = EXCLUDED.is_covered,
+          notes = EXCLUDED.notes,
+          instructions = EXCLUDED.instructions,
+          updated_at = NOW()`,
+        [
+          bay.id,
+          bay.locationId,
+          bay.bayNumber,
+          bay.bayType,
+          bay.levelOrFloor || null,
+          bay.status,
+          bay.isEvCharging,
+          bay.hasCctv,
+          bay.maxVehicleHeightMeters || null,
+          bay.maxVehicleLengthMeters || null,
+          bay.maxVehicleWidthMeters || null,
+          bay.supportedVehicles || [],
+          bay.evChargerKw || null,
+          bay.isAccessible,
+          bay.isCovered,
+          bay.notes || null,
+          bay.instructions || null,
+          bay.createdAt,
+        ]
+      );
+      await client.query('COMMIT');
+    } catch (err: any) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw new AppError(`Failed to persist bay to PostgreSQL: ${err.message}`, 500, 'DATABASE_PERSISTENCE_ERROR');
+    } finally {
+      client.release();
+    }
+  }
+
+  public async syncBulkBaysToPostgres(bays: ParkingBay[]): Promise<void> {
+    if (!bays || bays.length === 0) return;
+    const isProd = this.isProduction();
+    if (!dbManager.isPostgresConnected()) {
+      if (isProd) {
+        throw new AppError('Authoritative PostgreSQL database is required in production.', 503, 'DATABASE_UNAVAILABLE');
+      }
+      return;
+    }
+
+    const client = await dbManager.getClient();
+    try {
+      await client.query('BEGIN');
+      for (const bay of bays) {
+        await client.query(
+          `INSERT INTO parking_bays (
+            id, location_id, bay_number, bay_type, level_or_floor, status,
+            is_ev_charging, has_cctv, max_vehicle_height_meters, max_vehicle_length_meters,
+            max_vehicle_width_meters, supported_vehicles, ev_charger_kw, is_accessible,
+            is_covered, notes, instructions, created_at, updated_at
+          ) VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW()
+          )
+          ON CONFLICT (id) DO UPDATE SET
+            bay_number = EXCLUDED.bay_number,
+            bay_type = EXCLUDED.bay_type,
+            level_or_floor = EXCLUDED.level_or_floor,
+            status = EXCLUDED.status,
+            is_ev_charging = EXCLUDED.is_ev_charging,
+            has_cctv = EXCLUDED.has_cctv,
+            max_vehicle_height_meters = EXCLUDED.max_vehicle_height_meters,
+            max_vehicle_length_meters = EXCLUDED.max_vehicle_length_meters,
+            max_vehicle_width_meters = EXCLUDED.max_vehicle_width_meters,
+            supported_vehicles = EXCLUDED.supported_vehicles,
+            ev_charger_kw = EXCLUDED.ev_charger_kw,
+            is_accessible = EXCLUDED.is_accessible,
+            is_covered = EXCLUDED.is_covered,
+            notes = EXCLUDED.notes,
+            instructions = EXCLUDED.instructions,
+            updated_at = NOW()`,
+          [
+            bay.id,
+            bay.locationId,
+            bay.bayNumber,
+            bay.bayType,
+            bay.levelOrFloor || null,
+            bay.status,
+            bay.isEvCharging,
+            bay.hasCctv,
+            bay.maxVehicleHeightMeters || null,
+            bay.maxVehicleLengthMeters || null,
+            bay.maxVehicleWidthMeters || null,
+            bay.supportedVehicles || [],
+            bay.evChargerKw || null,
+            bay.isAccessible,
+            bay.isCovered,
+            bay.notes || null,
+            bay.instructions || null,
+            bay.createdAt,
+          ]
+        );
+      }
+      await client.query('COMMIT');
+    } catch (err: any) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw new AppError(`Failed to persist bulk bays to PostgreSQL: ${err.message}`, 500, 'DATABASE_PERSISTENCE_ERROR');
+    } finally {
+      client.release();
+    }
+  }
+
+  public async deleteBayFromPostgres(bayId: string): Promise<void> {
+    const isProd = this.isProduction();
+    if (!dbManager.isPostgresConnected()) {
+      if (isProd) {
+        throw new AppError('Authoritative PostgreSQL database is required in production.', 503, 'DATABASE_UNAVAILABLE');
+      }
+      return;
+    }
+
+    try {
+      await dbManager.query('DELETE FROM parking_bays WHERE id = $1', [bayId]);
+    } catch (err: any) {
+      throw new AppError(`Failed to delete bay from PostgreSQL: ${err.message}`, 500, 'DATABASE_PERSISTENCE_ERROR');
+    }
+  }
+
+  public rollbackLocation(locationId: string): void {
+    this.locations = this.locations.filter((l) => l.id !== locationId);
+    this.saveToDisk();
+  }
+
+  public rollbackBay(bayId: string, locationId: string): void {
+    this.bays = this.bays.filter((b) => b.id !== bayId);
+    const loc = this.getLocationById(locationId);
+    if (loc) {
+      loc.totalBays = this.getBaysByLocationId(locationId).length;
+    }
+    this.saveToDisk();
+  }
+
+  public rollbackBays(bayIds: string[], locationId: string): void {
+    const set = new Set(bayIds);
+    this.bays = this.bays.filter((b) => !set.has(b.id));
+    const loc = this.getLocationById(locationId);
+    if (loc) {
+      loc.totalBays = this.getBaysByLocationId(locationId).length;
+    }
     this.saveToDisk();
   }
 

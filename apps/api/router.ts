@@ -17,7 +17,7 @@ import { pricingService } from './services/pricing.service';
 import { availabilityService } from './services/availability.service';
 import { authGuard, requireResourceOwnership } from './middleware/auth-guard';
 import { openApiSpec } from './docs/openapi';
-import { UserRole, ApiSuccessResponse, BookingStatus } from '../../packages/contracts';
+import { UserRole, ApiSuccessResponse, BookingStatus, LocationStatus, ParkingLocation, ParkingBay } from '../../packages/contracts';
 import { AppError } from './middleware/error-handler';
 import { validate, CommonValidators } from './middleware/validation';
 import { appConfig } from './config/env';
@@ -586,7 +586,19 @@ apiV1Router.delete(
 // ----------------------------------------------------------------------
 apiV1Router.get('/inventory/locations', (req: Request, res: Response) => {
   const includeDrafts = req.query.includeDrafts === 'true';
-  const locations = inventoryService.getAllLocations(!includeDrafts);
+  let allowDrafts = false;
+  if (includeDrafts) {
+    const authHeader = req.headers['authorization'];
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      try {
+        const payload = authService.verifyToken(authHeader.substring(7).trim());
+        if (payload && (payload.roles.includes(UserRole.ADMIN) || payload.roles.includes(UserRole.SUPER_ADMIN))) {
+          allowDrafts = true;
+        }
+      } catch {}
+    }
+  }
+  const locations = inventoryService.getAllLocations(!allowDrafts);
   sendSuccess(res, locations, req.correlationId);
 });
 
@@ -600,6 +612,32 @@ apiV1Router.get(
     if (!location) {
       return next(new AppError(`Parking location '${req.params.id}' not found.`, 404, 'NOT_FOUND'));
     }
+    if (location.status !== LocationStatus.ACTIVE) {
+      const authHeader = req.headers['authorization'];
+      let authorized = false;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        try {
+          const payload = authService.verifyToken(authHeader.substring(7).trim());
+          if (
+            payload &&
+            (payload.roles.includes(UserRole.ADMIN) ||
+              payload.roles.includes(UserRole.SUPER_ADMIN) ||
+              payload.sub === location.hostId)
+          ) {
+            authorized = true;
+          }
+        } catch {}
+      }
+      if (!authorized) {
+        return next(
+          new AppError(
+            'Access denied. You do not have permission to view unpublished facilities.',
+            403,
+            'FORBIDDEN'
+          )
+        );
+      }
+    }
     sendSuccess(res, location, req.correlationId);
   }
 );
@@ -609,7 +647,37 @@ apiV1Router.get(
   validate([
     { field: 'id', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
   ]),
-  (req: Request, res: Response) => {
+  (req: Request, res: Response, next: NextFunction) => {
+    const location = inventoryService.getLocationById(req.params.id);
+    if (!location) {
+      return next(new AppError(`Parking location '${req.params.id}' not found.`, 404, 'NOT_FOUND'));
+    }
+    if (location.status !== LocationStatus.ACTIVE) {
+      const authHeader = req.headers['authorization'];
+      let authorized = false;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        try {
+          const payload = authService.verifyToken(authHeader.substring(7).trim());
+          if (
+            payload &&
+            (payload.roles.includes(UserRole.ADMIN) ||
+              payload.roles.includes(UserRole.SUPER_ADMIN) ||
+              payload.sub === location.hostId)
+          ) {
+            authorized = true;
+          }
+        } catch {}
+      }
+      if (!authorized) {
+        return next(
+          new AppError(
+            'Access denied. You do not have permission to view spaces in unpublished facilities.',
+            403,
+            'FORBIDDEN'
+          )
+        );
+      }
+    }
     const bays = inventoryService.getBaysByLocationId(req.params.id);
     sendSuccess(res, bays, req.correlationId);
   }
@@ -966,11 +1034,21 @@ apiV1Router.post(
     { field: 'name', required: true, type: 'string', minLength: 3, maxLength: 255 },
     { field: 'description', required: true, type: 'string', minLength: 10 },
   ]),
-  (req: Request, res: Response, next: NextFunction) => {
+  async (req: Request, res: Response, next: NextFunction) => {
+    let created: ParkingLocation | null = null;
     try {
-      const created = inventoryService.createLocation(req.user!.id, req.body);
+      const safeBody = { ...req.body };
+      delete (safeBody as any).id;
+      delete (safeBody as any).hostId;
+      delete (safeBody as any).createdAt;
+      delete (safeBody as any).updatedAt;
+      created = inventoryService.createLocation(req.user!.id, safeBody);
+      await inventoryService.syncLocationToPostgres(created);
       sendSuccess(res, created, req.correlationId, 201);
     } catch (err) {
+      if (created) {
+        inventoryService.rollbackLocation(created.id);
+      }
       next(err);
     }
   }
@@ -1005,11 +1083,25 @@ apiV1Router.put(
     { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
     { field: 'facilityId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
   ]),
-  (req: Request, res: Response, next: NextFunction) => {
+  async (req: Request, res: Response, next: NextFunction) => {
     try {
       const isAdmin = req.user!.roles.includes(UserRole.ADMIN) || req.user!.roles.includes(UserRole.SUPER_ADMIN);
-      const updated = inventoryService.updateLocation(req.params.facilityId, req.user!.id, req.body, isAdmin);
-      sendSuccess(res, updated, req.correlationId);
+      const safeBody = { ...req.body };
+      delete (safeBody as any).id;
+      delete (safeBody as any).hostId;
+      delete (safeBody as any).createdAt;
+      delete (safeBody as any).updatedAt;
+
+      const existing = inventoryService.getLocationForHost(req.params.facilityId, req.user!.id, isAdmin);
+      const backup = JSON.parse(JSON.stringify(existing));
+      const updated = inventoryService.updateLocation(req.params.facilityId, req.user!.id, safeBody, isAdmin);
+      try {
+        await inventoryService.syncLocationToPostgres(updated);
+        sendSuccess(res, updated, req.correlationId);
+      } catch (dbErr) {
+        Object.assign(existing, backup);
+        throw dbErr;
+      }
     } catch (err) {
       next(err);
     }
@@ -1025,9 +1117,12 @@ apiV1Router.delete(
     { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
     { field: 'facilityId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
   ]),
-  (req: Request, res: Response, next: NextFunction) => {
+  async (req: Request, res: Response, next: NextFunction) => {
     try {
       const isAdmin = req.user!.roles.includes(UserRole.ADMIN) || req.user!.roles.includes(UserRole.SUPER_ADMIN);
+      // Verify ownership before deleting
+      inventoryService.getLocationForHost(req.params.facilityId, req.user!.id, isAdmin);
+      await inventoryService.deleteLocationFromPostgres(req.params.facilityId);
       inventoryService.deleteLocation(req.params.facilityId, req.user!.id, isAdmin);
       sendSuccess(res, { message: 'Facility removed successfully.' }, req.correlationId);
     } catch (err) {
@@ -1066,12 +1161,56 @@ apiV1Router.post(
     { field: 'facilityId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
     { field: 'bayNumber', required: true, type: 'string', minLength: 1, maxLength: 50 },
   ]),
-  (req: Request, res: Response, next: NextFunction) => {
+  async (req: Request, res: Response, next: NextFunction) => {
+    let space: ParkingBay | null = null;
     try {
       const isAdmin = req.user!.roles.includes(UserRole.ADMIN) || req.user!.roles.includes(UserRole.SUPER_ADMIN);
-      const space = inventoryService.createBay(req.params.facilityId, req.user!.id, req.body, isAdmin);
+      const safeBody = { ...req.body };
+      delete (safeBody as any).id;
+      delete (safeBody as any).locationId;
+      delete (safeBody as any).createdAt;
+      delete (safeBody as any).updatedAt;
+      space = inventoryService.createBay(req.params.facilityId, req.user!.id, safeBody, isAdmin);
+      await inventoryService.syncBayToPostgres(space);
       sendSuccess(res, space, req.correlationId, 201);
     } catch (err) {
+      if (space) {
+        inventoryService.rollbackBay(space.id, req.params.facilityId);
+      }
+      next(err);
+    }
+  }
+);
+
+// 5b.7b Bulk create physical spaces in a facility
+apiV1Router.post(
+  '/hosts/:hostId/facilities/:facilityId/spaces/bulk',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  validate([
+    { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'facilityId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
+    { field: 'bays', required: true, type: 'array' },
+  ]),
+  async (req: Request, res: Response, next: NextFunction) => {
+    let createdBays: ParkingBay[] = [];
+    try {
+      const isAdmin = req.user!.roles.includes(UserRole.ADMIN) || req.user!.roles.includes(UserRole.SUPER_ADMIN);
+      const sanitizedBays = (req.body.bays as any[]).map(b => {
+        const copy = { ...b };
+        delete copy.id;
+        delete copy.locationId;
+        delete copy.createdAt;
+        delete copy.updatedAt;
+        return copy;
+      });
+      createdBays = inventoryService.bulkCreateBays(req.params.facilityId, req.user!.id, sanitizedBays, isAdmin);
+      await inventoryService.syncBulkBaysToPostgres(createdBays);
+      sendSuccess(res, createdBays, req.correlationId, 201);
+    } catch (err) {
+      if (createdBays.length > 0) {
+        inventoryService.rollbackBays(createdBays.map(b => b.id), req.params.facilityId);
+      }
       next(err);
     }
   }
@@ -1108,17 +1247,31 @@ apiV1Router.put(
     { field: 'facilityId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
     { field: 'spaceId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
   ]),
-  (req: Request, res: Response, next: NextFunction) => {
+  async (req: Request, res: Response, next: NextFunction) => {
     try {
       const isAdmin = req.user!.roles.includes(UserRole.ADMIN) || req.user!.roles.includes(UserRole.SUPER_ADMIN);
+      const safeBody = { ...req.body };
+      delete (safeBody as any).id;
+      delete (safeBody as any).locationId;
+      delete (safeBody as any).createdAt;
+      delete (safeBody as any).updatedAt;
+
+      const existing = inventoryService.getBayForHost(req.params.facilityId, req.params.spaceId, req.user!.id, isAdmin);
+      const backup = JSON.parse(JSON.stringify(existing));
       const updated = inventoryService.updateBay(
         req.params.facilityId,
         req.params.spaceId,
         req.user!.id,
-        req.body,
+        safeBody,
         isAdmin
       );
-      sendSuccess(res, updated, req.correlationId);
+      try {
+        await inventoryService.syncBayToPostgres(updated);
+        sendSuccess(res, updated, req.correlationId);
+      } catch (dbErr) {
+        Object.assign(existing, backup);
+        throw dbErr;
+      }
     } catch (err) {
       next(err);
     }
@@ -1135,9 +1288,12 @@ apiV1Router.delete(
     { field: 'facilityId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
     { field: 'spaceId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
   ]),
-  (req: Request, res: Response, next: NextFunction) => {
+  async (req: Request, res: Response, next: NextFunction) => {
     try {
       const isAdmin = req.user!.roles.includes(UserRole.ADMIN) || req.user!.roles.includes(UserRole.SUPER_ADMIN);
+      // Verify ownership before deleting
+      inventoryService.getBayForHost(req.params.facilityId, req.params.spaceId, req.user!.id, isAdmin);
+      await inventoryService.deleteBayFromPostgres(req.params.spaceId);
       inventoryService.deleteBay(req.params.facilityId, req.params.spaceId, req.user!.id, isAdmin);
       sendSuccess(res, { message: 'Parking space removed successfully.' }, req.correlationId);
     } catch (err) {
@@ -1176,10 +1332,11 @@ apiV1Router.post(
     { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
     { field: 'facilityId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
   ]),
-  (req: Request, res: Response, next: NextFunction) => {
+  async (req: Request, res: Response, next: NextFunction) => {
     try {
       const isAdmin = req.user!.roles.includes(UserRole.ADMIN) || req.user!.roles.includes(UserRole.SUPER_ADMIN);
       const result = inventoryService.publishLocation(req.params.facilityId, req.user!.id, isAdmin);
+      await inventoryService.syncLocationToPostgres(result.facility);
       sendSuccess(res, result, req.correlationId);
     } catch (err) {
       next(err);
@@ -1196,10 +1353,11 @@ apiV1Router.post(
     { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
     { field: 'facilityId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
   ]),
-  (req: Request, res: Response, next: NextFunction) => {
+  async (req: Request, res: Response, next: NextFunction) => {
     try {
       const isAdmin = req.user!.roles.includes(UserRole.ADMIN) || req.user!.roles.includes(UserRole.SUPER_ADMIN);
       const unpublished = inventoryService.unpublishLocation(req.params.facilityId, req.user!.id, isAdmin);
+      await inventoryService.syncLocationToPostgres(unpublished);
       sendSuccess(res, unpublished, req.correlationId);
     } catch (err) {
       next(err);
@@ -1217,10 +1375,11 @@ apiV1Router.post(
     { field: 'facilityId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
     { field: 'url', required: true, type: 'string', minLength: 1 },
   ]),
-  (req: Request, res: Response, next: NextFunction) => {
+  async (req: Request, res: Response, next: NextFunction) => {
     try {
       const isAdmin = req.user!.roles.includes(UserRole.ADMIN) || req.user!.roles.includes(UserRole.SUPER_ADMIN);
       const updated = inventoryService.addPhoto(req.params.facilityId, req.user!.id, req.body, isAdmin);
+      await inventoryService.syncLocationToPostgres(updated);
       sendSuccess(res, updated, req.correlationId, 201);
     } catch (err) {
       next(err);
@@ -1238,10 +1397,11 @@ apiV1Router.delete(
     { field: 'facilityId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
     { field: 'photoId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
   ]),
-  (req: Request, res: Response, next: NextFunction) => {
+  async (req: Request, res: Response, next: NextFunction) => {
     try {
       const isAdmin = req.user!.roles.includes(UserRole.ADMIN) || req.user!.roles.includes(UserRole.SUPER_ADMIN);
       const updated = inventoryService.removePhoto(req.params.facilityId, req.params.photoId, req.user!.id, isAdmin);
+      await inventoryService.syncLocationToPostgres(updated);
       sendSuccess(res, updated, req.correlationId);
     } catch (err) {
       next(err);
@@ -1316,10 +1476,13 @@ apiV1Router.post(
     { field: 'facilityId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
     { field: 'bays', required: true, type: 'array' },
   ]),
-  (req: Request, res: Response, next: NextFunction) => {
+  async (req: Request, res: Response, next: NextFunction) => {
     try {
       const isAdmin = req.user!.roles.includes(UserRole.ADMIN) || req.user!.roles.includes(UserRole.SUPER_ADMIN);
       const created = inventoryService.bulkCreateBays(req.params.facilityId, req.user!.id, req.body.bays, isAdmin);
+      for (const b of created) {
+        await inventoryService.syncBayToPostgres(b);
+      }
       sendSuccess(res, created, req.correlationId, 201);
     } catch (err) {
       next(err);

@@ -272,6 +272,10 @@ export class DatabaseManager {
     return this.isConnected;
   }
 
+  public isUsingPgMem(): boolean {
+    return this.isPgMem;
+  }
+
   /**
    * Closes the connection pool during graceful shutdown.
    */

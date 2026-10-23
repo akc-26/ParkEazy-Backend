@@ -4,7 +4,7 @@
     {
       "id": "usr_host1",
       "email": "host@parkeazy.com",
-      "passwordHash": "418b18cdc4b6cd2f9fd25032ac77688474a69e9b8ac42acd295d77c9ce70106e",
+      "passwordHash": "pbkdf2$f1e4999b8fb43c91368f785e3f58f929$bd86f17cfb2bb0ab3820e09f68fb428ab5487820f5e2ad0620407c531f6d79f55e5cd3fe77c30fc6475fed93e3b4579845911f7bd912c7a2b667fec548032361",
       "fullName": "Marcus Vance",
       "phone": "+1 (206) 555-0192",
       "role": "host",
@@ -27,7 +27,7 @@
     {
       "id": "usr_host2",
       "email": "sarah.host@parkeazy.com",
-      "passwordHash": "418b18cdc4b6cd2f9fd25032ac77688474a69e9b8ac42acd295d77c9ce70106e",
+      "passwordHash": "pbkdf2$a46a7f675909d23bc8a34a4cbc05e2cb$9d9506378ff4764cdef6cd1f1c3a04804cf3841fb55ebb7aaf5b480ecd6b2f96f2d6703e46eba63c23093c16ddae23044a575deec5622486814b96da3febd572",
       "fullName": "Sarah Jenkins",
       "phone": "+1 (206) 555-0144",
       "role": "host",
@@ -49,7 +49,7 @@
     {
       "id": "usr_cust1",
       "email": "alex.driver@example.com",
-      "passwordHash": "b27a4c53e6a4ac59686db6261e7744f40100c25f7c4b395b24fbae40ea726982",
+      "passwordHash": "pbkdf2$73f832deddab3fd560733f1e7f8bf5f1$6c9a302bf68fde64452096677677bd4f63944a755a800df11d3af6400b8369bc07132aa4f4d29eba399661fda5eb90b8d0330f0f99cd1bace1c46ab6b380ab4c",
       "fullName": "Alex Driver",
       "phone": "+1 (206) 555-0188",
       "role": "customer",
@@ -62,7 +62,7 @@
     {
       "id": "usr_admin1",
       "email": "admin@parkeazy.com",
-      "passwordHash": "4355816fbb6afccb50ac62dc074267fafdcaeed149a662b4fecb19ffc014f084",
+      "passwordHash": "pbkdf2$a9ac1b68c6bfc4fe3202d3adb07530a1$c92b2931ef544531c4b83b66eeb049c77e301c72b6bbcea500ceb341457a0b7627236717bebe6a4b6b14638cf5f93df27981be1d4b25dcef7a79b750f4f4b837",
       "fullName": "Sarah Connor (Admin)",
       "phone": "+1 (206) 555-9999",
       "role": "admin",
@@ -427,10 +427,10 @@
         "Covered",
         "Well Lit"
       ],
-      "status": "reserved",
+      "status": "available",
       "hourlyRateMultiplier": 1,
       "createdAt": "2026-01-12T10:00:00.000Z",
-      "updatedAt": "2026-10-20T12:31:02.029Z"
+      "updatedAt": "2026-01-12T10:00:00.000Z"
     },
     {
       "id": "bay_m6",
@@ -822,30 +822,6 @@
       "gateAccessCode": "4921#",
       "createdAt": "2026-10-17T18:00:00.000Z",
       "updatedAt": "2026-10-18T12:55:00.000Z"
-    },
-    {
-      "id": "bk_174c885b",
-      "bookingReference": "PKZ-279652",
-      "facilityId": "fac_metro_downtown",
-      "bayId": "bay_m5",
-      "customerId": "usr_cust1",
-      "customerName": "Alex Driver",
-      "customerPhone": "+1 (206) 555-0188",
-      "customerEmail": "alex.driver@example.com",
-      "licensePlate": "WA-99TEST",
-      "vehicleMakeModel": "BMW i4 (Silver)",
-      "startTime": "2026-10-20T14:00:00.000Z",
-      "endTime": "2026-10-20T18:00:00.000Z",
-      "grossAmount": 18,
-      "platformFee": 2.16,
-      "hostNetEarnings": 15.84,
-      "taxAmount": 1.44,
-      "status": "confirmed",
-      "qrCodeToken": "PKZ_QR_dcf22e129ea4cd2b8e95aba57d794cc2",
-      "gateAccessCode": "6262#",
-      "idempotencyKey": "test_idemp_key_001",
-      "createdAt": "2026-10-20T12:31:02.029Z",
-      "updatedAt": "2026-10-20T12:31:02.029Z"
     }
   ],
   "ledger": [
@@ -890,32 +866,6 @@
       "description": "Net earnings for booking PKZ-784910 (L1-A04)",
       "status": "completed",
       "createdAt": "2026-10-20T03:30:00.000Z"
-    },
-    {
-      "id": "tx_16f749de",
-      "idempotencyKey": "ledg_test_idemp_key_001",
-      "hostId": "usr_host1",
-      "facilityId": "fac_metro_downtown",
-      "bookingId": "bk_174c885b",
-      "type": "booking_income",
-      "amount": 15.84,
-      "balanceAfter": 76.83,
-      "currency": "USD",
-      "description": "Net earnings for booking PKZ-279652 (L2-B01)",
-      "status": "completed",
-      "createdAt": "2026-10-20T12:31:02.029Z"
-    },
-    {
-      "id": "tx_9c876d87",
-      "idempotencyKey": "payout_tx_po_b5010a8a",
-      "hostId": "usr_host1",
-      "type": "host_payout",
-      "amount": -25,
-      "balanceAfter": 51.83,
-      "currency": "USD",
-      "description": "Payout to Silicon Valley Bank (****8492) (PO-96591956)",
-      "status": "completed",
-      "createdAt": "2026-10-20T12:31:13.280Z"
     }
   ],
   "payouts": [
@@ -930,18 +880,6 @@
       "requestedAt": "2026-10-10T14:20:00.000Z",
       "completedAt": "2026-10-12T09:00:00.000Z",
       "notes": "ACH Regular Transfer cleared"
-    },
-    {
-      "id": "po_b5010a8a",
-      "hostId": "usr_host1",
-      "amount": 25,
-      "method": "stripe_instant",
-      "destinationAccount": "Silicon Valley Bank (****8492)",
-      "status": "paid",
-      "referenceNumber": "PO-96591956",
-      "requestedAt": "2026-10-20T12:31:13.280Z",
-      "completedAt": "2026-10-20T12:31:13.280Z",
-      "notes": "Transferred via Stripe Instant Payouts"
     }
   ],
   "reviews": [
@@ -991,26 +929,6 @@
   ],
   "notifications": [
     {
-      "id": "notif_0ed3c7ea",
-      "userId": "usr_cust1",
-      "title": "Booking Confirmed!",
-      "message": "Your reservation PKZ-279652 is confirmed. Gate code: 6262#",
-      "type": "booking",
-      "isRead": false,
-      "createdAt": "2026-10-20T12:31:02.029Z",
-      "link": "/customer/bookings"
-    },
-    {
-      "id": "notif_c0f56d73",
-      "userId": "usr_host1",
-      "title": "New Booking Received",
-      "message": "Alex Driver booked L2-B01 at Downtown Metro Tech Center Garage for $18.00.",
-      "type": "booking",
-      "isRead": false,
-      "createdAt": "2026-10-20T12:31:02.029Z",
-      "link": "/host/bookings"
-    },
-    {
       "id": "notif_1",
       "userId": "usr_host1",
       "title": "New Booking Active",
@@ -1045,9 +963,9 @@
         "deviceControllerId": "CTRL-SEA-001",
         "autoOpenOnLprMatch": "true"
       },
-      "lastTestedAt": "2026-10-20T12:30:44.684Z",
+      "lastTestedAt": "2026-10-20T04:00:00.000Z",
       "testStatus": "healthy",
-      "testMessage": "Connected successfully (HTTP 200 OK, latency: 66ms)"
+      "testMessage": "Connected successfully (HTTP 200 OK, latency: 48ms)"
     },
     {
       "id": "prov_payment_stripe",
@@ -1130,39 +1048,6 @@
     }
   ],
   "auditLogs": [
-    {
-      "id": "aud_1ffc115b-f",
-      "timestamp": "2026-10-20T12:31:13.280Z",
-      "actorId": "usr_host1",
-      "actorName": "Marcus Vance",
-      "actorRole": "host",
-      "action": "PAYOUT_REQUESTED",
-      "entityType": "payout",
-      "entityId": "po_b5010a8a",
-      "details": "Requested payout $25.00 via stripe_instant"
-    },
-    {
-      "id": "aud_baf7ae5b-c",
-      "timestamp": "2026-10-20T12:31:02.029Z",
-      "actorId": "usr_cust1",
-      "actorName": "Alex Driver",
-      "actorRole": "customer",
-      "action": "BOOKING_CREATED",
-      "entityType": "booking",
-      "entityId": "bk_174c885b",
-      "details": "Created booking PKZ-279652 for 18 USD"
-    },
-    {
-      "id": "aud_cdd66b79-2",
-      "timestamp": "2026-10-20T12:30:44.685Z",
-      "actorId": "usr_admin1",
-      "actorName": "Sarah Connor (Admin)",
-      "actorRole": "admin",
-      "action": "PROVIDER_TEST_PING",
-      "entityType": "provider",
-      "entityId": "prov_access_barrier",
-      "details": "Test ping succeeded: 66ms"
-    },
     {
       "id": "aud_seed_1",
       "timestamp": "2026-10-20T04:12:00.000Z",

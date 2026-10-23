@@ -204,8 +204,6 @@ export interface PayoutRequest {
   destinationAccount: string;
   status: PayoutStatus;
   referenceNumber: string;
-  providerTransferId?: string;
-  idempotencyKey?: string;
   requestedAt: string;
   completedAt?: string;
   notes?: string;
@@ -295,23 +293,4 @@ export interface AuditLog {
   entityId: string;
   details: string;
   ipAddress?: string;
-}
-
-
-export interface ActiveSession {
-  token: string;
-  userId: string;
-  role: UserRole;
-  createdAt: string;
-  expiresAt: string;
-}
-
-export interface PasswordResetToken {
-  id: string;
-  tokenHash: string;
-  userId: string;
-  email: string;
-  expiresAt: string;
-  isUsed: boolean;
-  createdAt: string;
 }

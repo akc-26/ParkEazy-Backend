@@ -371,7 +371,13 @@ export class FacilitiesService {
     }
     if (!this.demoMode) throw new ServiceUnavailableException('Facility storage is unavailable; configure PostgreSQL or explicitly enable demo mode.');
     const facility = await this.getFacility(id, hostId, tenantId);
-    Object.assign(facility, payload, { updatedAt: new Date().toISOString() });
+    const safePayload = { ...payload };
+    delete (safePayload as any).id;
+    delete (safePayload as any).hostId;
+    delete (safePayload as any).tenantId;
+    delete (safePayload as any).createdAt;
+    delete (safePayload as any).status;
+    Object.assign(facility, safePayload, { updatedAt: new Date().toISOString() });
     return facility;
   }
 
@@ -523,7 +529,12 @@ export class FacilitiesService {
     if (!this.demoMode) throw new ServiceUnavailableException('Space storage is unavailable; configure PostgreSQL or explicitly enable demo mode.');
     const space = await this.getSpace(spaceId, tenantId, hostId);
     await this.getFacility(space.facilityId, hostId, tenantId);
-    Object.assign(space, payload, { updatedAt: new Date().toISOString() });
+    const safePayload = { ...payload };
+    delete (safePayload as any).id;
+    delete (safePayload as any).facilityId;
+    delete (safePayload as any).tenantId;
+    delete (safePayload as any).createdAt;
+    Object.assign(space, safePayload, { updatedAt: new Date().toISOString() });
     return space;
   }
 
