@@ -438,3 +438,222 @@ export function validateSearchQuery(input: unknown): ValidationResult<ValidatedS
     errors: [],
   };
 }
+
+// =============================================================================
+// Section 3B: Operating Hours, Closures & Maintenance Validators
+// =============================================================================
+
+export function validateTimezone(tz: unknown): ValidationResult<string> {
+  if (typeof tz !== 'string' || !tz.trim()) {
+    return { success: false, errors: ['Timezone must be a non-empty string'] };
+  }
+  const cleanTz = tz.trim();
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: cleanTz });
+    return { success: true, data: cleanTz, errors: [] };
+  } catch {
+    return { success: false, errors: [`Invalid IANA timezone identifier: "${cleanTz}"`] };
+  }
+}
+
+export interface ValidatedOperatingSchedule {
+  dayOfWeek: number;
+  openTime: string;
+  closeTime: string;
+  isClosed: boolean;
+  isOvernight?: boolean;
+}
+
+export function validateOperatingSchedules(input: unknown): ValidationResult<ValidatedOperatingSchedule[]> {
+  const errors: string[] = [];
+  if (!Array.isArray(input)) {
+    return { success: false, errors: ['Operating schedules must be provided as an array'] };
+  }
+
+  if (input.length === 0) {
+    return { success: false, errors: ['Operating schedules array cannot be empty'] };
+  }
+
+  const timeRegex = /^([01]\d|2[0-3]):[0-5]\d$/;
+  const seenDays = new Set<number>();
+  const validated: ValidatedOperatingSchedule[] = [];
+
+  for (let i = 0; i < input.length; i++) {
+    const item = input[i];
+    if (!item || typeof item !== 'object') {
+      errors.push(`Schedule item at index ${i} must be a valid object`);
+      continue;
+    }
+
+    const day = Number(item.dayOfWeek);
+    if (!Number.isInteger(day) || day < 0 || day > 6) {
+      errors.push(`Schedule item at index ${i} has invalid dayOfWeek '${item.dayOfWeek}'. Must be an integer between 0 and 6.`);
+      continue;
+    }
+
+    if (seenDays.has(day)) {
+      errors.push(`Duplicate schedule definition for dayOfWeek ${day}. Each day can only be configured once per request.`);
+      continue;
+    }
+    seenDays.add(day);
+
+    const isClosed = Boolean(item.isClosed);
+    const openTime = typeof item.openTime === 'string' ? item.openTime.trim() : '';
+    const closeTime = typeof item.closeTime === 'string' ? item.closeTime.trim() : '';
+
+    if (!isClosed) {
+      if (!timeRegex.test(openTime)) {
+        errors.push(`Invalid openTime '${openTime}' for day ${day}. Expected 24h format HH:mm (00:00-23:59).`);
+      }
+      if (!timeRegex.test(closeTime)) {
+        errors.push(`Invalid closeTime '${closeTime}' for day ${day}. Expected 24h format HH:mm (00:00-23:59).`);
+      }
+
+      if (timeRegex.test(openTime) && timeRegex.test(closeTime)) {
+        if (openTime === closeTime && !(openTime === '00:00' && closeTime === '00:00')) {
+          errors.push(`Contradictory interval on day ${day}: openTime and closeTime are identical (${openTime}). Either mark the day as closed or specify valid operating span.`);
+        }
+      }
+    }
+
+    const isOvernight = Boolean(item.isOvernight) || (!isClosed && closeTime < openTime);
+
+    validated.push({
+      dayOfWeek: day,
+      openTime: isClosed ? '00:00' : openTime,
+      closeTime: isClosed ? '00:00' : closeTime,
+      isClosed,
+      isOvernight,
+    });
+  }
+
+  if (errors.length > 0) {
+    return { success: false, errors };
+  }
+
+  return { success: true, data: validated, errors: [] };
+}
+
+export interface ValidatedClosure {
+  title: string;
+  reason: string;
+  startsAt: string;
+  endsAt: string;
+  spaceId?: string;
+}
+
+export function validateClosure(input: unknown): ValidationResult<ValidatedClosure> {
+  const errors: string[] = [];
+  if (!input || typeof input !== 'object') {
+    return { success: false, errors: ['Closure payload must be a non-null object'] };
+  }
+
+  const c = input as Record<string, any>;
+  const title = typeof c.title === 'string' ? c.title.trim() : '';
+  if (!title || title.length < 2 || title.length > 255) {
+    errors.push('Closure title must be between 2 and 255 characters');
+  }
+
+  const reason = typeof c.reason === 'string' ? c.reason.trim() : 'maintenance';
+
+  const timeWindow = validateTimeWindow(c.startsAt, c.endsAt, { minDurationMinutes: 1, maxDurationDays: 365 });
+  if (!timeWindow.success) {
+    errors.push(...timeWindow.errors);
+  }
+
+  if (errors.length > 0) {
+    return { success: false, errors };
+  }
+
+  return {
+    success: true,
+    data: {
+      title,
+      reason,
+      startsAt: timeWindow.data!.startsAt,
+      endsAt: timeWindow.data!.endsAt,
+      spaceId: c.spaceId ? String(c.spaceId) : undefined,
+    },
+    errors: [],
+  };
+}
+
+export interface ValidatedMaintenance {
+  title: string;
+  description?: string;
+  status: 'scheduled' | 'in_progress' | 'completed' | 'cancelled';
+  startsAt: string;
+  endsAt: string;
+  spaceId?: string;
+}
+
+const VALID_MAINTENANCE_STATUSES = ['scheduled', 'in_progress', 'completed', 'cancelled'] as const;
+
+export function validateMaintenance(input: unknown): ValidationResult<ValidatedMaintenance> {
+  const errors: string[] = [];
+  if (!input || typeof input !== 'object') {
+    return { success: false, errors: ['Maintenance payload must be a non-null object'] };
+  }
+
+  const m = input as Record<string, any>;
+  const title = typeof m.title === 'string' ? m.title.trim() : '';
+  if (!title || title.length < 2 || title.length > 255) {
+    errors.push('Maintenance title must be between 2 and 255 characters');
+  }
+
+  const status = typeof m.status === 'string' ? m.status.toLowerCase().trim() : 'scheduled';
+  if (!VALID_MAINTENANCE_STATUSES.includes(status as any)) {
+    errors.push(`Invalid maintenance status '${m.status}'. Permitted: ${VALID_MAINTENANCE_STATUSES.join(', ')}`);
+  }
+
+  const timeWindow = validateTimeWindow(m.startsAt, m.endsAt, { minDurationMinutes: 1, maxDurationDays: 365 });
+  if (!timeWindow.success) {
+    errors.push(...timeWindow.errors);
+  }
+
+  if (errors.length > 0) {
+    return { success: false, errors };
+  }
+
+  return {
+    success: true,
+    data: {
+      title,
+      description: typeof m.description === 'string' ? m.description.trim() : undefined,
+      status: status as any,
+      startsAt: timeWindow.data!.startsAt,
+      endsAt: timeWindow.data!.endsAt,
+      spaceId: m.spaceId ? String(m.spaceId) : undefined,
+    },
+    errors: [],
+  };
+}
+
+export function validateMaintenanceTransition(
+  currentStatus: 'scheduled' | 'in_progress' | 'completed' | 'cancelled',
+  nextStatus: 'scheduled' | 'in_progress' | 'completed' | 'cancelled'
+): ValidationResult<'scheduled' | 'in_progress' | 'completed' | 'cancelled'> {
+  if (currentStatus === nextStatus) {
+    return { success: true, data: nextStatus, errors: [] };
+  }
+
+  const validTransitions: Record<string, string[]> = {
+    scheduled: ['in_progress', 'completed', 'cancelled'],
+    in_progress: ['completed', 'cancelled'],
+    completed: [], // terminal
+    cancelled: [], // terminal
+  };
+
+  const permitted = validTransitions[currentStatus] || [];
+  if (!permitted.includes(nextStatus)) {
+    return {
+      success: false,
+      errors: [
+        `Invalid maintenance status transition from '${currentStatus}' to '${nextStatus}'. Terminal states (completed, cancelled) cannot be reopened.`,
+      ],
+    };
+  }
+
+  return { success: true, data: nextStatus, errors: [] };
+}
+

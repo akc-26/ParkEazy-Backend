@@ -422,10 +422,140 @@ apiRouter.patch('/facilities/:id/status', requireHost, async (req, res) => {
     }
     const { status } = req.body;
     if (!status) return res.status(400).json({ error: 'Status is required' });
+
+    // Section 3A Baseline Hardening: Prevent publication bypass
+    if (status === 'active') {
+      const bays = await db.getBaysByFacility(facility.id);
+      if (bays.length === 0) {
+        return res.status(400).json({ error: 'Facility must have at least one parking space before publishing.' });
+      }
+    }
+
     const updated = await db.updateFacility(facility.id, { status }, user);
     return res.json(updated);
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
+  }
+});
+
+// ----------------- SECTION 3B: OPERATING HOURS -----------------
+apiRouter.get('/facilities/:id/operating-hours', requireHost, async (req, res) => {
+  try {
+    const user = (req as any).user as User;
+    const result = await db.getOperatingHours(req.params.id, user);
+    return res.json(result);
+  } catch (err: any) {
+    const code = err.message.includes('not found') ? 404 : (err.message.includes('Unauthorized') ? 403 : 400);
+    return res.status(code).json({ error: err.message });
+  }
+});
+
+apiRouter.put('/facilities/:id/operating-hours', requireHost, async (req, res) => {
+  try {
+    const user = (req as any).user as User;
+    const { operatingHours, timezone } = req.body;
+    if (!operatingHours) {
+      return res.status(400).json({ error: 'Operating hours payload is required' });
+    }
+    const updated = await db.updateOperatingHours(req.params.id, operatingHours, user, timezone);
+    return res.json(updated);
+  } catch (err: any) {
+    const code = err.message.includes('not found') ? 404 : (err.message.includes('Unauthorized') ? 403 : 400);
+    return res.status(code).json({ error: err.message });
+  }
+});
+
+// ----------------- SECTION 3B: DATE-SPECIFIC CLOSURES -----------------
+apiRouter.get('/facilities/:id/closures', requireHost, async (req, res) => {
+  try {
+    const user = (req as any).user as User;
+    const closures = await db.getFacilityClosures(req.params.id, user);
+    return res.json(closures);
+  } catch (err: any) {
+    const code = err.message.includes('not found') ? 404 : (err.message.includes('Unauthorized') ? 403 : 400);
+    return res.status(code).json({ error: err.message });
+  }
+});
+
+apiRouter.post('/facilities/:id/closures', requireHost, async (req, res) => {
+  try {
+    const user = (req as any).user as User;
+    const closure = await db.createFacilityClosure(req.params.id, req.body, user);
+    return res.status(201).json(closure);
+  } catch (err: any) {
+    const isConflict = err.message.includes('Conflicting confirmed reservation') || err.message.includes('already exists');
+    const code = err.message.includes('not found') ? 404 : (err.message.includes('Unauthorized') ? 403 : (isConflict ? 409 : 400));
+    return res.status(code).json({ error: err.message });
+  }
+});
+
+apiRouter.put('/facilities/:id/closures/:closureId', requireHost, async (req, res) => {
+  try {
+    const user = (req as any).user as User;
+    const updated = await db.updateFacilityClosure(req.params.id, req.params.closureId, req.body, user);
+    return res.json(updated);
+  } catch (err: any) {
+    const isConflict = err.message.includes('Conflicting confirmed reservation') || err.message.includes('already exists');
+    const code = err.message.includes('not found') ? 404 : (err.message.includes('Unauthorized') ? 403 : (isConflict ? 409 : 400));
+    return res.status(code).json({ error: err.message });
+  }
+});
+
+apiRouter.delete('/facilities/:id/closures/:closureId', requireHost, async (req, res) => {
+  try {
+    const user = (req as any).user as User;
+    const success = await db.deleteFacilityClosure(req.params.id, req.params.closureId, user);
+    return res.json({ success });
+  } catch (err: any) {
+    const code = err.message.includes('not found') ? 404 : (err.message.includes('Unauthorized') ? 403 : 400);
+    return res.status(code).json({ error: err.message });
+  }
+});
+
+// ----------------- SECTION 3B: MAINTENANCE SCHEDULING -----------------
+apiRouter.get('/facilities/:id/maintenance', requireHost, async (req, res) => {
+  try {
+    const user = (req as any).user as User;
+    const maintenance = await db.getFacilityMaintenance(req.params.id, user);
+    return res.json(maintenance);
+  } catch (err: any) {
+    const code = err.message.includes('not found') ? 404 : (err.message.includes('Unauthorized') ? 403 : 400);
+    return res.status(code).json({ error: err.message });
+  }
+});
+
+apiRouter.post('/facilities/:id/maintenance', requireHost, async (req, res) => {
+  try {
+    const user = (req as any).user as User;
+    const maintenance = await db.createFacilityMaintenance(req.params.id, req.body, user);
+    return res.status(201).json(maintenance);
+  } catch (err: any) {
+    const isConflict = err.message.includes('Conflicting confirmed reservation');
+    const code = err.message.includes('not found') ? 404 : (err.message.includes('Unauthorized') ? 403 : (isConflict ? 409 : 400));
+    return res.status(code).json({ error: err.message });
+  }
+});
+
+apiRouter.put('/facilities/:id/maintenance/:maintenanceId', requireHost, async (req, res) => {
+  try {
+    const user = (req as any).user as User;
+    const updated = await db.updateFacilityMaintenance(req.params.id, req.params.maintenanceId, req.body, user);
+    return res.json(updated);
+  } catch (err: any) {
+    const isConflict = err.message.includes('Conflicting confirmed reservation');
+    const code = err.message.includes('not found') ? 404 : (err.message.includes('Unauthorized') ? 403 : (isConflict ? 409 : 400));
+    return res.status(code).json({ error: err.message });
+  }
+});
+
+apiRouter.delete('/facilities/:id/maintenance/:maintenanceId', requireHost, async (req, res) => {
+  try {
+    const user = (req as any).user as User;
+    const success = await db.deleteFacilityMaintenance(req.params.id, req.params.maintenanceId, user);
+    return res.json({ success });
+  } catch (err: any) {
+    const code = err.message.includes('not found') ? 404 : (err.message.includes('Unauthorized') ? 403 : 400);
+    return res.status(code).json({ error: err.message });
   }
 });
 

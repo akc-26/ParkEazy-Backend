@@ -151,20 +151,79 @@ export interface ParkingSpace {
 }
 
 export interface OperatingSchedule {
-  id: string;
+  id?: string;
   facilityId: string;
   dayOfWeek: number; // 0 (Sunday) to 6 (Saturday)
   openTime: string;  // '08:00'
   closeTime: string; // '22:00'
   isClosed: boolean;
+  isOvernight?: boolean;
+  tenantId?: string;
 }
 
 export interface FacilityClosure {
   id: string;
   facilityId: string;
+  tenantId?: string;
+  spaceId?: string;
+  title: string;
+  reason?: string;
   startsAt: string;
   endsAt: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type MaintenanceStatus = 'scheduled' | 'in_progress' | 'completed' | 'cancelled';
+
+export interface FacilityMaintenance {
+  id: string;
+  facilityId: string;
+  tenantId?: string;
+  spaceId?: string;
+  title: string;
+  description?: string;
+  status: MaintenanceStatus;
+  startsAt: string;
+  endsAt: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CreateClosurePayload {
+  facilityId?: string;
+  spaceId?: string;
+  title: string;
   reason?: string;
+  startsAt: string;
+  endsAt: string;
+}
+
+export interface UpdateClosurePayload {
+  title?: string;
+  reason?: string;
+  startsAt?: string;
+  endsAt?: string;
+  spaceId?: string;
+}
+
+export interface CreateMaintenancePayload {
+  facilityId?: string;
+  spaceId?: string;
+  title: string;
+  description?: string;
+  status?: MaintenanceStatus;
+  startsAt: string;
+  endsAt: string;
+}
+
+export interface UpdateMaintenancePayload {
+  title?: string;
+  description?: string;
+  status?: MaintenanceStatus;
+  startsAt?: string;
+  endsAt?: string;
+  spaceId?: string;
 }
 
 export interface ParkingFacility {
@@ -179,6 +238,7 @@ export interface ParkingFacility {
   postalCode: string;
   latitude: number;
   longitude: number;
+  timezone?: string;
   entranceInstructions?: string;
   gatePinCode?: string;
   isCovered: boolean;
@@ -209,6 +269,7 @@ export interface CreateFacilityPayload {
   postalCode: string;
   latitude: number;
   longitude: number;
+  timezone?: string;
   operatingModel?: FacilityOperatingModel;
   propertyOwner?: string;
   landmark?: string;

@@ -25,8 +25,18 @@ import {
   FacilityStatus,
   ActiveSession,
   PasswordResetToken,
-  UserRole
+  UserRole,
+  OperatingHours,
+  FacilityClosure,
+  FacilityMaintenance,
+  MaintenanceStatus
 } from './types';
+import {
+  validateTimezone,
+  validateClosure,
+  validateMaintenance,
+  validateMaintenanceTransition
+} from '@parkeazy/validation';
 
 const DATA_DIR = path.resolve(process.cwd(), 'data');
 const DB_FILE = path.resolve(DATA_DIR, 'parkeazy-store.json');
@@ -49,6 +59,8 @@ export interface DatabaseSchema {
   auditLogs: AuditLog[];
   sessions?: ActiveSession[];
   passwordResetTokens?: PasswordResetToken[];
+  closures?: FacilityClosure[];
+  maintenance?: FacilityMaintenance[];
 }
 
 export function hashPassword(password: string, salt?: string): string {
@@ -213,7 +225,7 @@ export class Database {
       const collections: (keyof DatabaseSchema)[] = [
         'users', 'facilities', 'bays', 'pricingRules', 'holds', 'bookings',
         'ledger', 'payouts', 'reviews', 'messages', 'notifications', 'disputes',
-        'providers', 'auditLogs', 'sessions', 'passwordResetTokens'
+        'providers', 'auditLogs', 'sessions', 'passwordResetTokens', 'closures', 'maintenance'
       ];
 
       for (const col of collections) {
@@ -465,7 +477,9 @@ export class Database {
       providers: collectionsMap.providers !== undefined ? collectionsMap.providers : (isProduction ? [] : this.data.providers),
       auditLogs: collectionsMap.auditLogs !== undefined ? collectionsMap.auditLogs : (isProduction ? [] : this.data.auditLogs),
       sessions: collectionsMap.sessions || [],
-      passwordResetTokens: collectionsMap.passwordResetTokens || []
+      passwordResetTokens: collectionsMap.passwordResetTokens || [],
+      closures: collectionsMap.closures || [],
+      maintenance: collectionsMap.maintenance || []
     };
   }
 
@@ -719,6 +733,44 @@ export class Database {
             entity.lastMessageAt || entity.updatedAt || new Date().toISOString()
           ]
         );
+      } else if (collection === 'closures') {
+        await client.query(
+          `INSERT INTO facility_closures (id, facility_id, start_date, end_date, reason, affected_bay_ids, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+           ON CONFLICT (id) DO UPDATE SET
+             start_date = EXCLUDED.start_date, end_date = EXCLUDED.end_date, reason = EXCLUDED.reason,
+             affected_bay_ids = EXCLUDED.affected_bay_ids, updated_at = NOW()`,
+          [
+            entity.id,
+            entity.facilityId,
+            entity.startDate,
+            entity.endDate,
+            entity.reason || null,
+            entity.affectedBayIds || null,
+            entity.createdAt || new Date().toISOString(),
+            entity.updatedAt || new Date().toISOString()
+          ]
+        );
+      } else if (collection === 'maintenance') {
+        await client.query(
+          `INSERT INTO facility_maintenance_periods (id, facility_id, bay_id, title, description, start_time, end_time, status, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+           ON CONFLICT (id) DO UPDATE SET
+             bay_id = EXCLUDED.bay_id, title = EXCLUDED.title, description = EXCLUDED.description,
+             start_time = EXCLUDED.start_time, end_time = EXCLUDED.end_time, status = EXCLUDED.status, updated_at = NOW()`,
+          [
+            entity.id,
+            entity.facilityId,
+            entity.bayId || null,
+            entity.title || 'Scheduled Maintenance',
+            entity.description || null,
+            entity.startTime,
+            entity.endTime,
+            entity.status || 'scheduled',
+            entity.createdAt || new Date().toISOString(),
+            entity.updatedAt || new Date().toISOString()
+          ]
+        );
       }
     } catch (err: any) {
       console.warn(`[ParkEazy-Store] Relational sync warning for ${collection}:${id}:`, err.message);
@@ -783,6 +835,10 @@ export class Database {
           await client.query(`DELETE FROM facility_pricing_rules WHERE id = $1`, [id]).catch(() => {});
         } else if (collection === 'sessions') {
           await client.query(`DELETE FROM active_sessions WHERE token = $1`, [id]).catch(() => {});
+        } else if (collection === 'closures') {
+          await client.query(`DELETE FROM facility_closures WHERE id = $1`, [id]).catch(() => {});
+        } else if (collection === 'maintenance') {
+          await client.query(`DELETE FROM facility_maintenance_periods WHERE id = $1`, [id]).catch(() => {});
         }
         if (isInternalTx) await client.query('COMMIT');
       } catch (err: any) {
@@ -1726,6 +1782,489 @@ export class Database {
     facility.totalBays = facilityBays.length;
     facility.activeBays = facilityBays.filter(b => b.status === 'available' || b.status === 'occupied').length;
     await this.persistEntity('facilities', facility.id, facility, client);
+  }
+
+  // ----------------- SECTION 3B: OPERATING HOURS -----------------
+  public async getOperatingHours(facilityId: string, actor: User): Promise<{ operatingHours: OperatingHours; timezone?: string }> {
+    const facility = await this.getFacilityById(facilityId);
+    if (!facility) throw new Error('Facility not found');
+    if (actor.role === 'host' && facility.hostId !== actor.id) {
+      throw new Error('Unauthorized: You do not own this facility.');
+    }
+    return {
+      operatingHours: facility.operatingHours,
+      timezone: facility.timezone || 'UTC'
+    };
+  }
+
+  public async updateOperatingHours(
+    facilityId: string,
+    operatingHours: OperatingHours,
+    actor: User,
+    timezone?: string
+  ): Promise<Facility> {
+    const facility = await this.getFacilityById(facilityId);
+    if (!facility) throw new Error('Facility not found');
+    if (actor.role === 'host' && facility.hostId !== actor.id) {
+      throw new Error('Unauthorized: You do not own this facility.');
+    }
+
+    if (timezone) {
+      const tzVal = validateTimezone(timezone);
+      if (!tzVal.isValid) {
+        throw new Error(tzVal.errors[0]?.message || 'Invalid timezone');
+      }
+      facility.timezone = timezone;
+    }
+
+    facility.operatingHours = operatingHours;
+    facility.updatedAt = new Date().toISOString();
+
+    await this.withTransaction(async (client) => {
+      await this.persistEntity('facilities', facilityId, facility, client);
+      await this.logAudit(
+        actor.id,
+        actor.fullName,
+        actor.role,
+        'OPERATING_HOURS_UPDATED',
+        'facility',
+        facilityId,
+        `Operating hours updated for ${facility.name} (Timezone: ${facility.timezone || 'UTC'})`,
+        client
+      );
+    });
+
+    return facility;
+  }
+
+  // ----------------- SECTION 3B: DATE-SPECIFIC CLOSURES -----------------
+  public async getFacilityClosures(facilityId: string, actor: User): Promise<FacilityClosure[]> {
+    const facility = await this.getFacilityById(facilityId);
+    if (!facility) throw new Error('Facility not found');
+    if (actor.role === 'host' && facility.hostId !== actor.id) {
+      throw new Error('Unauthorized: You do not own this facility.');
+    }
+    const closures = await this.getCollectionFromDb<FacilityClosure>('closures');
+    return closures.filter(c => c.facilityId === facilityId);
+  }
+
+  public async createFacilityClosure(
+    facilityId: string,
+    data: { startDate: string; endDate: string; reason?: string; affectedBayIds?: string[] },
+    actor: User
+  ): Promise<FacilityClosure> {
+    const facility = await this.getFacilityById(facilityId);
+    if (!facility) throw new Error('Facility not found');
+    if (actor.role === 'host' && facility.hostId !== actor.id) {
+      throw new Error('Unauthorized: You do not own this facility.');
+    }
+
+    const val = validateClosure(data);
+    if (!val.isValid) {
+      throw new Error(val.errors[0]?.message || 'Invalid closure parameters');
+    }
+
+    const start = new Date(data.startDate).toISOString();
+    const end = new Date(data.endDate).toISOString();
+
+    // Check overlap with existing closures
+    const closures = await this.getCollectionFromDb<FacilityClosure>('closures');
+    const existing = closures.filter(c => c.facilityId === facilityId);
+    for (const c of existing) {
+      const cStart = new Date(c.startDate).toISOString();
+      const cEnd = new Date(c.endDate).toISOString();
+      if (start < cEnd && end > cStart) {
+        // If bay-level, check if affected bays overlap
+        if (!data.affectedBayIds || !c.affectedBayIds || data.affectedBayIds.some(b => c.affectedBayIds!.includes(b))) {
+          throw new Error('A closure already exists for this facility that overlaps the specified date range.');
+        }
+      }
+    }
+
+    // Preservation Invariant: Confirmed reservations must NOT be altered or cancelled; report conflicts instead
+    const bookings = await this.getCollectionFromDb<Booking>('bookings');
+    const conflictingBooking = bookings.find(b => {
+      if (b.facilityId !== facilityId) return false;
+      if (b.status !== 'confirmed' && b.status !== 'checked_in') return false;
+      const bStart = new Date(b.startTime).toISOString();
+      const bEnd = new Date(b.endTime).toISOString();
+      const timeOverlaps = start < bEnd && end > bStart;
+      if (!timeOverlaps) return false;
+      if (!data.affectedBayIds || data.affectedBayIds.length === 0) return true;
+      return data.affectedBayIds.includes(b.bayId);
+    });
+
+    if (conflictingBooking) {
+      throw new Error(
+        `Cannot schedule closure: Conflicting confirmed reservation ${conflictingBooking.bookingReference || conflictingBooking.id} exists from ${conflictingBooking.startTime} to ${conflictingBooking.endTime}.`
+      );
+    }
+
+    const now = new Date().toISOString();
+    const closure: FacilityClosure = {
+      id: 'cls_' + crypto.randomUUID().slice(0, 8),
+      facilityId,
+      startDate: data.startDate,
+      endDate: data.endDate,
+      reason: data.reason?.trim() || undefined,
+      affectedBayIds: data.affectedBayIds && data.affectedBayIds.length > 0 ? data.affectedBayIds : undefined,
+      createdAt: now,
+      updatedAt: now
+    };
+
+    await this.withTransaction(async (client) => {
+      await this.persistEntity('closures', closure.id, closure, client);
+      await this.logAudit(
+        actor.id,
+        actor.fullName,
+        actor.role,
+        'CLOSURE_CREATED',
+        'facility',
+        facilityId,
+        `Closure scheduled from ${closure.startDate} to ${closure.endDate} (${closure.reason || 'No reason'})`,
+        client
+      );
+    });
+
+    return closure;
+  }
+
+  public async updateFacilityClosure(
+    facilityId: string,
+    closureId: string,
+    updates: Partial<FacilityClosure>,
+    actor: User
+  ): Promise<FacilityClosure> {
+    const facility = await this.getFacilityById(facilityId);
+    if (!facility) throw new Error('Facility not found');
+    if (actor.role === 'host' && facility.hostId !== actor.id) {
+      throw new Error('Unauthorized: You do not own this facility.');
+    }
+
+    const closure = await this.getEntityFromDb<FacilityClosure>('closures', closureId);
+    if (!closure || closure.facilityId !== facilityId) {
+      throw new Error('Closure not found');
+    }
+
+    const startDate = updates.startDate || closure.startDate;
+    const endDate = updates.endDate || closure.endDate;
+    const val = validateClosure({ startDate, endDate, reason: updates.reason ?? closure.reason });
+    if (!val.isValid) {
+      throw new Error(val.errors[0]?.message || 'Invalid closure parameters');
+    }
+
+    const start = new Date(startDate).toISOString();
+    const end = new Date(endDate).toISOString();
+
+    // Check overlap with other closures
+    const closures = await this.getCollectionFromDb<FacilityClosure>('closures');
+    for (const c of closures) {
+      if (c.id === closureId || c.facilityId !== facilityId) continue;
+      const cStart = new Date(c.startDate).toISOString();
+      const cEnd = new Date(c.endDate).toISOString();
+      if (start < cEnd && end > cStart) {
+        throw new Error('A closure already exists for this facility that overlaps the specified date range.');
+      }
+    }
+
+    // Preservation Invariant: Confirmed reservations conflict check
+    const bookings = await this.getCollectionFromDb<Booking>('bookings');
+    const conflictingBooking = bookings.find(b => {
+      if (b.facilityId !== facilityId) return false;
+      if (b.status !== 'confirmed' && b.status !== 'checked_in') return false;
+      const bStart = new Date(b.startTime).toISOString();
+      const bEnd = new Date(b.endTime).toISOString();
+      return start < bEnd && end > bStart;
+    });
+
+    if (conflictingBooking) {
+      throw new Error(
+        `Cannot update closure: Conflicting confirmed reservation ${conflictingBooking.bookingReference || conflictingBooking.id} exists from ${conflictingBooking.startTime} to ${conflictingBooking.endTime}.`
+      );
+    }
+
+    closure.startDate = startDate;
+    closure.endDate = endDate;
+    if (updates.reason !== undefined) closure.reason = updates.reason;
+    if (updates.affectedBayIds !== undefined) closure.affectedBayIds = updates.affectedBayIds;
+    closure.updatedAt = new Date().toISOString();
+
+    await this.withTransaction(async (client) => {
+      await this.persistEntity('closures', closure.id, closure, client);
+      await this.logAudit(
+        actor.id,
+        actor.fullName,
+        actor.role,
+        'CLOSURE_UPDATED',
+        'facility',
+        facilityId,
+        `Closure updated: ${closure.startDate} to ${closure.endDate}`,
+        client
+      );
+    });
+
+    return closure;
+  }
+
+  public async deleteFacilityClosure(facilityId: string, closureId: string, actor: User): Promise<boolean> {
+    const facility = await this.getFacilityById(facilityId);
+    if (!facility) throw new Error('Facility not found');
+    if (actor.role === 'host' && facility.hostId !== actor.id) {
+      throw new Error('Unauthorized: You do not own this facility.');
+    }
+
+    const closure = await this.getEntityFromDb<FacilityClosure>('closures', closureId);
+    if (!closure || closure.facilityId !== facilityId) {
+      throw new Error('Closure not found');
+    }
+
+    await this.withTransaction(async (client) => {
+      await this.deleteEntity('closures', closureId, client);
+      await this.logAudit(
+        actor.id,
+        actor.fullName,
+        actor.role,
+        'CLOSURE_DELETED',
+        'facility',
+        facilityId,
+        `Closure deleted: ${closure.startDate} to ${closure.endDate}`,
+        client
+      );
+    });
+
+    return true;
+  }
+
+  // ----------------- SECTION 3B: MAINTENANCE SCHEDULING -----------------
+  public async getFacilityMaintenance(facilityId: string, actor: User): Promise<FacilityMaintenance[]> {
+    const facility = await this.getFacilityById(facilityId);
+    if (!facility) throw new Error('Facility not found');
+    if (actor.role === 'host' && facility.hostId !== actor.id) {
+      throw new Error('Unauthorized: You do not own this facility.');
+    }
+    const maintenance = await this.getCollectionFromDb<FacilityMaintenance>('maintenance');
+    return maintenance.filter(m => m.facilityId === facilityId);
+  }
+
+  public async createFacilityMaintenance(
+    facilityId: string,
+    data: {
+      title: string;
+      description?: string;
+      startTime: string;
+      endTime: string;
+      bayId?: string | null;
+      status?: MaintenanceStatus;
+    },
+    actor: User
+  ): Promise<FacilityMaintenance> {
+    const facility = await this.getFacilityById(facilityId);
+    if (!facility) throw new Error('Facility not found');
+    if (actor.role === 'host' && facility.hostId !== actor.id) {
+      throw new Error('Unauthorized: You do not own this facility.');
+    }
+
+    const val = validateMaintenance(data);
+    if (!val.isValid) {
+      throw new Error(val.errors[0]?.message || 'Invalid maintenance parameters');
+    }
+
+    let bay: ParkingBay | null = null;
+    if (data.bayId) {
+      bay = await this.getEntityFromDb<ParkingBay>('bays', data.bayId);
+      if (!bay || bay.facilityId !== facilityId) {
+        throw new Error('Specified parking bay does not exist in this facility.');
+      }
+    }
+
+    const start = new Date(data.startTime).toISOString();
+    const end = new Date(data.endTime).toISOString();
+
+    // Check confirmed booking conflicts
+    const bookings = await this.getCollectionFromDb<Booking>('bookings');
+    const conflictingBooking = bookings.find(b => {
+      if (b.facilityId !== facilityId) return false;
+      if (b.status !== 'confirmed' && b.status !== 'checked_in') return false;
+      if (data.bayId && b.bayId !== data.bayId) return false;
+      const bStart = new Date(b.startTime).toISOString();
+      const bEnd = new Date(b.endTime).toISOString();
+      return start < bEnd && end > bStart;
+    });
+
+    if (conflictingBooking) {
+      throw new Error(
+        `Cannot schedule maintenance: Conflicting confirmed reservation ${conflictingBooking.bookingReference || conflictingBooking.id} exists from ${conflictingBooking.startTime} to ${conflictingBooking.endTime}.`
+      );
+    }
+
+    const now = new Date().toISOString();
+    const initialStatus = data.status || 'scheduled';
+    const maintenance: FacilityMaintenance = {
+      id: 'maint_' + crypto.randomUUID().slice(0, 8),
+      facilityId,
+      bayId: data.bayId || null,
+      title: data.title.trim(),
+      description: data.description?.trim() || undefined,
+      startTime: data.startTime,
+      endTime: data.endTime,
+      status: initialStatus,
+      createdAt: now,
+      updatedAt: now
+    };
+
+    await this.withTransaction(async (client) => {
+      await this.persistEntity('maintenance', maintenance.id, maintenance, client);
+
+      // Bay status and inventory integrity
+      if (bay && (initialStatus === 'scheduled' || initialStatus === 'in_progress')) {
+        bay.status = 'maintenance';
+        bay.statusReason = `Maintenance: ${maintenance.title}`;
+        bay.updatedAt = now;
+        await this.persistEntity('bays', bay.id, bay, client);
+        await this.syncFacilityBayCount(facilityId, client);
+      }
+
+      await this.logAudit(
+        actor.id,
+        actor.fullName,
+        actor.role,
+        'MAINTENANCE_SCHEDULED',
+        data.bayId ? 'bay' : 'facility',
+        data.bayId || facilityId,
+        `Maintenance scheduled: "${maintenance.title}" from ${maintenance.startTime} to ${maintenance.endTime}`,
+        client
+      );
+    });
+
+    return maintenance;
+  }
+
+  public async updateFacilityMaintenance(
+    facilityId: string,
+    maintenanceId: string,
+    updates: Partial<FacilityMaintenance>,
+    actor: User
+  ): Promise<FacilityMaintenance> {
+    const facility = await this.getFacilityById(facilityId);
+    if (!facility) throw new Error('Facility not found');
+    if (actor.role === 'host' && facility.hostId !== actor.id) {
+      throw new Error('Unauthorized: You do not own this facility.');
+    }
+
+    const maintenance = await this.getEntityFromDb<FacilityMaintenance>('maintenance', maintenanceId);
+    if (!maintenance || maintenance.facilityId !== facilityId) {
+      throw new Error('Maintenance record not found');
+    }
+
+    // State machine transition validation
+    if (updates.status && updates.status !== maintenance.status) {
+      const transVal = validateMaintenanceTransition(maintenance.status, updates.status);
+      if (!transVal.isValid) {
+        throw new Error(transVal.errors[0]?.message || 'Invalid maintenance status transition');
+      }
+    }
+
+    const startTime = updates.startTime || maintenance.startTime;
+    const endTime = updates.endTime || maintenance.endTime;
+    const val = validateMaintenance({
+      title: updates.title || maintenance.title,
+      startTime,
+      endTime,
+      description: updates.description ?? maintenance.description
+    });
+    if (!val.isValid) {
+      throw new Error(val.errors[0]?.message || 'Invalid maintenance parameters');
+    }
+
+    const oldStatus = maintenance.status;
+    const newStatus = updates.status || maintenance.status;
+    const now = new Date().toISOString();
+
+    maintenance.title = updates.title ? updates.title.trim() : maintenance.title;
+    if (updates.description !== undefined) maintenance.description = updates.description ? updates.description.trim() : undefined;
+    maintenance.startTime = startTime;
+    maintenance.endTime = endTime;
+    maintenance.status = newStatus;
+    maintenance.updatedAt = now;
+
+    await this.withTransaction(async (client) => {
+      await this.persistEntity('maintenance', maintenance.id, maintenance, client);
+
+      // Restore or set bay status based on transition
+      if (maintenance.bayId) {
+        const bay = await this.getEntityFromDb<ParkingBay>('bays', maintenance.bayId);
+        if (bay) {
+          if ((newStatus === 'completed' || newStatus === 'cancelled') && bay.status === 'maintenance') {
+            bay.status = 'available';
+            bay.statusReason = undefined;
+            bay.updatedAt = now;
+            await this.persistEntity('bays', bay.id, bay, client);
+            await this.syncFacilityBayCount(facilityId, client);
+          } else if ((newStatus === 'in_progress' || newStatus === 'scheduled') && oldStatus !== newStatus && bay.status === 'available') {
+            bay.status = 'maintenance';
+            bay.statusReason = `Maintenance: ${maintenance.title}`;
+            bay.updatedAt = now;
+            await this.persistEntity('bays', bay.id, bay, client);
+            await this.syncFacilityBayCount(facilityId, client);
+          }
+        }
+      }
+
+      await this.logAudit(
+        actor.id,
+        actor.fullName,
+        actor.role,
+        'MAINTENANCE_UPDATED',
+        maintenance.bayId ? 'bay' : 'facility',
+        maintenance.bayId || facilityId,
+        `Maintenance updated: status=${newStatus}`,
+        client
+      );
+    });
+
+    return maintenance;
+  }
+
+  public async deleteFacilityMaintenance(facilityId: string, maintenanceId: string, actor: User): Promise<boolean> {
+    const facility = await this.getFacilityById(facilityId);
+    if (!facility) throw new Error('Facility not found');
+    if (actor.role === 'host' && facility.hostId !== actor.id) {
+      throw new Error('Unauthorized: You do not own this facility.');
+    }
+
+    const maintenance = await this.getEntityFromDb<FacilityMaintenance>('maintenance', maintenanceId);
+    if (!maintenance || maintenance.facilityId !== facilityId) {
+      throw new Error('Maintenance record not found');
+    }
+
+    await this.withTransaction(async (client) => {
+      await this.deleteEntity('maintenance', maintenanceId, client);
+
+      // If bay is in maintenance, restore to available
+      if (maintenance.bayId) {
+        const bay = await this.getEntityFromDb<ParkingBay>('bays', maintenance.bayId);
+        if (bay && bay.status === 'maintenance') {
+          bay.status = 'available';
+          bay.statusReason = undefined;
+          bay.updatedAt = new Date().toISOString();
+          await this.persistEntity('bays', bay.id, bay, client);
+          await this.syncFacilityBayCount(facilityId, client);
+        }
+      }
+
+      await this.logAudit(
+        actor.id,
+        actor.fullName,
+        actor.role,
+        'MAINTENANCE_DELETED',
+        maintenance.bayId ? 'bay' : 'facility',
+        maintenance.bayId || facilityId,
+        `Maintenance deleted: "${maintenance.title}"`,
+        client
+      );
+    });
+
+    return true;
   }
 
   // ----------------- PRICING & QUOTES -----------------

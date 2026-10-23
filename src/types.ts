@@ -68,11 +68,38 @@ export interface Facility {
   moderationNotes?: string;
   totalBays: number;
   activeBays: number;
+  timezone?: string;
   createdAt: string;
   updatedAt: string;
   bays?: ParkingBay[];
   pricingRules?: PricingRule[];
   reviews?: Review[];
+}
+
+export interface FacilityClosure {
+  id: string;
+  facilityId: string;
+  startDate: string;
+  endDate: string;
+  reason?: string;
+  affectedBayIds?: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type MaintenanceStatus = 'scheduled' | 'in_progress' | 'completed' | 'cancelled';
+
+export interface FacilityMaintenance {
+  id: string;
+  facilityId: string;
+  bayId?: string | null;
+  title: string;
+  description?: string;
+  startTime: string;
+  endTime: string;
+  status: MaintenanceStatus;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export type BayStatus = 'available' | 'held' | 'occupied' | 'maintenance' | 'reserved' | 'retired';

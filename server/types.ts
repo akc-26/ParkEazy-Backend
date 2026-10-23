@@ -58,6 +58,7 @@ export interface Facility {
   defaultGateCode?: string;
   clearanceHeightMeters: number;
   operatingHours: OperatingHours;
+  timezone?: string;
   amenities: {
     covered: boolean;
     cctv: boolean;
@@ -73,6 +74,32 @@ export interface Facility {
   moderationNotes?: string;
   totalBays: number;
   activeBays: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FacilityClosure {
+  id: string;
+  facilityId: string;
+  startDate: string;
+  endDate: string;
+  reason?: string;
+  affectedBayIds?: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type MaintenanceStatus = 'scheduled' | 'in_progress' | 'completed' | 'cancelled';
+
+export interface FacilityMaintenance {
+  id: string;
+  facilityId: string;
+  bayId?: string | null;
+  title: string;
+  description?: string;
+  startTime: string;
+  endTime: string;
+  status: MaintenanceStatus;
   createdAt: string;
   updatedAt: string;
 }

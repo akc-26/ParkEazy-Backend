@@ -1556,6 +1556,150 @@ apiV1Router.delete(
   }
 );
 
+// Section 3B: Operating Hours
+apiV1Router.get(
+  '/hosts/:hostId/facilities/:facilityId/operating-hours',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const result = await db.getOperatingHours(req.params.facilityId, req.user! as any);
+      sendSuccess(res, result, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.put(
+  '/hosts/:hostId/facilities/:facilityId/operating-hours',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { operatingHours, timezone } = req.body;
+      const updated = await db.updateOperatingHours(req.params.facilityId, operatingHours, req.user! as any, timezone);
+      sendSuccess(res, updated, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// Section 3B: Date-Specific Closures
+apiV1Router.get(
+  '/hosts/:hostId/facilities/:facilityId/closures',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const closures = await db.getFacilityClosures(req.params.facilityId, req.user! as any);
+      sendSuccess(res, closures, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.post(
+  '/hosts/:hostId/facilities/:facilityId/closures',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const closure = await db.createFacilityClosure(req.params.facilityId, req.body, req.user! as any);
+      sendSuccess(res, closure, req.correlationId, 201);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.put(
+  '/hosts/:hostId/facilities/:facilityId/closures/:closureId',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const updated = await db.updateFacilityClosure(req.params.facilityId, req.params.closureId, req.body, req.user! as any);
+      sendSuccess(res, updated, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.delete(
+  '/hosts/:hostId/facilities/:facilityId/closures/:closureId',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const success = await db.deleteFacilityClosure(req.params.facilityId, req.params.closureId, req.user! as any);
+      sendSuccess(res, { success }, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// Section 3B: Maintenance Scheduling
+apiV1Router.get(
+  '/hosts/:hostId/facilities/:facilityId/maintenance',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const maintenance = await db.getFacilityMaintenance(req.params.facilityId, req.user! as any);
+      sendSuccess(res, maintenance, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.post(
+  '/hosts/:hostId/facilities/:facilityId/maintenance',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const maintenance = await db.createFacilityMaintenance(req.params.facilityId, req.body, req.user! as any);
+      sendSuccess(res, maintenance, req.correlationId, 201);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.put(
+  '/hosts/:hostId/facilities/:facilityId/maintenance/:maintenanceId',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const updated = await db.updateFacilityMaintenance(req.params.facilityId, req.params.maintenanceId, req.body, req.user! as any);
+      sendSuccess(res, updated, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+apiV1Router.delete(
+  '/hosts/:hostId/facilities/:facilityId/maintenance/:maintenanceId',
+  authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  requireResourceOwnership('hostId'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const success = await db.deleteFacilityMaintenance(req.params.facilityId, req.params.maintenanceId, req.user! as any);
+      sendSuccess(res, { success }, req.correlationId);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
 // 5b.18 Host Extension Requests (List & Decision)
 apiV1Router.get(
   '/hosts/:hostId/extension-requests',

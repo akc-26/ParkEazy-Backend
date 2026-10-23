@@ -42,6 +42,13 @@ import {
   BookingOverstayRecord,
   BookingSupportTicket,
   AlternativeSpaceSuggestion,
+  OperatingSchedule,
+  FacilityClosure,
+  FacilityMaintenance,
+  CreateClosurePayload,
+  UpdateClosurePayload,
+  CreateMaintenancePayload,
+  UpdateMaintenancePayload,
 } from '@parkeazy/shared-types';
 
 export interface ApiClientOptions {
@@ -336,6 +343,54 @@ export class ParkEazyApiClient {
     delete: async (facilityId: string): Promise<{ success: boolean }> => {
       const res = await this.delete<{ data: { success: boolean } }>(`/facilities/${facilityId}`);
       return res.data || (res as any);
+    },
+
+    getOperatingHours: async (facilityId: string): Promise<OperatingSchedule[]> => {
+      const res = await this.get<{ data: OperatingSchedule[] }>(`/facilities/${facilityId}/operating-hours`);
+      return res.data || (res as any);
+    },
+
+    updateOperatingHours: async (facilityId: string, schedules: OperatingSchedule[]): Promise<OperatingSchedule[]> => {
+      const res = await this.put<{ data: OperatingSchedule[] }>(`/facilities/${facilityId}/operating-hours`, schedules);
+      return res.data || (res as any);
+    },
+
+    getClosures: async (facilityId: string): Promise<FacilityClosure[]> => {
+      const res = await this.get<{ data: FacilityClosure[] }>(`/facilities/${facilityId}/closures`);
+      return res.data || (res as any);
+    },
+
+    createClosure: async (facilityId: string, payload: CreateClosurePayload): Promise<FacilityClosure> => {
+      const res = await this.post<{ data: FacilityClosure }>(`/facilities/${facilityId}/closures`, payload);
+      return res.data || (res as any);
+    },
+
+    updateClosure: async (facilityId: string, closureId: string, payload: UpdateClosurePayload): Promise<FacilityClosure> => {
+      const res = await this.put<{ data: FacilityClosure }>(`/facilities/${facilityId}/closures/${closureId}`, payload);
+      return res.data || (res as any);
+    },
+
+    deleteClosure: async (facilityId: string, closureId: string): Promise<void> => {
+      await this.delete(`/facilities/${facilityId}/closures/${closureId}`);
+    },
+
+    getMaintenance: async (facilityId: string): Promise<FacilityMaintenance[]> => {
+      const res = await this.get<{ data: FacilityMaintenance[] }>(`/facilities/${facilityId}/maintenance`);
+      return res.data || (res as any);
+    },
+
+    createMaintenance: async (facilityId: string, payload: CreateMaintenancePayload): Promise<FacilityMaintenance> => {
+      const res = await this.post<{ data: FacilityMaintenance }>(`/facilities/${facilityId}/maintenance`, payload);
+      return res.data || (res as any);
+    },
+
+    updateMaintenance: async (facilityId: string, maintenanceId: string, payload: UpdateMaintenancePayload): Promise<FacilityMaintenance> => {
+      const res = await this.put<{ data: FacilityMaintenance }>(`/facilities/${facilityId}/maintenance/${maintenanceId}`, payload);
+      return res.data || (res as any);
+    },
+
+    deleteMaintenance: async (facilityId: string, maintenanceId: string): Promise<void> => {
+      await this.delete(`/facilities/${facilityId}/maintenance/${maintenanceId}`);
     },
 
     bulkUpdateSpaces: async (facilityId: string, spaces: Partial<ParkingSpace>[]): Promise<ParkingSpace[]> => {

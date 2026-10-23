@@ -22,6 +22,11 @@ import type {
   UpdateSpacePayload,
   SpaceStatus,
   JwtPayload,
+  OperatingSchedule,
+  CreateClosurePayload,
+  UpdateClosurePayload,
+  CreateMaintenancePayload,
+  UpdateMaintenancePayload,
 } from '@parkeazy/shared-types';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { TenantGuard } from '../auth/guards/tenant.guard.js';
@@ -89,6 +94,152 @@ export class FacilitiesController {
   ) {
     const ctx = this.getEffectiveHost(req, tenantId);
     const data = await this.facilitiesService.updateFacility(id, ctx.hostId, ctx.tenantId, payload);
+    return { data };
+  }
+
+  // Section 3B: Operating Hours
+  @Get('facilities/:id/operating-hours')
+  @Roles('host', 'superadmin')
+  async getOperatingHours(
+    @Param('id') id: string,
+    @Req() req: any,
+    @Headers('x-tenant-id') tenantId: string = 'default'
+  ) {
+    const ctx = this.getEffectiveHost(req, tenantId);
+    const data = await this.facilitiesService.listOperatingSchedules(id, ctx.hostId, ctx.tenantId);
+    return { data };
+  }
+
+  @Put('facilities/:id/operating-hours')
+  @Roles('host', 'superadmin')
+  async updateOperatingHours(
+    @Param('id') id: string,
+    @Body() payload: OperatingSchedule[] | { schedules: OperatingSchedule[] },
+    @Req() req: any,
+    @Headers('x-tenant-id') tenantId: string = 'default'
+  ) {
+    const ctx = this.getEffectiveHost(req, tenantId);
+    const schedules = Array.isArray(payload) ? payload : (payload.schedules || []);
+    const data = await this.facilitiesService.updateOperatingSchedules(id, ctx.hostId, ctx.tenantId, schedules);
+    return { data };
+  }
+
+  @Delete('facilities/:id/operating-hours/:scheduleId')
+  @Roles('host', 'superadmin')
+  async deleteOperatingSchedule(
+    @Param('id') id: string,
+    @Param('scheduleId') scheduleId: string,
+    @Req() req: any,
+    @Headers('x-tenant-id') tenantId: string = 'default'
+  ) {
+    const ctx = this.getEffectiveHost(req, tenantId);
+    const data = await this.facilitiesService.deleteOperatingSchedule(id, scheduleId, ctx.hostId, ctx.tenantId);
+    return { data };
+  }
+
+  // Section 3B: Date-Specific Closures
+  @Get('facilities/:id/closures')
+  @Roles('host', 'superadmin')
+  async listClosures(
+    @Param('id') id: string,
+    @Req() req: any,
+    @Headers('x-tenant-id') tenantId: string = 'default'
+  ) {
+    const ctx = this.getEffectiveHost(req, tenantId);
+    const data = await this.facilitiesService.listClosures(id, ctx.hostId, ctx.tenantId);
+    return { data };
+  }
+
+  @Post('facilities/:id/closures')
+  @Roles('host', 'superadmin')
+  async createClosure(
+    @Param('id') id: string,
+    @Body() payload: CreateClosurePayload,
+    @Req() req: any,
+    @Headers('x-tenant-id') tenantId: string = 'default'
+  ) {
+    const ctx = this.getEffectiveHost(req, tenantId);
+    const data = await this.facilitiesService.createClosure(id, ctx.hostId, ctx.tenantId, payload);
+    return { data };
+  }
+
+  @Put('facilities/:id/closures/:closureId')
+  @Roles('host', 'superadmin')
+  async updateClosure(
+    @Param('id') id: string,
+    @Param('closureId') closureId: string,
+    @Body() payload: UpdateClosurePayload,
+    @Req() req: any,
+    @Headers('x-tenant-id') tenantId: string = 'default'
+  ) {
+    const ctx = this.getEffectiveHost(req, tenantId);
+    const data = await this.facilitiesService.updateClosure(id, closureId, ctx.hostId, ctx.tenantId, payload);
+    return { data };
+  }
+
+  @Delete('facilities/:id/closures/:closureId')
+  @Roles('host', 'superadmin')
+  async deleteClosure(
+    @Param('id') id: string,
+    @Param('closureId') closureId: string,
+    @Req() req: any,
+    @Headers('x-tenant-id') tenantId: string = 'default'
+  ) {
+    const ctx = this.getEffectiveHost(req, tenantId);
+    const data = await this.facilitiesService.deleteClosure(id, closureId, ctx.hostId, ctx.tenantId);
+    return { data };
+  }
+
+  // Section 3B: Maintenance Scheduling
+  @Get('facilities/:id/maintenance')
+  @Roles('host', 'superadmin')
+  async listMaintenance(
+    @Param('id') id: string,
+    @Req() req: any,
+    @Headers('x-tenant-id') tenantId: string = 'default'
+  ) {
+    const ctx = this.getEffectiveHost(req, tenantId);
+    const data = await this.facilitiesService.listMaintenance(id, ctx.hostId, ctx.tenantId);
+    return { data };
+  }
+
+  @Post('facilities/:id/maintenance')
+  @Roles('host', 'superadmin')
+  async createMaintenance(
+    @Param('id') id: string,
+    @Body() payload: CreateMaintenancePayload,
+    @Req() req: any,
+    @Headers('x-tenant-id') tenantId: string = 'default'
+  ) {
+    const ctx = this.getEffectiveHost(req, tenantId);
+    const data = await this.facilitiesService.createMaintenance(id, ctx.hostId, ctx.tenantId, payload);
+    return { data };
+  }
+
+  @Put('facilities/:id/maintenance/:maintenanceId')
+  @Roles('host', 'superadmin')
+  async updateMaintenance(
+    @Param('id') id: string,
+    @Param('maintenanceId') maintenanceId: string,
+    @Body() payload: UpdateMaintenancePayload,
+    @Req() req: any,
+    @Headers('x-tenant-id') tenantId: string = 'default'
+  ) {
+    const ctx = this.getEffectiveHost(req, tenantId);
+    const data = await this.facilitiesService.updateMaintenance(id, maintenanceId, ctx.hostId, ctx.tenantId, payload);
+    return { data };
+  }
+
+  @Delete('facilities/:id/maintenance/:maintenanceId')
+  @Roles('host', 'superadmin')
+  async deleteMaintenance(
+    @Param('id') id: string,
+    @Param('maintenanceId') maintenanceId: string,
+    @Req() req: any,
+    @Headers('x-tenant-id') tenantId: string = 'default'
+  ) {
+    const ctx = this.getEffectiveHost(req, tenantId);
+    const data = await this.facilitiesService.deleteMaintenance(id, maintenanceId, ctx.hostId, ctx.tenantId);
     return { data };
   }
 

@@ -11,7 +11,10 @@ import {
   NotificationItem,
   DisputeTicket,
   ThirdPartyProviderConfig,
-  AuditLog
+  AuditLog,
+  OperatingHours,
+  FacilityClosure,
+  FacilityMaintenance
 } from './types';
 
 class ApiClient {
@@ -370,6 +373,68 @@ class ApiClient {
 
   async deleteBay(id: string): Promise<{ success: boolean }> {
     return this.request<{ success: boolean }>(`/bays/${id}`, {
+      method: 'DELETE'
+    });
+  }
+
+  // Section 3B: Operating Hours
+  async getOperatingHours(facilityId: string): Promise<{ operatingHours: OperatingHours; timezone?: string }> {
+    return this.request<{ operatingHours: OperatingHours; timezone?: string }>(`/facilities/${facilityId}/operating-hours`);
+  }
+
+  async updateOperatingHours(facilityId: string, operatingHours: OperatingHours, timezone?: string): Promise<Facility> {
+    return this.request<Facility>(`/facilities/${facilityId}/operating-hours`, {
+      method: 'PUT',
+      body: JSON.stringify({ operatingHours, timezone })
+    });
+  }
+
+  // Section 3B: Date-Specific Closures
+  async getClosures(facilityId: string): Promise<FacilityClosure[]> {
+    return this.request<FacilityClosure[]>(`/facilities/${facilityId}/closures`);
+  }
+
+  async createClosure(facilityId: string, data: Partial<FacilityClosure>): Promise<FacilityClosure> {
+    return this.request<FacilityClosure>(`/facilities/${facilityId}/closures`, {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  }
+
+  async updateClosure(facilityId: string, closureId: string, data: Partial<FacilityClosure>): Promise<FacilityClosure> {
+    return this.request<FacilityClosure>(`/facilities/${facilityId}/closures/${closureId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    });
+  }
+
+  async deleteClosure(facilityId: string, closureId: string): Promise<{ success: boolean }> {
+    return this.request<{ success: boolean }>(`/facilities/${facilityId}/closures/${closureId}`, {
+      method: 'DELETE'
+    });
+  }
+
+  // Section 3B: Maintenance Scheduling
+  async getMaintenance(facilityId: string): Promise<FacilityMaintenance[]> {
+    return this.request<FacilityMaintenance[]>(`/facilities/${facilityId}/maintenance`);
+  }
+
+  async createMaintenance(facilityId: string, data: Partial<FacilityMaintenance>): Promise<FacilityMaintenance> {
+    return this.request<FacilityMaintenance>(`/facilities/${facilityId}/maintenance`, {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  }
+
+  async updateMaintenance(facilityId: string, maintenanceId: string, data: Partial<FacilityMaintenance>): Promise<FacilityMaintenance> {
+    return this.request<FacilityMaintenance>(`/facilities/${facilityId}/maintenance/${maintenanceId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    });
+  }
+
+  async deleteMaintenance(facilityId: string, maintenanceId: string): Promise<{ success: boolean }> {
+    return this.request<{ success: boolean }>(`/facilities/${facilityId}/maintenance/${maintenanceId}`, {
       method: 'DELETE'
     });
   }

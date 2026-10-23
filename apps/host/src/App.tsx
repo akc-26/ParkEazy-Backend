@@ -15,6 +15,7 @@ import { PhotosListingPreviewPage } from './pages/PhotosListingPreviewPage';
 import { AvailabilityPricingOverviewPage } from './pages/AvailabilityPricingOverviewPage';
 import { SpacePricingConfigurationPage } from './pages/SpacePricingConfigurationPage';
 import { DateSpecificAvailabilityClosuresPage } from './pages/DateSpecificAvailabilityClosuresPage';
+import { OperatingHoursWeeklySchedulePage } from './pages/OperatingHoursWeeklySchedulePage';
 import { BookingDurationAdvanceBookingRulesPage } from './pages/BookingDurationAdvanceBookingRulesPage';
 import { BulkPricingScheduleUpdatesPage } from './pages/BulkPricingScheduleUpdatesPage';
 import { AvailabilityConflictChangeReviewPage } from './pages/AvailabilityConflictChangeReviewPage';
@@ -59,6 +60,7 @@ export function HostPortalContent({ onNavigateToWebsite, onNavigateToAdmin }: Ho
     | 'spaces'
     | 'pricing'
     | 'pricing_config'
+    | 'operating_hours'
     | 'closures'
     | 'rules'
     | 'occupancy'
@@ -85,7 +87,11 @@ export function HostPortalContent({ onNavigateToWebsite, onNavigateToAdmin }: Ho
   });
 
   const navigateTo = (path: string) => {
-    if (path.includes('facility') || path.includes('facilities/new')) {
+    if (path.includes('schedule') || path.includes('operating-hours')) {
+      setActiveTab('operating_hours');
+    } else if (path.includes('closures') || path.includes('blackout')) {
+      setActiveTab('closures');
+    } else if (path.includes('facility') || path.includes('facilities/new')) {
       setActiveTab('add_facility');
     } else if (path.includes('pricing/rates') || path.includes('spaces')) {
       setActiveTab('pricing_config');
@@ -113,7 +119,8 @@ export function HostPortalContent({ onNavigateToWebsite, onNavigateToAdmin }: Ho
     { id: 'spaces', label: 'Space Inventory & Bay', icon: Car },
     { id: 'pricing', label: 'Rates & Availability', icon: DollarSign },
     { id: 'pricing_config', label: 'Pricing Configuration', icon: Settings },
-    { id: 'closures', label: 'Closures & Schedules', icon: Clock },
+    { id: 'operating_hours', label: 'Operating Hours & Schedule', icon: Clock },
+    { id: 'closures', label: 'Date-Specific Closures', icon: Clock },
     { id: 'rules', label: 'Booking Duration Rules', icon: ShieldCheck },
     { id: 'occupancy', label: 'Live Bay Occupancy', icon: Car },
     { id: 'arrivals', label: 'Arrivals & Check-In', icon: CheckCircle },
@@ -335,6 +342,10 @@ export function HostPortalContent({ onNavigateToWebsite, onNavigateToAdmin }: Ho
 
         {activeTab === 'pricing_config' && (
           <SpacePricingConfigurationPage currentUser={currentUser} onNavigate={navigateTo} />
+        )}
+
+        {activeTab === 'operating_hours' && (
+          <OperatingHoursWeeklySchedulePage currentUser={currentUser} onNavigate={navigateTo} />
         )}
 
         {activeTab === 'closures' && (

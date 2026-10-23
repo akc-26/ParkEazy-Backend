@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, ForbiddenException, BadRequestException, ServiceUnavailableException, Optional } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ForbiddenException, BadRequestException, ConflictException, ServiceUnavailableException, Optional } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service.js';
 import {
   ParkingFacility,
@@ -16,7 +16,22 @@ import {
   VEHICLE_TYPES,
   FUEL_COMPATIBILITIES,
   ReadinessCheckItem,
+  OperatingSchedule,
+  FacilityClosure,
+  FacilityMaintenance,
+  MaintenanceStatus,
+  CreateClosurePayload,
+  UpdateClosurePayload,
+  CreateMaintenancePayload,
+  UpdateMaintenancePayload,
 } from '@parkeazy/shared-types';
+import {
+  validateTimezone,
+  validateOperatingSchedules,
+  validateClosure,
+  validateMaintenance,
+  validateMaintenanceTransition,
+} from '@parkeazy/validation';
 
 export interface FacilityPhotoItem {
   id?: string;
@@ -35,6 +50,9 @@ export class FacilitiesService {
   // In-memory records are strictly an opt-in demo/test fixture, never production inventory.
   private facilities: ParkingFacility[] = [];
   private spaces: ParkingSpace[] = [];
+  private schedules: OperatingSchedule[] = [];
+  private closures: FacilityClosure[] = [];
+  private maintenance: FacilityMaintenance[] = [];
   private readonly demoMode: boolean;
 
   constructor(@Optional() private readonly databaseService?: DatabaseService) {
@@ -55,19 +73,76 @@ export class FacilitiesService {
           (SELECT COUNT(*)::int FROM parking_spaces s WHERE s.facility_id=f.id AND s.tenant_id=f.tenant_id AND s.is_active=TRUE) AS active_spaces
          FROM parking_facilities f WHERE f.tenant_id=$1 AND f.status='published'`, [tenantId]);
       const spaceRows = await this.databaseService!.query<any>(
-        `SELECT s.*, (s.status='available' AND NOT EXISTS (SELECT 1 FROM bookings b WHERE b.space_id=s.id AND b.status IN ('confirmed','active') AND b.ends_at > COALESCE($2::timestamptz, NOW()) AND b.starts_at < COALESCE($2::timestamptz, NOW()) + ($3::text || ' hours')::interval)) AS currently_unbooked
+        `SELECT s.*, (
+           s.status='available'
+           AND NOT EXISTS (SELECT 1 FROM bookings b WHERE b.space_id=s.id AND b.status IN ('confirmed','active') AND b.ends_at > COALESCE($2::timestamptz, NOW()) AND b.starts_at < COALESCE($2::timestamptz, NOW()) + ($3::text || ' hours')::interval)
+           AND NOT EXISTS (SELECT 1 FROM facility_closures c WHERE (c.space_id=s.id OR (c.facility_id=s.facility_id AND c.space_id IS NULL)) AND c.ends_at > COALESCE($2::timestamptz, NOW()) AND c.starts_at < COALESCE($2::timestamptz, NOW()) + ($3::text || ' hours')::interval)
+           AND NOT EXISTS (SELECT 1 FROM facility_maintenance_periods m WHERE (m.space_id=s.id OR (m.facility_id=s.facility_id AND m.space_id IS NULL)) AND m.status IN ('scheduled', 'in_progress') AND m.ends_at > COALESCE($2::timestamptz, NOW()) AND m.starts_at < COALESCE($2::timestamptz, NOW()) + ($3::text || ' hours')::interval)
+         ) AS currently_unbooked
          FROM parking_spaces s JOIN parking_facilities f ON f.id=s.facility_id AND f.tenant_id=s.tenant_id
          WHERE s.tenant_id=$1 AND f.status='published' AND s.is_active=TRUE`, [tenantId, arrivalTime || null, durationHours]);
       const facilities = facilityRows.map((r) => this.mapFacilityRow(r));
       const spaces = spaceRows.map((r) => this.mapSpaceRow(r, r.currently_unbooked ? 'available' : 'occupied'));
       return { facilities, spaces };
     }
-    if (this.demoMode) return { facilities: this.facilities, spaces: this.spaces };
+    if (this.demoMode) {
+      const start = arrivalTime ? new Date(arrivalTime).getTime() : Date.now();
+      const end = start + durationHours * 3600 * 1000;
+      const spaces = this.spaces.map((s) => {
+        let isBlocked = s.status !== 'available';
+        if (!isBlocked) {
+          const hasClosure = this.closures.some((c) =>
+            (c.spaceId === s.id || (c.facilityId === s.facilityId && !c.spaceId)) &&
+            new Date(c.endsAt).getTime() > start && new Date(c.startsAt).getTime() < end
+          );
+          const hasMaint = this.maintenance.some((m) =>
+            (m.spaceId === s.id || (m.facilityId === s.facilityId && !m.spaceId)) &&
+            (m.status === 'scheduled' || m.status === 'in_progress') &&
+            new Date(m.endsAt).getTime() > start && new Date(m.startsAt).getTime() < end
+          );
+          if (hasClosure || hasMaint) isBlocked = true;
+        }
+        return { ...s, status: (isBlocked ? 'occupied' : 'available') as SpaceStatus };
+      });
+      return { facilities: this.facilities, spaces };
+    }
     throw new ServiceUnavailableException('Search inventory is unavailable. Configure PostgreSQL and apply migrations, or explicitly enable PARKEAZY_DEMO_MODE=true for local demo data.');
   }
 
   private mapFacilityRow(r: any): ParkingFacility {
-    return { id: String(r.id), tenantId: String(r.tenant_id), hostId: String(r.host_id), facilityCode: r.facility_code, name: r.name, addressLine1: r.address_line1, addressLine2: r.address_line2 ?? undefined, city: r.city, postalCode: r.postal_code, latitude: Number(r.latitude), longitude: Number(r.longitude), entranceInstructions: r.entrance_instructions ?? undefined, gatePinCode: r.gate_pin_code ?? undefined, isCovered: Boolean(r.is_covered), is24x7: Boolean(r.is_24_7), status: r.status, totalSpaces: Number(r.total_spaces ?? 0), activeSpaces: Number(r.active_spaces ?? 0), amenities: this.asStringArray(r.amenities), operatingModel: r.operating_model ?? 'commercial_garage', propertyOwner: r.property_owner ?? undefined, landmark: r.landmark ?? undefined, ingressType: r.ingress_type ?? undefined, maxHeightClearanceMeters: r.max_height_clearance_meters == null ? undefined : Number(r.max_height_clearance_meters), accessHotline: r.access_hotline ?? undefined, turnByTurnDirections: r.turn_by_turn_directions ?? undefined, pedestrianAccessInstructions: r.pedestrian_access_instructions ?? undefined, photos: Array.isArray(r.photos) ? r.photos : [], createdAt: new Date(r.created_at).toISOString(), updatedAt: new Date(r.updated_at).toISOString() };
+    return {
+      id: String(r.id),
+      tenantId: String(r.tenant_id),
+      hostId: String(r.host_id),
+      facilityCode: r.facility_code,
+      name: r.name,
+      addressLine1: r.address_line1,
+      addressLine2: r.address_line2 ?? undefined,
+      city: r.city,
+      postalCode: r.postal_code,
+      latitude: Number(r.latitude),
+      longitude: Number(r.longitude),
+      timezone: r.timezone ?? 'Asia/Kolkata',
+      entranceInstructions: r.entrance_instructions ?? undefined,
+      gatePinCode: r.gate_pin_code ?? undefined,
+      isCovered: Boolean(r.is_covered),
+      is24x7: Boolean(r.is_24_7),
+      status: r.status,
+      totalSpaces: Number(r.total_spaces ?? 0),
+      activeSpaces: Number(r.active_spaces ?? 0),
+      amenities: this.asStringArray(r.amenities),
+      operatingModel: r.operating_model ?? 'commercial_garage',
+      propertyOwner: r.property_owner ?? undefined,
+      landmark: r.landmark ?? undefined,
+      ingressType: r.ingress_type ?? undefined,
+      maxHeightClearanceMeters: r.max_height_clearance_meters == null ? undefined : Number(r.max_height_clearance_meters),
+      accessHotline: r.access_hotline ?? undefined,
+      turnByTurnDirections: r.turn_by_turn_directions ?? undefined,
+      pedestrianAccessInstructions: r.pedestrian_access_instructions ?? undefined,
+      photos: Array.isArray(r.photos) ? r.photos : [],
+      createdAt: new Date(r.created_at).toISOString(),
+      updatedAt: new Date(r.updated_at).toISOString()
+    };
   }
 
   private mapSpaceRow(r: any, status?: ParkingSpace['status']): ParkingSpace {
@@ -318,9 +393,35 @@ export class FacilitiesService {
     tenantId: string = 'default',
     payload: CreateFacilityPayload
   ): Promise<ParkingFacility> {
+    let facilityTimezone = 'Asia/Kolkata';
+    if (payload.timezone) {
+      const tzVal = validateTimezone(payload.timezone);
+      if (!tzVal.success) {
+        throw new BadRequestException(tzVal.errors.join(', '));
+      }
+      facilityTimezone = tzVal.data!;
+    }
+
     if (this.databaseAvailable()) {
       const code = payload.facilityCode || `FAC-${Date.now().toString().slice(-12)}`;
-      const rows = await this.databaseService!.query<any>(`INSERT INTO parking_facilities (tenant_id, host_id, facility_code, name, address_line1, address_line2, city, postal_code, latitude, longitude, entrance_instructions, gate_pin_code, is_covered, is_24_7, status, amenities, ingress_type, property_owner, landmark, max_height_clearance_meters, access_hotline, turn_by_turn_directions, pedestrian_access_instructions, photos, operating_model) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'draft',$15::jsonb,$16,$17,$18,$19,$20,$21,$22,$23::jsonb,$24) RETURNING *, 0::int AS total_spaces, 0::int AS active_spaces`, [tenantId, hostId, code, payload.name, payload.addressLine1, payload.addressLine2 || null, payload.city, payload.postalCode, payload.latitude, payload.longitude, payload.entranceInstructions || null, payload.gatePinCode || null, payload.isCovered ?? true, payload.is24x7 ?? true, JSON.stringify(payload.amenities || []), payload.ingressType || 'two_way_ramp', payload.propertyOwner || null, payload.landmark || null, payload.maxHeightClearanceMeters || 2.1, payload.accessHotline || null, payload.turnByTurnDirections || null, payload.pedestrianAccessInstructions || null, JSON.stringify(payload.photos || []), payload.operatingModel || 'commercial_garage']);
+      const rows = await this.databaseService!.query<any>(
+        `INSERT INTO parking_facilities (
+          tenant_id, host_id, facility_code, name, address_line1, address_line2, city, postal_code,
+          latitude, longitude, entrance_instructions, gate_pin_code, is_covered, is_24_7, status,
+          amenities, ingress_type, property_owner, landmark, max_height_clearance_meters, access_hotline,
+          turn_by_turn_directions, pedestrian_access_instructions, photos, operating_model, timezone
+        ) VALUES (
+          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'draft',$15::jsonb,$16,$17,$18,$19,$20,$21,$22,$23::jsonb,$24,$25
+        ) RETURNING *, 0::int AS total_spaces, 0::int AS active_spaces`,
+        [
+          tenantId, hostId, code, payload.name, payload.addressLine1, payload.addressLine2 || null, payload.city, payload.postalCode,
+          payload.latitude, payload.longitude, payload.entranceInstructions || null, payload.gatePinCode || null, payload.isCovered ?? true,
+          payload.is24x7 ?? true, JSON.stringify(payload.amenities || []), payload.ingressType || 'two_way_ramp', payload.propertyOwner || null,
+          payload.landmark || null, payload.maxHeightClearanceMeters || 2.1, payload.accessHotline || null, payload.turnByTurnDirections || null,
+          payload.pedestrianAccessInstructions || null, JSON.stringify(payload.photos || []), payload.operatingModel || 'commercial_garage',
+          facilityTimezone
+        ]
+      );
       return this.mapFacilityRow(rows[0]);
     }
     if (!this.demoMode) throw new ServiceUnavailableException('Facility storage is unavailable; configure PostgreSQL or explicitly enable demo mode.');
@@ -340,6 +441,7 @@ export class FacilitiesService {
       postalCode: payload.postalCode,
       latitude: payload.latitude,
       longitude: payload.longitude,
+      timezone: facilityTimezone,
       operatingModel: payload.operatingModel || 'commercial_garage',
       propertyOwner: payload.propertyOwner,
       landmark: payload.landmark,
@@ -362,6 +464,21 @@ export class FacilitiesService {
     };
 
     this.facilities.push(newFacility);
+
+    // Initialize default weekly schedule (7 days)
+    for (let day = 0; day <= 6; day++) {
+      this.schedules.push({
+        id: `sched-${id}-${day}`,
+        facilityId: id,
+        tenantId,
+        dayOfWeek: day,
+        openTime: '00:00',
+        closeTime: '23:59',
+        isClosed: false,
+        isOvernight: false,
+      });
+    }
+
     this.logger.log(`Created new facility ${facilityCode} (${id}) for host ${hostId}`);
     return newFacility;
   }
@@ -372,11 +489,55 @@ export class FacilitiesService {
     tenantId: string = 'default',
     payload: UpdateFacilityPayload
   ): Promise<ParkingFacility> {
+    if (payload.timezone) {
+      const tzVal = validateTimezone(payload.timezone);
+      if (!tzVal.success) {
+        throw new BadRequestException(tzVal.errors.join(', '));
+      }
+    }
+
     if (this.databaseAvailable()) {
-      const columns: Record<string, string> = { facilityCode: 'facility_code', name: 'name', addressLine1: 'address_line1', addressLine2: 'address_line2', city: 'city', postalCode: 'postal_code', latitude: 'latitude', longitude: 'longitude', entranceInstructions: 'entrance_instructions', gatePinCode: 'gate_pin_code', isCovered: 'is_covered', is24x7: 'is_24_7', amenities: 'amenities', operatingModel: 'operating_model', propertyOwner: 'property_owner', landmark: 'landmark', ingressType: 'ingress_type', maxHeightClearanceMeters: 'max_height_clearance_meters', accessHotline: 'access_hotline', turnByTurnDirections: 'turn_by_turn_directions', pedestrianAccessInstructions: 'pedestrian_access_instructions', photos: 'photos' };
-      const sets: string[] = []; const values: unknown[] = [id, tenantId, hostId];
-      for (const [key, column] of Object.entries(columns)) if ((payload as any)[key] !== undefined) { values.push(['amenities', 'photos'].includes(key) ? JSON.stringify((payload as any)[key]) : (payload as any)[key]); sets.push(`${column}=$${values.length}${['amenities', 'photos'].includes(key) ? '::jsonb' : ''}`); }
-      if (sets.length) { sets.push('updated_at=NOW()'); const rows = await this.databaseService!.query<any>(`UPDATE parking_facilities SET ${sets.join(', ')} WHERE id=$1 AND tenant_id=$2 AND host_id=$3 RETURNING *, (SELECT COUNT(*)::int FROM parking_spaces s WHERE s.facility_id=parking_facilities.id) AS total_spaces, (SELECT COUNT(*)::int FROM parking_spaces s WHERE s.facility_id=parking_facilities.id AND s.is_active=TRUE) AS active_spaces`, values); if (rows[0]) return this.mapFacilityRow(rows[0]); }
+      const columns: Record<string, string> = {
+        facilityCode: 'facility_code',
+        name: 'name',
+        addressLine1: 'address_line1',
+        addressLine2: 'address_line2',
+        city: 'city',
+        postalCode: 'postal_code',
+        latitude: 'latitude',
+        longitude: 'longitude',
+        timezone: 'timezone',
+        entranceInstructions: 'entrance_instructions',
+        gatePinCode: 'gate_pin_code',
+        isCovered: 'is_covered',
+        is24x7: 'is_24_7',
+        amenities: 'amenities',
+        operatingModel: 'operating_model',
+        propertyOwner: 'property_owner',
+        landmark: 'landmark',
+        ingressType: 'ingress_type',
+        maxHeightClearanceMeters: 'max_height_clearance_meters',
+        accessHotline: 'access_hotline',
+        turnByTurnDirections: 'turn_by_turn_directions',
+        pedestrianAccessInstructions: 'pedestrian_access_instructions',
+        photos: 'photos'
+      };
+      const sets: string[] = [];
+      const values: unknown[] = [id, tenantId, hostId];
+      for (const [key, column] of Object.entries(columns)) {
+        if ((payload as any)[key] !== undefined) {
+          values.push(['amenities', 'photos'].includes(key) ? JSON.stringify((payload as any)[key]) : (payload as any)[key]);
+          sets.push(`${column}=$${values.length}${['amenities', 'photos'].includes(key) ? '::jsonb' : ''}`);
+        }
+      }
+      if (sets.length) {
+        sets.push('updated_at=NOW()');
+        const rows = await this.databaseService!.query<any>(
+          `UPDATE parking_facilities SET ${sets.join(', ')} WHERE id=$1 AND tenant_id=$2 AND host_id=$3 RETURNING *, (SELECT COUNT(*)::int FROM parking_spaces s WHERE s.facility_id=parking_facilities.id) AS total_spaces, (SELECT COUNT(*)::int FROM parking_spaces s WHERE s.facility_id=parking_facilities.id AND s.is_active=TRUE) AS active_spaces`,
+          values
+        );
+        if (rows[0]) return this.mapFacilityRow(rows[0]);
+      }
       return this.getFacility(id, hostId, tenantId);
     }
     if (!this.demoMode) throw new ServiceUnavailableException('Facility storage is unavailable; configure PostgreSQL or explicitly enable demo mode.');
@@ -1038,6 +1199,718 @@ export class FacilitiesService {
     return item;
   }
 
+  // =============================================================================
+  // Section 3B: Operating Hours & Weekly Schedules
+  // =============================================================================
+
+  public async listOperatingSchedules(
+    facilityId: string,
+    hostId?: string,
+    tenantId: string = 'default'
+  ): Promise<OperatingSchedule[]> {
+    const facility = await this.getFacility(facilityId, hostId, tenantId);
+
+    if (this.databaseAvailable()) {
+      const rows = await this.databaseService!.query<any>(
+        `SELECT * FROM operating_schedules WHERE facility_id=$1 ORDER BY day_of_week ASC`,
+        [facilityId]
+      );
+      if (rows.length > 0) {
+        return rows.map((r) => ({
+          id: String(r.id),
+          facilityId: String(r.facility_id),
+          tenantId: r.tenant_id ? String(r.tenant_id) : tenantId,
+          dayOfWeek: Number(r.day_of_week),
+          openTime: String(r.open_time).substring(0, 5),
+          closeTime: String(r.close_time).substring(0, 5),
+          isClosed: Boolean(r.is_closed),
+          isOvernight: Boolean(r.is_overnight),
+        }));
+      }
+    }
+
+    // Fallback or demo mode: check in-memory store
+    const existing = this.schedules.filter((s) => s.facilityId === facilityId);
+    if (existing.length === 7) {
+      return [...existing].sort((a, b) => a.dayOfWeek - b.dayOfWeek);
+    }
+
+    // Default 7-day schedule based on facility is24x7
+    const result: OperatingSchedule[] = [];
+    for (let day = 0; day <= 6; day++) {
+      const match = existing.find((s) => s.dayOfWeek === day);
+      if (match) {
+        result.push(match);
+      } else {
+        const def: OperatingSchedule = {
+          id: `sched-${facilityId}-${day}`,
+          facilityId,
+          tenantId,
+          dayOfWeek: day,
+          openTime: facility.is24x7 ? '00:00' : '06:00',
+          closeTime: facility.is24x7 ? '23:59' : '23:00',
+          isClosed: false,
+          isOvernight: false,
+        };
+        this.schedules.push(def);
+        result.push(def);
+      }
+    }
+
+    return result.sort((a, b) => a.dayOfWeek - b.dayOfWeek);
+  }
+
+  public async updateOperatingSchedules(
+    facilityId: string,
+    hostId: string,
+    tenantId: string = 'default',
+    schedules: OperatingSchedule[]
+  ): Promise<OperatingSchedule[]> {
+    const facility = await this.getFacility(facilityId, hostId, tenantId);
+
+    const validation = validateOperatingSchedules(schedules);
+    if (!validation.success) {
+      throw new BadRequestException(validation.errors.join('; '));
+    }
+
+    const validatedList = validation.data!;
+
+    if (this.databaseAvailable()) {
+      await this.databaseService!.transaction(async (client) => {
+        for (const item of validatedList) {
+          await client.query(
+            `INSERT INTO operating_schedules (
+               facility_id, tenant_id, day_of_week, open_time, close_time, is_closed, is_overnight
+             ) VALUES (
+               $1, $2, $3, $4::time, $5::time, $6, $7
+             )
+             ON CONFLICT (facility_id, day_of_week) DO UPDATE SET
+               open_time = EXCLUDED.open_time,
+               close_time = EXCLUDED.close_time,
+               is_closed = EXCLUDED.is_closed,
+               is_overnight = EXCLUDED.is_overnight;`,
+            [
+              facilityId,
+              tenantId,
+              item.dayOfWeek,
+              item.openTime,
+              item.closeTime,
+              item.isClosed,
+              item.isOvernight,
+            ]
+          );
+        }
+      });
+      return this.listOperatingSchedules(facilityId, hostId, tenantId);
+    }
+
+    if (!this.demoMode) {
+      throw new ServiceUnavailableException('Schedule storage is unavailable.');
+    }
+
+    for (const item of validatedList) {
+      const idx = this.schedules.findIndex(
+        (s) => s.facilityId === facilityId && s.dayOfWeek === item.dayOfWeek
+      );
+      const entry: OperatingSchedule = {
+        id: `sched-${facilityId}-${item.dayOfWeek}`,
+        facilityId,
+        tenantId,
+        dayOfWeek: item.dayOfWeek,
+        openTime: item.openTime,
+        closeTime: item.closeTime,
+        isClosed: item.isClosed,
+        isOvernight: item.isOvernight,
+      };
+      if (idx >= 0) {
+        this.schedules[idx] = entry;
+      } else {
+        this.schedules.push(entry);
+      }
+    }
+
+    return this.listOperatingSchedules(facilityId, hostId, tenantId);
+  }
+
+  public async deleteOperatingSchedule(
+    facilityId: string,
+    scheduleId: string,
+    hostId: string,
+    tenantId: string = 'default'
+  ): Promise<{ deleted: boolean }> {
+    await this.getFacility(facilityId, hostId, tenantId);
+
+    if (this.databaseAvailable()) {
+      await this.databaseService!.query(
+        `DELETE FROM operating_schedules WHERE id=$1 AND facility_id=$2`,
+        [scheduleId, facilityId]
+      );
+      return { deleted: true };
+    }
+
+    const idx = this.schedules.findIndex(
+      (s) => (s.id === scheduleId || String(s.dayOfWeek) === scheduleId) && s.facilityId === facilityId
+    );
+    if (idx >= 0) {
+      this.schedules.splice(idx, 1);
+    }
+    return { deleted: true };
+  }
+
+  // =============================================================================
+  // Section 3B: Date-Specific Closures (Blackouts & Special Closures)
+  // =============================================================================
+
+  public async listClosures(
+    facilityId: string,
+    hostId?: string,
+    tenantId: string = 'default'
+  ): Promise<FacilityClosure[]> {
+    await this.getFacility(facilityId, hostId, tenantId);
+
+    if (this.databaseAvailable()) {
+      const rows = await this.databaseService!.query<any>(
+        `SELECT * FROM facility_closures WHERE facility_id=$1 AND tenant_id=$2 ORDER BY starts_at ASC`,
+        [facilityId, tenantId]
+      );
+      return rows.map((r) => ({
+        id: String(r.id),
+        facilityId: String(r.facility_id),
+        tenantId: String(r.tenant_id),
+        spaceId: r.space_id ? String(r.space_id) : undefined,
+        title: r.title,
+        reason: r.reason,
+        startsAt: new Date(r.starts_at).toISOString(),
+        endsAt: new Date(r.ends_at).toISOString(),
+        createdAt: new Date(r.created_at).toISOString(),
+        updatedAt: new Date(r.updated_at).toISOString(),
+      }));
+    }
+
+    return this.closures
+      .filter((c) => c.facilityId === facilityId && (!c.tenantId || c.tenantId === tenantId))
+      .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
+  }
+
+  public async createClosure(
+    facilityId: string,
+    hostId: string,
+    tenantId: string = 'default',
+    payload: CreateClosurePayload
+  ): Promise<FacilityClosure> {
+    await this.getFacility(facilityId, hostId, tenantId);
+
+    if (payload.spaceId) {
+      await this.getSpace(payload.spaceId, tenantId, hostId);
+    }
+
+    const validation = validateClosure(payload);
+    if (!validation.success) {
+      throw new BadRequestException(validation.errors.join('; '));
+    }
+
+    const validClosure = validation.data!;
+    const startMs = Date.parse(validClosure.startsAt);
+    const endMs = Date.parse(validClosure.endsAt);
+
+    // 1. Conflict detection with existing closures (overlapping ranges)
+    const existingClosures = await this.listClosures(facilityId, hostId, tenantId);
+    const hasOverlap = existingClosures.some((c) => {
+      // Overlap if same space or either is facility-wide
+      if (validClosure.spaceId && c.spaceId && c.spaceId !== validClosure.spaceId) {
+        return false;
+      }
+      const cStart = Date.parse(c.startsAt);
+      const cEnd = Date.parse(c.endsAt);
+      return Math.max(startMs, cStart) < Math.min(endMs, cEnd);
+    });
+
+    if (hasOverlap) {
+      throw new BadRequestException('A facility closure already overlaps the specified date and time window.');
+    }
+
+    // 2. Conflict detection with existing confirmed / active customer reservations
+    // INVARIANT: Do not delete, modify or invalidate reservations. Report conflicts instead.
+    if (this.databaseAvailable()) {
+      const spaceClause = validClosure.spaceId ? ' AND space_id=$5' : '';
+      const params: any[] = [facilityId, tenantId, validClosure.startsAt, validClosure.endsAt];
+      if (validClosure.spaceId) params.push(validClosure.spaceId);
+
+      const bookingConflicts = await this.databaseService!.query<any>(
+        `SELECT id, booking_reference, starts_at, ends_at FROM bookings
+         WHERE facility_id=$1 AND tenant_id=$2 AND status IN ('confirmed', 'active')
+           AND ends_at > $3::timestamptz AND starts_at < $4::timestamptz${spaceClause}`,
+        params
+      );
+
+      if (bookingConflicts.length > 0) {
+        const details = bookingConflicts
+          .map((b) => `${b.booking_reference || b.id} (${new Date(b.starts_at).toISOString()} to ${new Date(b.ends_at).toISOString()})`)
+          .join(', ');
+        throw new ConflictException(
+          `Cannot schedule closure. Confirmed customer reservation(s) exist during this interval: ${details}. Existing bookings cannot be automatically cancelled or altered.`
+        );
+      }
+
+      const rows = await this.databaseService!.query<any>(
+        `INSERT INTO facility_closures (facility_id, tenant_id, space_id, title, reason, starts_at, ends_at)
+         VALUES ($1, $2, $3, $4, $5, $6::timestamptz, $7::timestamptz)
+         RETURNING *`,
+        [
+          facilityId,
+          tenantId,
+          validClosure.spaceId || null,
+          validClosure.title,
+          validClosure.reason,
+          validClosure.startsAt,
+          validClosure.endsAt,
+        ]
+      );
+
+      return {
+        id: String(rows[0].id),
+        facilityId: String(rows[0].facility_id),
+        tenantId: String(rows[0].tenant_id),
+        spaceId: rows[0].space_id ? String(rows[0].space_id) : undefined,
+        title: rows[0].title,
+        reason: rows[0].reason,
+        startsAt: new Date(rows[0].starts_at).toISOString(),
+        endsAt: new Date(rows[0].ends_at).toISOString(),
+        createdAt: new Date(rows[0].created_at).toISOString(),
+        updatedAt: new Date(rows[0].updated_at).toISOString(),
+      };
+    }
+
+    if (!this.demoMode) {
+      throw new ServiceUnavailableException('Closure storage is unavailable.');
+    }
+
+    const created: FacilityClosure = {
+      id: `cls-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+      facilityId,
+      tenantId,
+      spaceId: validClosure.spaceId,
+      title: validClosure.title,
+      reason: validClosure.reason,
+      startsAt: validClosure.startsAt,
+      endsAt: validClosure.endsAt,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    this.closures.push(created);
+    return created;
+  }
+
+  public async updateClosure(
+    facilityId: string,
+    closureId: string,
+    hostId: string,
+    tenantId: string = 'default',
+    payload: UpdateClosurePayload
+  ): Promise<FacilityClosure> {
+    await this.getFacility(facilityId, hostId, tenantId);
+
+    const existingClosures = await this.listClosures(facilityId, hostId, tenantId);
+    const existing = existingClosures.find((c) => c.id === closureId);
+    if (!existing) {
+      throw new NotFoundException(`Facility closure with ID '${closureId}' not found.`);
+    }
+
+    const merged = {
+      title: payload.title !== undefined ? payload.title : existing.title,
+      reason: payload.reason !== undefined ? payload.reason : existing.reason,
+      startsAt: payload.startsAt !== undefined ? payload.startsAt : existing.startsAt,
+      endsAt: payload.endsAt !== undefined ? payload.endsAt : existing.endsAt,
+      spaceId: payload.spaceId !== undefined ? payload.spaceId : existing.spaceId,
+    };
+
+    const validation = validateClosure(merged);
+    if (!validation.success) {
+      throw new BadRequestException(validation.errors.join('; '));
+    }
+
+    const valid = validation.data!;
+    const startMs = Date.parse(valid.startsAt);
+    const endMs = Date.parse(valid.endsAt);
+
+    // Check overlap with other closures
+    const hasOverlap = existingClosures.some((c) => {
+      if (c.id === closureId) return false;
+      if (valid.spaceId && c.spaceId && c.spaceId !== valid.spaceId) return false;
+      const cStart = Date.parse(c.startsAt);
+      const cEnd = Date.parse(c.endsAt);
+      return Math.max(startMs, cStart) < Math.min(endMs, cEnd);
+    });
+
+    if (hasOverlap) {
+      throw new BadRequestException('Updated closure window overlaps another existing closure.');
+    }
+
+    if (this.databaseAvailable()) {
+      const rows = await this.databaseService!.query<any>(
+        `UPDATE facility_closures
+         SET title=$1, reason=$2, starts_at=$3::timestamptz, ends_at=$4::timestamptz, space_id=$5, updated_at=NOW()
+         WHERE id=$6 AND facility_id=$7 AND tenant_id=$8
+         RETURNING *`,
+        [
+          valid.title,
+          valid.reason,
+          valid.startsAt,
+          valid.endsAt,
+          valid.spaceId || null,
+          closureId,
+          facilityId,
+          tenantId,
+        ]
+      );
+      if (!rows[0]) throw new NotFoundException(`Closure '${closureId}' not found`);
+      return {
+        id: String(rows[0].id),
+        facilityId: String(rows[0].facility_id),
+        tenantId: String(rows[0].tenant_id),
+        spaceId: rows[0].space_id ? String(rows[0].space_id) : undefined,
+        title: rows[0].title,
+        reason: rows[0].reason,
+        startsAt: new Date(rows[0].starts_at).toISOString(),
+        endsAt: new Date(rows[0].ends_at).toISOString(),
+        createdAt: new Date(rows[0].created_at).toISOString(),
+        updatedAt: new Date(rows[0].updated_at).toISOString(),
+      };
+    }
+
+    const idx = this.closures.findIndex((c) => c.id === closureId);
+    if (idx >= 0) {
+      this.closures[idx] = {
+        ...this.closures[idx],
+        title: valid.title,
+        reason: valid.reason,
+        startsAt: valid.startsAt,
+        endsAt: valid.endsAt,
+        spaceId: valid.spaceId,
+        updatedAt: new Date().toISOString(),
+      };
+      return this.closures[idx];
+    }
+
+    throw new NotFoundException(`Closure '${closureId}' not found`);
+  }
+
+  public async deleteClosure(
+    facilityId: string,
+    closureId: string,
+    hostId: string,
+    tenantId: string = 'default'
+  ): Promise<{ deleted: boolean }> {
+    await this.getFacility(facilityId, hostId, tenantId);
+
+    if (this.databaseAvailable()) {
+      const res = await this.databaseService!.query<any>(
+        `DELETE FROM facility_closures WHERE id=$1 AND facility_id=$2 AND tenant_id=$3 RETURNING id`,
+        [closureId, facilityId, tenantId]
+      );
+      if (!res[0]) throw new NotFoundException(`Closure with ID '${closureId}' not found.`);
+      return { deleted: true };
+    }
+
+    const idx = this.closures.findIndex((c) => c.id === closureId && c.facilityId === facilityId);
+    if (idx === -1) {
+      throw new NotFoundException(`Closure with ID '${closureId}' not found.`);
+    }
+    this.closures.splice(idx, 1);
+    return { deleted: true };
+  }
+
+  // =============================================================================
+  // Section 3B: Facility & Bay Maintenance Scheduling
+  // =============================================================================
+
+  public async listMaintenance(
+    facilityId: string,
+    hostId?: string,
+    tenantId: string = 'default'
+  ): Promise<FacilityMaintenance[]> {
+    await this.getFacility(facilityId, hostId, tenantId);
+
+    if (this.databaseAvailable()) {
+      const rows = await this.databaseService!.query<any>(
+        `SELECT * FROM facility_maintenance_periods WHERE facility_id=$1 AND tenant_id=$2 ORDER BY starts_at ASC`,
+        [facilityId, tenantId]
+      );
+      return rows.map((r) => ({
+        id: String(r.id),
+        facilityId: String(r.facility_id),
+        tenantId: String(r.tenant_id),
+        spaceId: r.space_id ? String(r.space_id) : undefined,
+        title: r.title,
+        description: r.description ?? undefined,
+        status: r.status as MaintenanceStatus,
+        startsAt: new Date(r.starts_at).toISOString(),
+        endsAt: new Date(r.ends_at).toISOString(),
+        createdAt: new Date(r.created_at).toISOString(),
+        updatedAt: new Date(r.updated_at).toISOString(),
+      }));
+    }
+
+    return this.maintenance
+      .filter((m) => m.facilityId === facilityId && (!m.tenantId || m.tenantId === tenantId))
+      .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
+  }
+
+  public async createMaintenance(
+    facilityId: string,
+    hostId: string,
+    tenantId: string = 'default',
+    payload: CreateMaintenancePayload
+  ): Promise<FacilityMaintenance> {
+    await this.getFacility(facilityId, hostId, tenantId);
+
+    let targetSpace: ParkingSpace | null = null;
+    if (payload.spaceId) {
+      targetSpace = await this.getSpace(payload.spaceId, tenantId, hostId);
+    }
+
+    const validation = validateMaintenance(payload);
+    if (!validation.success) {
+      throw new BadRequestException(validation.errors.join('; '));
+    }
+
+    const valid = validation.data!;
+
+    if (this.databaseAvailable()) {
+      const rows = await this.databaseService!.query<any>(
+        `INSERT INTO facility_maintenance_periods (facility_id, tenant_id, space_id, title, description, status, starts_at, ends_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7::timestamptz, $8::timestamptz)
+         RETURNING *`,
+        [
+          facilityId,
+          tenantId,
+          valid.spaceId || null,
+          valid.title,
+          valid.description || null,
+          valid.status,
+          valid.startsAt,
+          valid.endsAt,
+        ]
+      );
+
+      // If active maintenance on individual space, synchronize bay status to maintenance
+      if (valid.spaceId && valid.status === 'in_progress') {
+        await this.databaseService!.query(
+          `UPDATE parking_spaces SET status='maintenance', updated_at=NOW() WHERE id=$1 AND facility_id=$2 AND tenant_id=$3`,
+          [valid.spaceId, facilityId, tenantId]
+        );
+      }
+
+      return {
+        id: String(rows[0].id),
+        facilityId: String(rows[0].facility_id),
+        tenantId: String(rows[0].tenant_id),
+        spaceId: rows[0].space_id ? String(rows[0].space_id) : undefined,
+        title: rows[0].title,
+        description: rows[0].description ?? undefined,
+        status: rows[0].status as MaintenanceStatus,
+        startsAt: new Date(rows[0].starts_at).toISOString(),
+        endsAt: new Date(rows[0].ends_at).toISOString(),
+        createdAt: new Date(rows[0].created_at).toISOString(),
+        updatedAt: new Date(rows[0].updated_at).toISOString(),
+      };
+    }
+
+    if (!this.demoMode) {
+      throw new ServiceUnavailableException('Maintenance storage is unavailable.');
+    }
+
+    const created: FacilityMaintenance = {
+      id: `mnt-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+      facilityId,
+      tenantId,
+      spaceId: valid.spaceId,
+      title: valid.title,
+      description: valid.description,
+      status: valid.status,
+      startsAt: valid.startsAt,
+      endsAt: valid.endsAt,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    this.maintenance.push(created);
+
+    // Bay status synchronization
+    if (valid.spaceId && valid.status === 'in_progress' && targetSpace) {
+      targetSpace.status = 'maintenance';
+      targetSpace.updatedAt = new Date().toISOString();
+    }
+
+    return created;
+  }
+
+  public async updateMaintenance(
+    facilityId: string,
+    maintenanceId: string,
+    hostId: string,
+    tenantId: string = 'default',
+    payload: UpdateMaintenancePayload
+  ): Promise<FacilityMaintenance> {
+    await this.getFacility(facilityId, hostId, tenantId);
+
+    const existingList = await this.listMaintenance(facilityId, hostId, tenantId);
+    const existing = existingList.find((m) => m.id === maintenanceId);
+    if (!existing) {
+      throw new NotFoundException(`Maintenance period with ID '${maintenanceId}' not found.`);
+    }
+
+    // Validate state transition if status is being updated
+    if (payload.status !== undefined && payload.status !== existing.status) {
+      const transitionVal = validateMaintenanceTransition(existing.status, payload.status);
+      if (!transitionVal.success) {
+        throw new BadRequestException(transitionVal.errors.join('; '));
+      }
+    }
+
+    const merged = {
+      title: payload.title !== undefined ? payload.title : existing.title,
+      description: payload.description !== undefined ? payload.description : existing.description,
+      status: payload.status !== undefined ? payload.status : existing.status,
+      startsAt: payload.startsAt !== undefined ? payload.startsAt : existing.startsAt,
+      endsAt: payload.endsAt !== undefined ? payload.endsAt : existing.endsAt,
+      spaceId: payload.spaceId !== undefined ? payload.spaceId : existing.spaceId,
+    };
+
+    const validation = validateMaintenance(merged);
+    if (!validation.success) {
+      throw new BadRequestException(validation.errors.join('; '));
+    }
+
+    const valid = validation.data!;
+
+    if (this.databaseAvailable()) {
+      const rows = await this.databaseService!.query<any>(
+        `UPDATE facility_maintenance_periods
+         SET title=$1, description=$2, status=$3, starts_at=$4::timestamptz, ends_at=$5::timestamptz, space_id=$6, updated_at=NOW()
+         WHERE id=$7 AND facility_id=$8 AND tenant_id=$9
+         RETURNING *`,
+        [
+          valid.title,
+          valid.description || null,
+          valid.status,
+          valid.startsAt,
+          valid.endsAt,
+          valid.spaceId || null,
+          maintenanceId,
+          facilityId,
+          tenantId,
+        ]
+      );
+
+      // Synchronize bay status
+      if (valid.spaceId) {
+        if (valid.status === 'in_progress') {
+          await this.databaseService!.query(
+            `UPDATE parking_spaces SET status='maintenance', updated_at=NOW() WHERE id=$1 AND facility_id=$2 AND tenant_id=$3`,
+            [valid.spaceId, facilityId, tenantId]
+          );
+        } else if (valid.status === 'completed' || valid.status === 'cancelled') {
+          await this.databaseService!.query(
+            `UPDATE parking_spaces SET status='available', updated_at=NOW() WHERE id=$1 AND facility_id=$2 AND tenant_id=$3 AND status='maintenance'`,
+            [valid.spaceId, facilityId, tenantId]
+          );
+        }
+      }
+
+      return {
+        id: String(rows[0].id),
+        facilityId: String(rows[0].facility_id),
+        tenantId: String(rows[0].tenant_id),
+        spaceId: rows[0].space_id ? String(rows[0].space_id) : undefined,
+        title: rows[0].title,
+        description: rows[0].description ?? undefined,
+        status: rows[0].status as MaintenanceStatus,
+        startsAt: new Date(rows[0].starts_at).toISOString(),
+        endsAt: new Date(rows[0].ends_at).toISOString(),
+        createdAt: new Date(rows[0].created_at).toISOString(),
+        updatedAt: new Date(rows[0].updated_at).toISOString(),
+      };
+    }
+
+    const idx = this.maintenance.findIndex((m) => m.id === maintenanceId);
+    if (idx >= 0) {
+      const updated: FacilityMaintenance = {
+        ...this.maintenance[idx],
+        title: valid.title,
+        description: valid.description,
+        status: valid.status,
+        startsAt: valid.startsAt,
+        endsAt: valid.endsAt,
+        spaceId: valid.spaceId,
+        updatedAt: new Date().toISOString(),
+      };
+      this.maintenance[idx] = updated;
+
+      // Update bay status
+      if (valid.spaceId) {
+        const space = this.spaces.find((s) => s.id === valid.spaceId);
+        if (space) {
+          if (valid.status === 'in_progress') {
+            space.status = 'maintenance';
+          } else if (valid.status === 'completed' || valid.status === 'cancelled') {
+            if (space.status === 'maintenance') {
+              space.status = 'available';
+            }
+          }
+        }
+      }
+
+      return updated;
+    }
+
+    throw new NotFoundException(`Maintenance period '${maintenanceId}' not found`);
+  }
+
+  public async deleteMaintenance(
+    facilityId: string,
+    maintenanceId: string,
+    hostId: string,
+    tenantId: string = 'default'
+  ): Promise<{ deleted: boolean }> {
+    await this.getFacility(facilityId, hostId, tenantId);
+
+    const existingList = await this.listMaintenance(facilityId, hostId, tenantId);
+    const existing = existingList.find((m) => m.id === maintenanceId);
+    if (!existing) {
+      throw new NotFoundException(`Maintenance period with ID '${maintenanceId}' not found.`);
+    }
+
+    if (this.databaseAvailable()) {
+      if (existing.spaceId && existing.status === 'in_progress') {
+        await this.databaseService!.query(
+          `UPDATE parking_spaces SET status='available', updated_at=NOW() WHERE id=$1 AND facility_id=$2 AND status='maintenance'`,
+          [existing.spaceId, facilityId]
+        );
+      }
+      await this.databaseService!.query(
+        `DELETE FROM facility_maintenance_periods WHERE id=$1 AND facility_id=$2 AND tenant_id=$3`,
+        [maintenanceId, facilityId, tenantId]
+      );
+      return { deleted: true };
+    }
+
+    const idx = this.maintenance.findIndex((m) => m.id === maintenanceId);
+    if (idx >= 0) {
+      const removed = this.maintenance[idx];
+      if (removed.spaceId && removed.status === 'in_progress') {
+        const space = this.spaces.find((s) => s.id === removed.spaceId);
+        if (space && space.status === 'maintenance') {
+          space.status = 'available';
+        }
+      }
+      this.maintenance.splice(idx, 1);
+    }
+
+    return { deleted: true };
+  }
+
   public getInternalFacilities(): ParkingFacility[] {
     return this.facilities;
   }
@@ -1045,4 +1918,17 @@ export class FacilitiesService {
   public getInternalSpaces(facilityId?: string): ParkingSpace[] {
     return facilityId ? this.spaces.filter((s) => s.facilityId === facilityId) : this.spaces;
   }
+
+  public getInternalSchedules(facilityId?: string): OperatingSchedule[] {
+    return facilityId ? this.schedules.filter((s) => s.facilityId === facilityId) : this.schedules;
+  }
+
+  public getInternalClosures(facilityId?: string): FacilityClosure[] {
+    return facilityId ? this.closures.filter((c) => c.facilityId === facilityId) : this.closures;
+  }
+
+  public getInternalMaintenance(facilityId?: string): FacilityMaintenance[] {
+    return facilityId ? this.maintenance.filter((m) => m.facilityId === facilityId) : this.maintenance;
+  }
 }
+

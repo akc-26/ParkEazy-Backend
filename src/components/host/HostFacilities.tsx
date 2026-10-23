@@ -15,9 +15,11 @@ import {
   Edit3,
   Layers,
   Sliders,
+  Calendar,
+  Wrench,
   X
 } from 'lucide-react';
-import { Facility, User } from '../../types';
+import { Facility, User, OperatingHours, FacilityClosure, FacilityMaintenance } from '../../types';
 import { api } from '../../api';
 
 interface HostFacilitiesProps {

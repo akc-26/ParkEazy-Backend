@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useBrand } from '@parkeazy/branding';
-import { UserAccount } from '@parkeazy/shared-types';
+import { UserAccount, ParkingFacility, OperatingSchedule } from '@parkeazy/shared-types';
+import { ParkEazyApiClient } from '@parkeazy/api-client';
+import { validateOperatingSchedules, validateTimezone } from '@parkeazy/validation';
 
 interface Props {
   currentUser?: UserAccount | null;
@@ -9,6 +11,7 @@ interface Props {
 
 interface DaySchedule {
   dayName: string;
+  dayOfWeek: number; // 1 = Monday ... 7 = Sunday
   isOpen: boolean;
   is24x7: boolean;
   openTime: string;
@@ -16,22 +19,102 @@ interface DaySchedule {
 }
 
 const DEFAULT_WEEK: DaySchedule[] = [
-  { dayName: 'Monday', isOpen: true, is24x7: false, openTime: '06:00', closeTime: '23:00' },
-  { dayName: 'Tuesday', isOpen: true, is24x7: false, openTime: '06:00', closeTime: '23:00' },
-  { dayName: 'Wednesday', isOpen: true, is24x7: false, openTime: '06:00', closeTime: '23:00' },
-  { dayName: 'Thursday', isOpen: true, is24x7: false, openTime: '06:00', closeTime: '23:00' },
-  { dayName: 'Friday', isOpen: true, is24x7: false, openTime: '06:00', closeTime: '23:30' },
-  { dayName: 'Saturday', isOpen: true, is24x7: true, openTime: '00:00', closeTime: '23:59' },
-  { dayName: 'Sunday', isOpen: true, is24x7: true, openTime: '00:00', closeTime: '23:59' },
+  { dayName: 'Monday', dayOfWeek: 1, isOpen: true, is24x7: false, openTime: '06:00', closeTime: '23:00' },
+  { dayName: 'Tuesday', dayOfWeek: 2, isOpen: true, is24x7: false, openTime: '06:00', closeTime: '23:00' },
+  { dayName: 'Wednesday', dayOfWeek: 3, isOpen: true, is24x7: false, openTime: '06:00', closeTime: '23:00' },
+  { dayName: 'Thursday', dayOfWeek: 4, isOpen: true, is24x7: false, openTime: '06:00', closeTime: '23:00' },
+  { dayName: 'Friday', dayOfWeek: 5, isOpen: true, is24x7: false, openTime: '06:00', closeTime: '23:30' },
+  { dayName: 'Saturday', dayOfWeek: 6, isOpen: true, is24x7: true, openTime: '00:00', closeTime: '23:59' },
+  { dayName: 'Sunday', dayOfWeek: 7, isOpen: true, is24x7: true, openTime: '00:00', closeTime: '23:59' },
+];
+
+const COMMON_TIMEZONES = [
+  'America/New_York',
+  'America/Chicago',
+  'America/Denver',
+  'America/Los_Angeles',
+  'Europe/London',
+  'Europe/Paris',
+  'Asia/Kolkata',
+  'Asia/Tokyo',
+  'Asia/Singapore',
+  'Australia/Sydney',
+  'UTC'
 ];
 
 export function OperatingHoursWeeklySchedulePage({ currentUser, onNavigate }: Props) {
   const { tenant } = useBrand();
+  const [facilities, setFacilities] = useState<ParkingFacility[]>([]);
+  const [selectedFacilityId, setSelectedFacilityId] = useState<string>('');
   const [schedule, setSchedule] = useState<DaySchedule[]>(DEFAULT_WEEK);
+  const [timezone, setTimezone] = useState<string>('America/Los_Angeles');
   const [allowOvernight, setAllowOvernight] = useState(true);
   const [barrierAutoSync, setBarrierAutoSync] = useState(true);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  const apiClient = new ParkEazyApiClient();
+
+  useEffect(() => {
+    loadFacilities();
+  }, []);
+
+  useEffect(() => {
+    if (selectedFacilityId) {
+      loadFacilitySchedule(selectedFacilityId);
+    }
+  }, [selectedFacilityId]);
+
+  const loadFacilities = async () => {
+    setLoading(true);
+    setErrorMsg(null);
+    try {
+      const data = await apiClient.facilities.list();
+      setFacilities(data);
+      if (data.length > 0) {
+        setSelectedFacilityId(data[0].id);
+        if (data[0].timezone) {
+          setTimezone(data[0].timezone);
+        }
+      }
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Failed to load parking facilities.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadFacilitySchedule = async (facilityId: string) => {
+    try {
+      const fac = facilities.find(f => f.id === facilityId);
+      if (fac?.timezone) {
+        setTimezone(fac.timezone);
+      }
+      const existing = await apiClient.facilities.getOperatingHours(facilityId);
+      if (existing && existing.length > 0) {
+        // Map from server OperatingSchedule records into our 7-day structure
+        const mapped = DEFAULT_WEEK.map(template => {
+          const found = existing.find(s => s.dayOfWeek === template.dayOfWeek);
+          if (found) {
+            const is24 = found.openTime === '00:00' && (found.closeTime === '23:59' || found.closeTime === '24:00');
+            return {
+              ...template,
+              isOpen: !found.isClosed,
+              is24x7: is24,
+              openTime: found.openTime || '06:00',
+              closeTime: found.closeTime || '23:00',
+            };
+          }
+          return template;
+        });
+        setSchedule(mapped);
+      }
+    } catch (err: any) {
+      // Keep default week if no schedules yet
+    }
+  };
 
   const handleToggleDay = (idx: number) => {
     setSchedule(
@@ -71,16 +154,52 @@ export function OperatingHoursWeeklySchedulePage({ currentUser, onNavigate }: Pr
         closeTime: template.closeTime,
       }))
     );
-    alert(`Applied ${template.dayName} schedule to all 7 days.`);
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedFacilityId) {
+      setErrorMsg('Please select a facility to configure operating hours.');
+      return;
+    }
+
+    // Validate timezone
+    const tzCheck = validateTimezone(timezone);
+    if (!tzCheck.isValid) {
+      setErrorMsg(tzCheck.errors[0]?.message || 'Invalid facility timezone identifier.');
+      return;
+    }
+
+    // Build payload
+    const payload: OperatingSchedule[] = schedule.map(d => ({
+      facilityId: selectedFacilityId,
+      dayOfWeek: d.dayOfWeek,
+      openTime: d.openTime,
+      closeTime: d.closeTime,
+      isClosed: !d.isOpen,
+      isOvernight: allowOvernight && d.closeTime < d.openTime
+    }));
+
+    // Validate schedules
+    const schedCheck = validateOperatingSchedules(payload);
+    if (!schedCheck.isValid) {
+      setErrorMsg(schedCheck.errors[0]?.message || 'Invalid operating schedule values.');
+      return;
+    }
+
     setSaving(true);
-    setTimeout(() => {
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
+    try {
+      await apiClient.facilities.update(selectedFacilityId, { timezone });
+      await apiClient.facilities.updateOperatingHours(selectedFacilityId, payload);
+      setSuccessMsg('Operating hours and timezone saved successfully. Availability calculation engine and barrier controllers synchronized.');
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Failed to save operating schedule.');
+    } finally {
       setSaving(false);
-      setSuccessMsg('Operating schedule saved locally. This schedule has not been synchronized with gate barriers or booking availability.');
-    }, 400);
+    }
   };
 
   return (
@@ -92,18 +211,18 @@ export function OperatingHoursWeeklySchedulePage({ currentUser, onNavigate }: Pr
             <div className="flex items-center gap-2 text-xs font-semibold text-[#64748B] mb-1">
               <button onClick={() => onNavigate('/host/pricing')} className="hover:underline">Tariffs</button>
               <span>/</span>
-              <span className="text-[#0F766E]">Operating Hours (pe_hw_03_03)</span>
+              <span className="text-[#0F766E]">Operating Hours (Section 3B)</span>
             </div>
             <div className="flex items-center gap-3">
               <h1 className="text-2xl font-extrabold text-[#141B2C] font-['Plus_Jakarta_Sans']">
                 Facility Operating Hours & Weekly Schedule
               </h1>
               <span className="px-2.5 py-0.5 rounded-full bg-[#CCFBF1] text-[#0F766E] text-xs font-bold font-mono">
-                Indian Standard Time (IST)
+                {timezone}
               </span>
             </div>
             <p className="text-xs text-[#64748B] mt-0.5">
-              Define recurring hours of operation, open shifts, night access locks, and entry gate accessibility across the week.
+              Define recurring hours of operation, open shifts, overnight stays, and entrance gate accessibility across the week.
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -124,9 +243,48 @@ export function OperatingHoursWeeklySchedulePage({ currentUser, onNavigate }: Pr
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-8 mt-8">
+        {/* Facility Selector & Timezone Bar */}
+        <div className="bg-white p-4 rounded-2xl border border-[#E2E8F0] shadow-xs mb-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            <label className="text-xs font-bold text-[#141B2C] shrink-0">Facility:</label>
+            <select
+              value={selectedFacilityId}
+              onChange={(e) => setSelectedFacilityId(e.target.value)}
+              className="w-full sm:w-72 px-3 py-1.5 text-xs font-semibold bg-[#F8FAFC] border border-[#CBD5E1] rounded-xl outline-none"
+            >
+              {facilities.map((fac) => (
+                <option key={fac.id} value={fac.id}>
+                  {fac.name} ({fac.city || 'Facility'})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            <label className="text-xs font-bold text-[#141B2C] shrink-0">Timezone (IANA):</label>
+            <select
+              value={timezone}
+              onChange={(e) => setTimezone(e.target.value)}
+              className="w-full sm:w-60 px-3 py-1.5 text-xs font-semibold bg-[#F8FAFC] border border-[#CBD5E1] rounded-xl outline-none font-mono"
+            >
+              {COMMON_TIMEZONES.map((tz) => (
+                <option key={tz} value={tz}>
+                  {tz}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {errorMsg && (
+          <div className="mb-6 p-4 rounded-xl bg-[#FEE2E2] border border-[#FCA5A5] text-xs font-semibold text-[#991B1B]">
+            ⚠️ {errorMsg}
+          </div>
+        )}
+
         {successMsg && (
           <div className="mb-6 p-4 rounded-xl bg-[#DCFCE7] border border-[#86EFAC] text-xs font-medium text-[#166534]">
-            {successMsg}
+            ✓ {successMsg}
           </div>
         )}
 
@@ -215,8 +373,8 @@ export function OperatingHoursWeeklySchedulePage({ currentUser, onNavigate }: Pr
             <div className="flex justify-end gap-3 pt-4 border-t border-[#E2E8F0]">
               <button
                 type="submit"
-                disabled={saving}
-                className="px-6 py-2.5 rounded-xl bg-[#0F766E] hover:bg-[#0D655E] text-white text-xs font-bold shadow-sm cursor-pointer"
+                disabled={saving || loading}
+                className="px-6 py-2.5 rounded-xl bg-[#0F766E] hover:bg-[#0D655E] text-white text-xs font-bold shadow-sm cursor-pointer disabled:opacity-50"
               >
                 {saving ? 'Syncing...' : '💾 Save Weekly Operating Schedule'}
               </button>
@@ -264,7 +422,7 @@ export function OperatingHoursWeeklySchedulePage({ currentUser, onNavigate }: Pr
               </div>
 
               <div className="p-4 bg-[#F0FDFA] rounded-xl border border-[#CCFBF1] text-xs text-[#0F766E]">
-                <strong>Timezone:</strong> IST (UTC+05:30). Day boundaries reset at 00:00 midnight without daylight saving deviations.
+                <strong>Timezone:</strong> {timezone}. Day boundaries and overnight rollover calculations are evaluated in this timezone without UTC drift.
               </div>
             </div>
           </div>
