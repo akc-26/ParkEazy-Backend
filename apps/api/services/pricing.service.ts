@@ -31,6 +31,8 @@ import { inventoryService } from './inventory.service';
 import { bookingService } from './booking.service';
 import { dbManager } from '../database/connection';
 import { appConfig } from '../config/env';
+import { db } from '../../../server/db';
+import { availabilityService } from './availability.service';
 
 export class PricingService {
   private static instance: PricingService;
@@ -305,16 +307,39 @@ export class PricingService {
   // Rate Plans CRUD (pe_hw_03_02)
   // --------------------------------------------------------------------------
 
+  public registerRatePlan(plan: RatePlan): void {
+    const idx = this.ratePlans.findIndex((p) => p.id === plan.id);
+    if (idx >= 0) {
+      this.ratePlans[idx] = plan;
+    } else {
+      this.ratePlans.unshift(plan);
+    }
+  }
+
+  public removeRatePlan(planId: string): void {
+    this.ratePlans = this.ratePlans.filter((p) => p.id !== planId);
+  }
+
   public getRatePlansForHost(hostId: string, facilityId?: string): RatePlan[] {
-    return this.ratePlans.filter((r) => {
-      if (r.hostId !== hostId) return false;
+    const dbPlans = ((db as any)?.data?.ratePlans || []) as RatePlan[];
+    const map = new Map<string, RatePlan>();
+    for (const p of this.ratePlans) {
+      if (p && p.id) map.set(p.id, p);
+    }
+    for (const p of dbPlans) {
+      if (p && p.id) map.set(p.id, p);
+    }
+    const combined = Array.from(map.values());
+    return combined.filter((r) => {
+      if (r.hostId && r.hostId !== hostId) return false;
       if (facilityId && r.facilityId !== facilityId) return false;
       return true;
     });
   }
 
   public getRatePlanById(rateId: string): RatePlan {
-    const rate = this.ratePlans.find((r) => r.id === rateId);
+    const dbPlans = ((db as any)?.data?.ratePlans || []) as RatePlan[];
+    const rate = dbPlans.find((r) => r.id === rateId) || this.ratePlans.find((r) => r.id === rateId);
     if (!rate) {
       throw new NotFoundError(`Rate plan '${rateId}' not found.`);
     }
@@ -327,7 +352,8 @@ export class PricingService {
     actorId: string,
     correlationId?: string
   ): RatePlan {
-    const facility = inventoryService.getLocationById(req.facilityId);
+    const facility = inventoryService.getLocationById(req.facilityId) ||
+      ((db as any)?.data?.facilities || []).find((f: any) => f.id === req.facilityId);
     if (!facility) {
       throw new NotFoundError(`Facility '${req.facilityId}' not found.`);
     }
@@ -336,8 +362,9 @@ export class PricingService {
     }
 
     if (req.bayId) {
-      const bay = inventoryService.getBayById(req.bayId);
-      if (!bay || bay.locationId !== req.facilityId) {
+      const bay = inventoryService.getBayById(req.bayId) ||
+        ((db as any)?.data?.bays || []).find((b: any) => b.id === req.bayId);
+      if (!bay || (bay.locationId && bay.locationId !== req.facilityId && bay.facilityId !== req.facilityId)) {
         throw new NotFoundError(`Space '${req.bayId}' not found in facility '${req.facilityId}'.`);
       }
     }
@@ -372,14 +399,71 @@ export class PricingService {
       updatedAtUtc: nowIso,
     };
 
-    // Conflict detection
-    const conflict = detectPricingRuleConflict(this.ratePlans, newPlan);
+    // Conflict detection across all active plans in this facility
+    const existingPlans = this.getRatePlansForHost(hostId, val.facilityId);
+    const conflict = detectPricingRuleConflict(existingPlans, newPlan);
     if (conflict) {
       throw new AppError(conflict, 409, 'PRICING_RULE_CONFLICT');
     }
 
     this.ratePlans.unshift(newPlan);
     this.saveToDisk();
+
+    // Persist to authoritative store & PostgreSQL
+    try {
+      if (db && typeof (db as any).persistEntity === 'function') {
+        (db as any).persistEntity('ratePlans', newPlan.id, newPlan);
+        const legacyRule = {
+          id: newPlan.id,
+          facilityId: newPlan.facilityId,
+          name: newPlan.name,
+          baseHourlyRate: newPlan.hourlyRateCents / 100,
+          dailyMaxRate: newPlan.dailyRateCents / 100,
+          overnightFlatRate: (newPlan.dailyRateCents / 100) * 0.6,
+          surgeMultiplier: 1.0,
+          peakHours: [],
+          specialEvents: [],
+          discounts: [],
+          isActive: newPlan.isActive,
+          createdAt: nowIso,
+          updatedAt: nowIso,
+        };
+        (db as any).persistEntity('pricingRules', newPlan.id, legacyRule);
+      }
+      if (dbManager.isPostgresConnected()) {
+        dbManager.query(
+          `INSERT INTO pricing_rate_plans
+           (id, facility_id, host_id, bay_id, space_id, name, hourly_rate_cents, daily_rate_cents, min_billable_minutes, min_booking_minutes, max_booking_minutes, step_minutes, vehicle_category, is_active, effective_from_utc, effective_until_utc, created_at_utc, updated_at_utc)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+           ON CONFLICT (id) DO UPDATE SET
+             name = EXCLUDED.name,
+             hourly_rate_cents = EXCLUDED.hourly_rate_cents,
+             daily_rate_cents = EXCLUDED.daily_rate_cents,
+             is_active = EXCLUDED.is_active,
+             updated_at_utc = EXCLUDED.updated_at_utc`,
+          [
+            newPlan.id,
+            newPlan.facilityId,
+            newPlan.hostId,
+            newPlan.bayId || null,
+            newPlan.bayId || null,
+            newPlan.name,
+            newPlan.hourlyRateCents,
+            newPlan.dailyRateCents,
+            newPlan.minBillableMinutes,
+            newPlan.minBookingMinutes,
+            newPlan.maxBookingMinutes,
+            newPlan.stepMinutes,
+            newPlan.vehicleCategory || 'ALL',
+            newPlan.isActive,
+            newPlan.effectiveFromUtc,
+            newPlan.effectiveUntilUtc || null,
+            newPlan.createdAtUtc,
+            newPlan.updatedAtUtc,
+          ]
+        ).catch(() => {});
+      }
+    } catch {}
 
     this.recordAuditLog(
       hostId,
@@ -431,6 +515,24 @@ export class PricingService {
     plan.updatedAtUtc = new Date().toISOString();
     this.saveToDisk();
 
+    try {
+      if (db && typeof (db as any).persistEntity === 'function') {
+        (db as any).persistEntity('ratePlans', plan.id, plan);
+      }
+      if (dbManager.isPostgresConnected()) {
+        dbManager.query(
+          `UPDATE pricing_rate_plans SET
+             name = $1,
+             hourly_rate_cents = $2,
+             daily_rate_cents = $3,
+             is_active = $4,
+             updated_at_utc = $5
+           WHERE id = $6`,
+          [plan.name, plan.hourlyRateCents, plan.dailyRateCents, plan.isActive, plan.updatedAtUtc, plan.id]
+        ).catch(() => {});
+      }
+    } catch {}
+
     this.recordAuditLog(
       hostId,
       plan.facilityId,
@@ -461,6 +563,18 @@ export class PricingService {
     plan.isActive = false;
     plan.updatedAtUtc = new Date().toISOString();
     this.saveToDisk();
+
+    try {
+      if (db && typeof (db as any).persistEntity === 'function') {
+        (db as any).persistEntity('ratePlans', plan.id, plan);
+      }
+      if (dbManager.isPostgresConnected()) {
+        dbManager.query(
+          `UPDATE pricing_rate_plans SET is_active = FALSE, updated_at_utc = NOW() WHERE id = $1`,
+          [plan.id]
+        ).catch(() => {});
+      }
+    } catch {}
 
     this.recordAuditLog(
       hostId,
@@ -803,18 +917,20 @@ export class PricingService {
   // --------------------------------------------------------------------------
 
   public calculateAuthoritativeEstimate(req: PriceEstimateRequest): PriceEstimateResponse {
-    const facility = inventoryService.getLocationById(req.facilityId);
+    const facility = inventoryService.getLocationById(req.facilityId) ||
+      ((db as any)?.data?.facilities || []).find((f: any) => f.id === req.facilityId);
     if (!facility) {
       throw new NotFoundError(`Facility '${req.facilityId}' not found.`);
     }
 
     let bayNumber: string | undefined;
     if (req.bayId) {
-      const bay = inventoryService.getBayById(req.bayId);
-      if (!bay || bay.locationId !== req.facilityId) {
+      const bay = inventoryService.getBayById(req.bayId) ||
+        ((db as any)?.data?.bays || []).find((b: any) => b.id === req.bayId);
+      if (!bay || (bay.locationId && bay.locationId !== req.facilityId && bay.facilityId !== req.facilityId)) {
         throw new NotFoundError(`Space '${req.bayId}' not found in facility '${req.facilityId}'.`);
       }
-      bayNumber = bay.bayNumber;
+      bayNumber = bay.bayNumber || bay.identifier || req.bayId;
     }
 
     const start = new Date(req.startTimeUtc);
@@ -849,8 +965,8 @@ export class PricingService {
     // Level 3: Facility + exact vehicle category
     // Level 4: Facility + ALL vehicle category
     // Level 5: Facility default rate
-    const activeRates = this.ratePlans.filter(
-      (r) => r.facilityId === req.facilityId && r.isActive
+    const activeRates = this.getRatePlansForHost(facility.hostId, req.facilityId).filter(
+      (r) => r.isActive
     );
     const resolved = resolveApplicablePricingRule(
       activeRates,
@@ -884,7 +1000,7 @@ export class PricingService {
 
     const hourlyRateCents = resolved.hourlyRateCents;
     const dailyRateCents = resolved.dailyRateCents;
-    const appliedPricingRuleId = resolved.ruleId;
+    const applicablePricingRuleId = resolved.ruleId;
     const precedenceTier = resolved.precedenceTier;
     const securityDepositCents = policy.securityDepositCents;
 
@@ -1004,7 +1120,6 @@ export class PricingService {
    */
   public calculateQuoteAndAvailability(req: PriceEstimateRequest): QuoteAndAvailabilityResponse {
     const estimate = this.calculateAuthoritativeEstimate(req);
-    const { availabilityService } = require('./availability.service');
     const avail = availabilityService.calculateSpaceAvailability(
       req.facilityId,
       req.startTimeUtc,

@@ -92,7 +92,7 @@ describe('Section 3C: Pricing Rules and Real Availability Verification', () => {
         identifier: 'BAY-MOTO',
         floor: 'Ground',
         type: 'compact',
-        vehicleCompatibility: ['motorcycle', 'two_wheeler'],
+        vehicleCompatibility: ['motorcycle'],
         supportedVehicleTypes: ['motorcycle', 'two_wheeler'],
         pricePerHour: 25,
       },
@@ -571,6 +571,212 @@ describe('Section 3C: Pricing Rules and Real Availability Verification', () => {
       expect(quote.isAvailable).toBe(false);
       expect(quote.availableCapacity).toBe(0);
       expect(quote.unavailabilityReason).toMatch(/operating hours/i);
+    });
+
+    it('respects effective date boundaries and ignores expired or future rate plans', async () => {
+      // Future plan (effective in November)
+      const futurePlan = await db.createRatePlan(
+        facilityA.id,
+        {
+          name: 'Future Promo Rate',
+          hourlyRateCents: 150,
+          dailyRateCents: 1000,
+          vehicleCategory: 'ALL',
+          effectiveFromUtc: '2026-11-01T00:00:00Z',
+          effectiveUntilUtc: '2026-11-30T23:59:59Z',
+        },
+        hostA
+      );
+
+      // Expired plan (effective in September)
+      const expiredPlan = await db.createRatePlan(
+        facilityA.id,
+        {
+          name: 'Expired Promo Rate',
+          hourlyRateCents: 200,
+          dailyRateCents: 1200,
+          vehicleCategory: 'ALL',
+          effectiveFromUtc: '2026-09-01T00:00:00Z',
+          effectiveUntilUtc: '2026-09-30T23:59:59Z',
+        },
+        hostA
+      );
+
+      // Active baseline plan (effective in October)
+      const activeBaseline = await db.createRatePlan(
+        facilityA.id,
+        {
+          name: 'Current Baseline Rate',
+          hourlyRateCents: 500,
+          dailyRateCents: 3500,
+          vehicleCategory: 'ALL',
+          effectiveFromUtc: '2026-10-01T00:00:00Z',
+          effectiveUntilUtc: '2026-10-31T23:59:59Z',
+        },
+        hostA
+      );
+
+      const resolved = resolveApplicablePricingRule(
+        [futurePlan, expiredPlan, activeBaseline],
+        { hourlyRateCents: 400, dailyRateCents: 3000 },
+        { queryTime: '2026-10-24T12:00:00Z' }
+      );
+
+      expect(resolved?.ruleId).toBe(activeBaseline.id);
+      expect(resolved?.hourlyRateCents).toBe(500);
+    });
+
+    it('ignores inactive rate plans and falls back deterministically', async () => {
+      const inactivePlan = await db.createRatePlan(
+        facilityA.id,
+        {
+          name: 'Deactivated High Tier',
+          hourlyRateCents: 1200,
+          dailyRateCents: 8000,
+          vehicleCategory: 'ALL',
+          isActive: false,
+        },
+        hostA
+      );
+
+      const activePlan = await db.createRatePlan(
+        facilityA.id,
+        {
+          name: 'Active Moderate Tier',
+          hourlyRateCents: 450,
+          dailyRateCents: 3200,
+          vehicleCategory: 'ALL',
+          isActive: true,
+        },
+        hostA
+      );
+
+      const resolved = resolveApplicablePricingRule(
+        [inactivePlan, activePlan],
+        { hourlyRateCents: 300, dailyRateCents: 2000 },
+        { queryTime: new Date() }
+      );
+
+      expect(resolved?.ruleId).toBe(activePlan.id);
+      expect(resolved?.hourlyRateCents).toBe(450);
+    });
+
+    it('calculates hybrid multi-day stays with accurate monetary arithmetic and taxes', async () => {
+      await db.createRatePlan(
+        facilityA.id,
+        {
+          name: 'Multi-Day Tariff',
+          hourlyRateCents: 500, // $5.00/hr
+          dailyRateCents: 3000, // $30.00/day
+          vehicleCategory: 'ALL',
+          maxBookingMinutes: 10000,
+        },
+        hostA
+      );
+
+      // 52 hours: 2 full days (2 * 3000 = 6000) + 4 remainder hours (4 * 500 = 2000) = 8000 cents
+      const quote = await db.calculateAuthoritativeQuote(
+        facilityA.id,
+        '2026-10-26T04:00:00Z',
+        '2026-10-28T08:00:00Z'
+      );
+
+      expect(quote.rateTierApplied).toBe('HYBRID');
+      expect(quote.billableDays).toBe(3);
+      expect(quote.baseAmountCents).toBe(8000); // 6000 + 2000
+      expect(quote.platformFeeCents).toBe(1200); // 15% of 8000
+      expect(quote.taxesCents).toBe(800); // 10% of 8000
+      expect(quote.securityDepositCents).toBe(2000);
+      expect(quote.totalPayableCents).toBe(8000 + 2000 + 1200 + 800);
+    });
+
+    it('prevents concurrent double-booking on the same bay for overlapping times', async () => {
+      const bookingData1 = {
+        facilityId: facilityA.id,
+        bayId: baySedan.id,
+        customerId: 'usr_cust1',
+        customerName: 'Driver One',
+        customerPhone: '+919999900001',
+        customerEmail: 'driver1@test.com',
+        licensePlate: 'TN-01-AA-1111',
+        vehicleMakeModel: 'Honda City',
+        startTime: '2026-10-29T05:00:00Z',
+        endTime: '2026-10-29T08:00:00Z',
+      };
+
+      const bookingData2 = {
+        facilityId: facilityA.id,
+        bayId: baySedan.id,
+        customerId: 'usr_cust2',
+        customerName: 'Driver Two',
+        customerPhone: '+919999900002',
+        customerEmail: 'driver2@test.com',
+        licensePlate: 'TN-01-BB-2222',
+        vehicleMakeModel: 'Hyundai Creta',
+        startTime: '2026-10-29T07:00:00Z', // Overlaps with booking 1!
+        endTime: '2026-10-29T10:00:00Z',
+      };
+
+      const first = await db.createBooking(bookingData1);
+      expect(first.id).toBeDefined();
+
+      await expect(
+        db.createBooking(bookingData2)
+      ).rejects.toThrow(/already booked/i);
+    });
+
+    it('ensures quote consistency across active service paths', async () => {
+      const plan = await db.createRatePlan(
+        facilityA.id,
+        {
+          name: 'Consistency Test Plan',
+          hourlyRateCents: 650,
+          dailyRateCents: 3800,
+          vehicleCategory: 'ALL',
+        },
+        hostA
+      );
+
+      const dbQuote = await db.calculateAuthoritativeQuote(
+        facilityA.id,
+        '2026-10-30T04:00:00Z',
+        '2026-10-30T08:00:00Z'
+      );
+
+      const psQuote = pricingService.calculateQuoteAndAvailability({
+        facilityId: facilityA.id,
+        startTimeUtc: '2026-10-30T04:00:00Z',
+        endTimeUtc: '2026-10-30T08:00:00Z',
+      });
+
+      expect(dbQuote.baseAmountCents).toBe(psQuote.baseAmountCents);
+      expect(dbQuote.appliedHourlyRateCents).toBe(psQuote.appliedHourlyRateCents);
+      expect(dbQuote.appliedDailyRateCents).toBe(psQuote.appliedDailyRateCents);
+      expect(dbQuote.rateTierApplied).toBe(psQuote.rateTierApplied);
+      expect(dbQuote.isAvailable).toBe(psQuote.isAvailable);
+    });
+
+    it('persists rate plans across store reads and ensures schema validity', async () => {
+      const testPlan = await db.createRatePlan(
+        facilityA.id,
+        {
+          name: 'Persistence Verification Tariff',
+          hourlyRateCents: 750,
+          dailyRateCents: 4500,
+          minBookingMinutes: 60,
+          maxBookingMinutes: 2880,
+          stepMinutes: 30,
+          vehicleCategory: 'SUV',
+        },
+        hostA
+      );
+
+      const allPlans = await db.getRatePlans(facilityA.id);
+      const found = allPlans.find(p => p.id === testPlan.id);
+      expect(found).toBeDefined();
+      expect(found?.hourlyRateCents).toBe(750);
+      expect(found?.dailyRateCents).toBe(4500);
+      expect(found?.vehicleCategory).toBe('SUV');
     });
   });
 });

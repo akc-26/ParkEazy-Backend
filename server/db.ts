@@ -1559,7 +1559,7 @@ export class Database {
         'https://images.unsplash.com/photo-1506521781263-d8422e82f27a?auto=format&fit=crop&w=1200&q=80',
         'https://images.unsplash.com/photo-1590674899484-d5640e854abe?auto=format&fit=crop&w=1200&q=80'
       ],
-      status: 'draft',
+      status: data.status || 'active',
       totalBays: 0,
       activeBays: 0,
       timezone: resolveFacilityTimezone(data.timezone),
@@ -3069,6 +3069,48 @@ export class Database {
         };
       }
 
+      // Check closures
+      const closure = activeClosures.find(c => {
+        const cBay = c.bayId || c.spaceId;
+        if (cBay && cBay !== bay.id) {
+          if (!c.affectedBayIds || !c.affectedBayIds.includes(bay.id)) return false;
+        }
+        const cStart = new Date(c.startsAt || c.startDate || c.startTimeUtc!).getTime();
+        const cEnd = new Date(c.endsAt || c.endDate || c.endTimeUtc!).getTime();
+        return Math.max(startMs, cStart) < Math.min(endMs, cEnd);
+      });
+
+      if (closure) {
+        blockedCount++;
+        return {
+          spaceId: bay.id,
+          spaceNumber: bay.identifier,
+          levelOrFloor: bay.zone,
+          isAvailable: false,
+          currentStatus: `Closed: ${closure.title || closure.reason || 'Scheduled Closure'}`,
+        };
+      }
+
+      // Check maintenance
+      const maint = activeMaintenance.find(m => {
+        const mBay = m.bayId || m.spaceId;
+        if (mBay && mBay !== bay.id) return false;
+        const mStart = new Date(m.startsAt || m.startTime || m.startTimeUtc!).getTime();
+        const mEnd = new Date(m.endsAt || m.endTime || m.endTimeUtc!).getTime();
+        return Math.max(startMs, mStart) < Math.min(endMs, mEnd);
+      });
+
+      if (maint) {
+        blockedCount++;
+        return {
+          spaceId: bay.id,
+          spaceNumber: bay.identifier,
+          levelOrFloor: bay.zone,
+          isAvailable: false,
+          currentStatus: `Maintenance: ${maint.title}`,
+        };
+      }
+
       if (isOutsideHours) {
         blockedCount++;
         return {
@@ -3110,48 +3152,6 @@ export class Database {
           levelOrFloor: bay.zone,
           isAvailable: false,
           currentStatus: `Ineligible (Vehicle Category Mismatch for ${vehicleCategory})`,
-        };
-      }
-
-      // Check closures
-      const closure = activeClosures.find(c => {
-        const cBay = c.bayId || c.spaceId;
-        if (cBay && cBay !== bay.id) {
-          if (!c.affectedBayIds || !c.affectedBayIds.includes(bay.id)) return false;
-        }
-        const cStart = new Date(c.startsAt || c.startDate || c.startTimeUtc!).getTime();
-        const cEnd = new Date(c.endsAt || c.endDate || c.endTimeUtc!).getTime();
-        return Math.max(startMs, cStart) < Math.min(endMs, cEnd);
-      });
-
-      if (closure) {
-        blockedCount++;
-        return {
-          spaceId: bay.id,
-          spaceNumber: bay.identifier,
-          levelOrFloor: bay.zone,
-          isAvailable: false,
-          currentStatus: `Closed: ${closure.title || closure.reason || 'Scheduled Closure'}`,
-        };
-      }
-
-      // Check maintenance
-      const maint = activeMaintenance.find(m => {
-        const mBay = m.bayId || m.spaceId;
-        if (mBay && mBay !== bay.id) return false;
-        const mStart = new Date(m.startsAt || m.startTime || m.startTimeUtc!).getTime();
-        const mEnd = new Date(m.endsAt || m.endTime || m.endTimeUtc!).getTime();
-        return Math.max(startMs, mStart) < Math.min(endMs, mEnd);
-      });
-
-      if (maint) {
-        blockedCount++;
-        return {
-          spaceId: bay.id,
-          spaceNumber: bay.identifier,
-          levelOrFloor: bay.zone,
-          isAvailable: false,
-          currentStatus: `Maintenance: ${maint.title}`,
         };
       }
 
@@ -3204,7 +3204,7 @@ export class Database {
       };
     });
 
-    if (availableCount === 0 && !unavailabilityReason) {
+    if (availableCount === 0) {
       const facilityWideClosure = activeClosures.find(c => {
         const cBay = c.bayId || c.spaceId;
         if (cBay) return false;
@@ -3224,10 +3224,12 @@ export class Database {
         unavailabilityReason = `Facility is closed: ${facilityWideClosure.title || facilityWideClosure.reason || 'Scheduled Facility Closure'}.`;
       } else if (facilityWideMaintenance) {
         unavailabilityReason = `Facility is undergoing maintenance: ${facilityWideMaintenance.title || 'Scheduled Maintenance'}.`;
-      } else if (vehicleCategory && targetBays.some(b => !isBayCompatible(b, vehicleCategory))) {
-        unavailabilityReason = `No parking bays at this facility are compatible with vehicle category '${vehicleCategory}'.`;
-      } else {
-        unavailabilityReason = 'All parking bays are currently occupied, reserved, or undergoing maintenance during the requested period.';
+      } else if (!unavailabilityReason) {
+        if (vehicleCategory && targetBays.some(b => !isBayCompatible(b, vehicleCategory))) {
+          unavailabilityReason = `No parking bays at this facility are compatible with vehicle category '${vehicleCategory}'.`;
+        } else {
+          unavailabilityReason = 'All parking bays are currently occupied, reserved, or undergoing maintenance during the requested period.';
+        }
       }
     }
 
@@ -3266,8 +3268,8 @@ export class Database {
     const billableDays = Math.ceil(durationMinutes / 1440);
 
     const ratePlans = await this.getRatePlans(facilityId);
-    const fallbackHourlyCents = Math.round((facility.pricingRules?.[0]?.baseHourlyRate || 5.0) * 100);
-    const fallbackDailyCents = Math.round((facility.pricingRules?.[0]?.dailyMaxRate || 35.0) * 100);
+    const fallbackHourlyCents = Math.round(((facility as any).pricingRules?.[0]?.baseHourlyRate || 5.0) * 100);
+    const fallbackDailyCents = Math.round(((facility as any).pricingRules?.[0]?.dailyMaxRate || 35.0) * 100);
 
     const resolved = resolveApplicablePricingRule(
       ratePlans,
@@ -3535,6 +3537,12 @@ export class Database {
     startTime: string;
     endTime: string;
     idempotencyKey?: string;
+    grossAmount?: number;
+    platformFee?: number;
+    hostNetEarnings?: number;
+    taxAmount?: number;
+    status?: any;
+    [key: string]: any;
   }): Promise<Booking> {
     await this.cleanExpiredHolds();
 

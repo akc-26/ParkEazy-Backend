@@ -112,7 +112,7 @@ export class AvailabilityService {
       return {
         ...fromInventory,
         status: fromInventory.status ? String(fromInventory.status).toLowerCase() : 'active',
-        operatingHours: fromInventory.operatingHours,
+        operatingHours: (fromInventory as any).operatingHours,
         timezone: fromInventory.timezone || 'Asia/Kolkata',
       };
     }
@@ -347,11 +347,35 @@ export class AvailabilityService {
 
     // 1. Facility publication and operational status check
     const facilityStatus = (facility.status || 'active').toLowerCase();
-    const isFacilityOperational = facilityStatus === 'active' || facilityStatus === 'published' || facilityStatus === 'approved';
+    const isFacilityOperational = facilityStatus === 'active' || facilityStatus === 'published' || facilityStatus === 'approved' || facilityStatus === 'draft';
+
+    const confirmedBookings = this.getAuthoritativeBookings(facilityId);
+    const activeHolds = bookingService.getActiveHolds().filter((h) => h.locationId === facilityId);
+    const activeClosures = this.getAuthoritativeClosures(facility.hostId, facilityId);
+    const activeBlocks = this.getAuthoritativeMaintenance(facilityId);
+
+    const facilityWideClosure = activeClosures.find((c: any) => {
+      const cBay = c.bayId || c.spaceId;
+      if (cBay) return false;
+      const cStart = new Date(c.startTimeUtc || c.startsAt || c.startDate).getTime();
+      const cEnd = new Date(c.endTimeUtc || c.endsAt || c.endDate).getTime();
+      return Math.max(reqStart, cStart) < Math.min(reqEnd, cEnd);
+    });
+    const facilityWideMaintenance = activeBlocks.find((m: any) => {
+      const mBay = m.bayId || m.spaceId;
+      if (mBay) return false;
+      const mStart = new Date(m.startTimeUtc || m.startsAt || m.startTime).getTime();
+      const mEnd = new Date(m.endTimeUtc || m.endsAt || m.endTime).getTime();
+      return Math.max(reqStart, mStart) < Math.min(reqEnd, mEnd);
+    });
 
     let unavailabilityReason: string | null = null;
     if (!isFacilityOperational) {
       unavailabilityReason = `Facility is currently not operational or published (status: ${facilityStatus}).`;
+    } else if (facilityWideClosure) {
+      unavailabilityReason = `Facility is closed: ${facilityWideClosure.title || facilityWideClosure.reason || 'Scheduled Facility Closure'}.`;
+    } else if (facilityWideMaintenance) {
+      unavailabilityReason = `Facility is undergoing maintenance: ${facilityWideMaintenance.title || 'Scheduled Maintenance'}.`;
     }
 
     // 2. Facility operating hours and timezone check (Section 3B)
@@ -393,11 +417,6 @@ export class AvailabilityService {
       unavailabilityReason = operatingHoursReason || 'Requested time window falls outside facility operating hours.';
     }
 
-    const confirmedBookings = this.getAuthoritativeBookings(facilityId);
-    const activeHolds = bookingService.getActiveHolds().filter((h) => h.locationId === facilityId);
-    const activeClosures = this.getAuthoritativeClosures(facility.hostId, facilityId);
-    const activeBlocks = this.getAuthoritativeMaintenance(facilityId);
-
     let availableCount = 0;
     let occupiedCount = 0;
     let heldCount = 0;
@@ -418,6 +437,56 @@ export class AvailabilityService {
           levelOrFloor: bay.levelOrFloor,
           isAvailable: false,
           currentStatus: `Facility Inactive (${facilityStatus})`,
+          nextBookingStartsUtc,
+        };
+      }
+
+      // Check facility-wide or bay-specific closures FIRST
+      const overlappingClosure = activeClosures.find((c: any) => {
+        const cBay = c.bayId || c.spaceId;
+        if (cBay && cBay !== bay.id) {
+          if (!c.affectedBayIds || !c.affectedBayIds.includes(bay.id)) {
+            return false;
+          }
+        }
+        const cStart = new Date(c.startTimeUtc).getTime();
+        const cEnd = new Date(c.endTimeUtc).getTime();
+        return Math.max(reqStart, cStart) < Math.min(reqEnd, cEnd);
+      });
+
+      if (overlappingClosure) {
+        isAvailable = false;
+        status = `Closed: ${overlappingClosure.title}`;
+        blockedCount++;
+        return {
+          spaceId: bay.id,
+          spaceNumber: bay.bayNumber,
+          levelOrFloor: bay.levelOrFloor,
+          isAvailable,
+          currentStatus: status,
+          nextBookingStartsUtc,
+        };
+      }
+
+      // Check maintenance blocks
+      const overlappingBlock = activeBlocks.find((m: any) => {
+        const mBay = m.spaceId || m.bayId;
+        if (mBay && mBay !== bay.id) return false;
+        const mStart = new Date(m.startTimeUtc).getTime();
+        const mEnd = new Date(m.endTimeUtc).getTime();
+        return Math.max(reqStart, mStart) < Math.min(reqEnd, mEnd);
+      });
+
+      if (overlappingBlock) {
+        isAvailable = false;
+        status = `Maintenance: ${overlappingBlock.title}`;
+        blockedCount++;
+        return {
+          spaceId: bay.id,
+          spaceNumber: bay.bayNumber,
+          levelOrFloor: bay.levelOrFloor,
+          isAvailable,
+          currentStatus: status,
           nextBookingStartsUtc,
         };
       }
@@ -469,56 +538,6 @@ export class AvailabilityService {
           levelOrFloor: bay.levelOrFloor,
           isAvailable: false,
           currentStatus: `Ineligible (Vehicle Category Mismatch for ${vehicleCategory})`,
-          nextBookingStartsUtc,
-        };
-      }
-
-      // Check facility-wide or bay-specific closures
-      const overlappingClosure = activeClosures.find((c: any) => {
-        const cBay = c.bayId || c.spaceId;
-        if (cBay && cBay !== bay.id) {
-          if (!c.affectedBayIds || !c.affectedBayIds.includes(bay.id)) {
-            return false;
-          }
-        }
-        const cStart = new Date(c.startTimeUtc).getTime();
-        const cEnd = new Date(c.endTimeUtc).getTime();
-        return Math.max(reqStart, cStart) < Math.min(reqEnd, cEnd);
-      });
-
-      if (overlappingClosure) {
-        isAvailable = false;
-        status = `Closed: ${overlappingClosure.title}`;
-        blockedCount++;
-        return {
-          spaceId: bay.id,
-          spaceNumber: bay.bayNumber,
-          levelOrFloor: bay.levelOrFloor,
-          isAvailable,
-          currentStatus: status,
-          nextBookingStartsUtc,
-        };
-      }
-
-      // Check maintenance blocks
-      const overlappingBlock = activeBlocks.find((m: any) => {
-        const mBay = m.spaceId || m.bayId;
-        if (mBay && mBay !== bay.id) return false;
-        const mStart = new Date(m.startTimeUtc).getTime();
-        const mEnd = new Date(m.endTimeUtc).getTime();
-        return Math.max(reqStart, mStart) < Math.min(reqEnd, mEnd);
-      });
-
-      if (overlappingBlock) {
-        isAvailable = false;
-        status = `Maintenance: ${overlappingBlock.title}`;
-        blockedCount++;
-        return {
-          spaceId: bay.id,
-          spaceNumber: bay.bayNumber,
-          levelOrFloor: bay.levelOrFloor,
-          isAvailable,
-          currentStatus: status,
           nextBookingStartsUtc,
         };
       }

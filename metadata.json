@@ -1,6 +1,6 @@
 {
-  "name": "ParkEazy - Smart Parking Platform",
-  "description": "Production-grade smart parking reservation platform with host operations, facility management, availability calculations, and schedule management.",
+  "name": "",
+  "description": "",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
