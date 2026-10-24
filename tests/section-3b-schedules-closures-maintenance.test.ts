@@ -82,7 +82,7 @@ describe('Section 3B: Operating Hours, Closures, and Maintenance Verification', 
         { dayOfWeek: 1, openTime: '18:00', closeTime: '22:00', isClosed: false },
       ]);
       expect(duplicateDay.success).toBe(false);
-      expect(duplicateDay.errors.some(e => e.includes('Duplicate'))).toBe(true);
+      expect(duplicateDay.errors.some((e: string) => e.includes('Duplicate'))).toBe(true);
     });
 
     it('validates IANA timezones and rejects invalid identifiers', () => {

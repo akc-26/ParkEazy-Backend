@@ -45,5 +45,5 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "exclude": ["dist", "temp_repo", "/tmp/*"]
+  "exclude": ["dist", "temp_repo", "checkpoint_backup", ".checkpoint_backup", ".phase0_checkpoint"]
 }

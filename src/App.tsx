@@ -1,9 +1,7 @@
-import React, { Component, Suspense, lazy, type ErrorInfo, type ReactNode } from 'react';
-
-// Load each portal on demand so visitors download only the portal they open.
-const CustomerApp = lazy(() => import('./customer/CustomerApp'));
-const HostApp = lazy(() => import('../apps/host/src/App'));
-const AdminPanelApp = lazy(() => import('../apps/admin/src/App'));
+import React, { Component, type ErrorInfo, type ReactNode } from 'react';
+import CustomerApp from './customer/CustomerApp';
+import HostApp from '../apps/host/src/App';
+import AdminPanelApp from '../apps/admin/src/App';
 
 interface PortalErrorBoundaryState {
   hasError: boolean;
@@ -70,15 +68,7 @@ function PortalDispatcher() {
 export default function App() {
   return (
     <PortalErrorBoundary>
-      <Suspense
-        fallback={
-          <main className="min-h-screen w-full p-6 flex items-center justify-center bg-surface text-on-surface" aria-live="polite">
-            <p className="text-sm">Loading ParkEazy…</p>
-          </main>
-        }
-      >
-        <PortalDispatcher />
-      </Suspense>
+      <PortalDispatcher />
     </PortalErrorBoundary>
   );
 }

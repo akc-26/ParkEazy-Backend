@@ -18,6 +18,7 @@ import { AppError, ForbiddenError, NotFoundError } from '../middleware/error-han
 import { inventoryService } from './inventory.service';
 import { bookingService } from './booking.service';
 import { pricingService } from './pricing.service';
+import { db } from '../../../server/db';
 
 export class AvailabilityService {
   private static instance: AvailabilityService;
@@ -100,18 +101,147 @@ export class AvailabilityService {
   // Authoritative Availability Calculation Engine
   // --------------------------------------------------------------------------
 
+  // --------------------------------------------------------------------------
+  // Authoritative Availability Calculation Engine (Persisted Integration)
+  // --------------------------------------------------------------------------
+
+  private getFacilityRecord(facilityId: string): any {
+    const fromInventory = inventoryService.getLocationById(facilityId);
+    if (fromInventory) return fromInventory;
+    const dbFac = ((db as any).data?.facilities || []).find((f: any) => f.id === facilityId);
+    if (dbFac) {
+      return {
+        id: dbFac.id,
+        hostId: dbFac.hostId,
+        name: dbFac.name,
+        timezone: dbFac.timezone || 'Asia/Kolkata',
+      };
+    }
+    return undefined;
+  }
+
+  private getFacilityBays(facilityId: string): any[] {
+    const bays = inventoryService.getBaysByLocationId(facilityId);
+    if (bays && bays.length > 0) return bays;
+    const dbBays = ((db as any).data?.bays || []).filter((b: any) => b.facilityId === facilityId && b.status !== 'retired');
+    return dbBays.map((b: any) => ({
+      id: b.id,
+      locationId: b.facilityId,
+      bayNumber: b.identifier || b.bayNumber || b.id,
+      levelOrFloor: b.zone || b.floor || 'Ground',
+      bayType: b.type || 'standard',
+      status: b.status ? b.status.toLowerCase() : 'available',
+    }));
+  }
+
+  private getAuthoritativeClosures(hostId: string, facilityId: string): any[] {
+    const dbClosures = ((db as any).data?.closures || []).filter(
+      (c: any) => c.facilityId === facilityId
+    );
+    const psClosures = pricingService.getClosuresForHost(hostId, facilityId);
+    const map = new Map<string, any>();
+    for (const c of [...dbClosures, ...psClosures]) {
+      if (c && c.id) {
+        const startIso = c.startsAt || c.startDate || c.startTimeUtc || c.startTime;
+        const endIso = c.endsAt || c.endDate || c.endTimeUtc || c.endTime;
+        const bay = c.bayId || c.spaceId || (c.affectedBayIds && c.affectedBayIds.length > 0 ? c.affectedBayIds[0] : undefined);
+        map.set(c.id, {
+          id: c.id,
+          hostId: c.hostId || hostId,
+          facilityId: c.facilityId,
+          bayId: bay,
+          spaceId: bay,
+          affectedBayIds: c.affectedBayIds || (bay ? [bay] : undefined),
+          title: c.title || c.reason || 'Scheduled Facility Closure',
+          reason: c.reason || 'MAINTENANCE',
+          startTimeUtc: startIso,
+          endTimeUtc: endIso,
+          startsAt: startIso,
+          endsAt: endIso,
+        });
+      }
+    }
+    return Array.from(map.values());
+  }
+
+  private getAuthoritativeMaintenance(facilityId: string): any[] {
+    const dbMaintenance = ((db as any).data?.maintenance || []).filter(
+      (m: any) => m.facilityId === facilityId && (
+        !m.status || m.status === 'scheduled' || m.status === 'in_progress' ||
+        m.status === 'SCHEDULED' || m.status === 'ACTIVE'
+      )
+    );
+    const mbBlocks = this.maintenanceBlocks.filter(
+      (m) => m.facilityId === facilityId && (m.status === 'SCHEDULED' || m.status === 'ACTIVE')
+    );
+    const map = new Map<string, any>();
+    for (const m of [...dbMaintenance, ...mbBlocks]) {
+      if (m && m.id) {
+        const startIso = m.startsAt || m.startTime || m.startTimeUtc;
+        const endIso = m.endsAt || m.endTime || m.endTimeUtc;
+        const space = m.spaceId || m.bayId || undefined;
+        map.set(m.id, {
+          id: m.id,
+          hostId: m.hostId,
+          facilityId: m.facilityId,
+          spaceId: space,
+          bayId: space,
+          spaceNumber: m.spaceNumber || 'Space',
+          title: m.title || 'Scheduled Maintenance',
+          description: m.description,
+          status: m.status,
+          startTimeUtc: startIso,
+          endTimeUtc: endIso,
+          startsAt: startIso,
+          endsAt: endIso,
+        });
+      }
+    }
+    return Array.from(map.values());
+  }
+
+  private getAuthoritativeBookings(facilityId: string): any[] {
+    const dbBookings = ((db as any).data?.bookings || []).filter(
+      (b: any) => (b.facilityId === facilityId || b.locationId === facilityId) && (
+        b.status === 'confirmed' || b.status === 'checked_in' || b.status === 'active' ||
+        b.status === BookingStatus.CONFIRMED || b.status === BookingStatus.ACTIVE
+      )
+    );
+    const psBookings = bookingService.getAllBookings().filter(
+      (b) => b.locationId === facilityId && (b.status === BookingStatus.CONFIRMED || b.status === BookingStatus.ACTIVE)
+    );
+    const map = new Map<string, any>();
+    for (const b of [...dbBookings, ...psBookings]) {
+      if (b && b.id) {
+        map.set(b.id, {
+          id: b.id,
+          bayId: b.bayId || b.spaceId,
+          locationId: b.facilityId || b.locationId,
+          userName: b.userName || b.customerName || 'Customer',
+          bayNumber: b.bayNumber || b.spaceNumber || b.bayId,
+          licensePlate: b.licensePlate,
+          status: b.status,
+          startTimeUtc: b.startTimeUtc || b.startTime,
+          endTimeUtc: b.endTimeUtc || b.endTime,
+          quote: b.quote || { totalPayableCents: ((b.grossAmount || b.totalAmount || 0) * 100) },
+        });
+      }
+    }
+    return Array.from(map.values());
+  }
+
   public calculateSpaceAvailability(
     facilityId: string,
     startTimeUtc: string,
     endTimeUtc: string,
     spaceId?: string
   ): SpaceAvailabilitySummary {
-    const facility = inventoryService.getLocationById(facilityId);
+    const facility = this.getFacilityRecord(facilityId);
     if (!facility) {
       throw new NotFoundError(`Facility '${facilityId}' not found.`);
     }
 
-    const allBays = inventoryService.getBaysByLocationId(facilityId);
+    const allBays = this.getFacilityBays(facilityId);
     const targetBays = spaceId ? allBays.filter((b: any) => b.id === spaceId) : allBays;
 
     const reqStart = new Date(startTimeUtc).getTime();
@@ -121,14 +251,10 @@ export class AvailabilityService {
       throw new AppError('Invalid time interval: end time must be after start time.', 400, 'INVALID_BOUNDS');
     }
 
-    const confirmedBookings = bookingService.getAllBookings().filter(
-      (b) => b.locationId === facilityId && (b.status === BookingStatus.CONFIRMED || b.status === BookingStatus.ACTIVE)
-    );
+    const confirmedBookings = this.getAuthoritativeBookings(facilityId);
     const activeHolds = bookingService.getActiveHolds().filter((h) => h.locationId === facilityId);
-    const activeClosures = pricingService.getClosuresForHost(facility.hostId, facilityId);
-    const activeBlocks = this.maintenanceBlocks.filter(
-      (m) => m.facilityId === facilityId && (m.status === 'SCHEDULED' || m.status === 'ACTIVE')
-    );
+    const activeClosures = this.getAuthoritativeClosures(facility.hostId, facilityId);
+    const activeBlocks = this.getAuthoritativeMaintenance(facilityId);
 
     let availableCount = 0;
     let occupiedCount = 0;
@@ -141,8 +267,13 @@ export class AvailabilityService {
       let nextBookingStartsUtc: string | undefined;
 
       // 1. Check facility-wide or space-specific closures
-      const overlappingClosure = activeClosures.find((c) => {
-        if (c.bayId && c.bayId !== bay.id) return false;
+      const overlappingClosure = activeClosures.find((c: any) => {
+        const cBay = c.bayId || c.spaceId;
+        if (cBay && cBay !== bay.id) {
+          if (!c.affectedBayIds || !c.affectedBayIds.includes(bay.id)) {
+            return false;
+          }
+        }
         const cStart = new Date(c.startTimeUtc).getTime();
         const cEnd = new Date(c.endTimeUtc).getTime();
         return Math.max(reqStart, cStart) < Math.min(reqEnd, cEnd);
@@ -162,9 +293,10 @@ export class AvailabilityService {
         };
       }
 
-      // 2. Check maintenance blocks
-      const overlappingBlock = activeBlocks.find((m) => {
-        if (m.spaceId && m.spaceId !== bay.id) return false;
+      // 2. Check maintenance blocks (bay-specific or facility-wide)
+      const overlappingBlock = activeBlocks.find((m: any) => {
+        const mBay = m.spaceId || m.bayId;
+        if (mBay && mBay !== bay.id) return false;
         const mStart = new Date(m.startTimeUtc).getTime();
         const mEnd = new Date(m.endTimeUtc).getTime();
         return Math.max(reqStart, mStart) < Math.min(reqEnd, mEnd);
@@ -186,7 +318,7 @@ export class AvailabilityService {
 
       // 3. Check confirmed bookings (with 15m transition buffer)
       const bufferMs = 15 * 60 * 1000;
-      const overlappingBooking = confirmedBookings.find((b) => {
+      const overlappingBooking = confirmedBookings.find((b: any) => {
         if (b.bayId !== bay.id) return false;
         const bStart = new Date(b.startTimeUtc).getTime();
         const bEnd = new Date(b.endTimeUtc).getTime() + bufferMs;
@@ -264,7 +396,7 @@ export class AvailabilityService {
     endRangeUtc: string,
     spaceId?: string
   ): CalendarEvent[] {
-    const facility = inventoryService.getLocationById(facilityId);
+    const facility = this.getFacilityRecord(facilityId);
     if (!facility) {
       throw new NotFoundError(`Facility '${facilityId}' not found.`);
     }
@@ -278,10 +410,9 @@ export class AvailabilityService {
     const events: CalendarEvent[] = [];
 
     // 1. Confirmed Bookings (Protected reservations)
-    const bookings = bookingService.getAllBookings().filter((b) => {
+    const bookings = this.getAuthoritativeBookings(facilityId).filter((b: any) => {
       if (b.locationId !== facilityId) return false;
       if (spaceId && b.bayId !== spaceId) return false;
-      if (b.status !== BookingStatus.CONFIRMED && b.status !== BookingStatus.ACTIVE) return false;
 
       const bStart = new Date(b.startTimeUtc).getTime();
       const bEnd = new Date(b.endTimeUtc).getTime();
@@ -292,7 +423,7 @@ export class AvailabilityService {
       events.push({
         id: b.id,
         facilityId: b.locationId,
-        facilityName: b.locationName,
+        facilityName: facility.name,
         spaceId: b.bayId,
         spaceNumber: b.bayNumber,
         eventType: 'CONFIRMED_BOOKING',
@@ -338,10 +469,8 @@ export class AvailabilityService {
     }
 
     // 3. Maintenance Blocks
-    const blocks = this.maintenanceBlocks.filter((m) => {
-      if (m.facilityId !== facilityId) return false;
-      if (spaceId && m.spaceId !== spaceId) return false;
-      if (m.status !== 'SCHEDULED' && m.status !== 'ACTIVE') return false;
+    const blocks = this.getAuthoritativeMaintenance(facilityId).filter((m: any) => {
+      if (spaceId && m.spaceId && m.spaceId !== spaceId) return false;
 
       const mStart = new Date(m.startTimeUtc).getTime();
       const mEnd = new Date(m.endTimeUtc).getTime();
@@ -367,7 +496,7 @@ export class AvailabilityService {
     }
 
     // 4. Closures
-    const closures = pricingService.getClosuresForHost(hostId, facilityId).filter((c) => {
+    const closures = this.getAuthoritativeClosures(hostId, facilityId).filter((c: any) => {
       if (spaceId && c.bayId && c.bayId !== spaceId) return false;
       const cStart = new Date(c.startTimeUtc).getTime();
       const cEnd = new Date(c.endTimeUtc).getTime();

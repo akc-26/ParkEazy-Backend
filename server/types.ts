@@ -30,7 +30,7 @@ export type VehicleCompatibility = 'compact' | 'sedan' | 'suv' | 'ev' | 'motorcy
 
 export type FacilityStatus = 'draft' | 'under_review' | 'approved' | 'rejected' | 'active' | 'suspended';
 
-export interface OperatingHours {
+export interface StandardOperatingHours {
   is24x7: boolean;
   monday: { open: string; close: string; isOpen: boolean };
   tuesday: { open: string; close: string; isOpen: boolean };
@@ -40,6 +40,8 @@ export interface OperatingHours {
   saturday: { open: string; close: string; isOpen: boolean };
   sunday: { open: string; close: string; isOpen: boolean };
 }
+
+export type OperatingHours = StandardOperatingHours | string | any[];
 
 export interface Facility {
   id: string;
@@ -59,6 +61,10 @@ export interface Facility {
   clearanceHeightMeters: number;
   operatingHours: OperatingHours;
   timezone?: string;
+  type?: string;
+  propertyType?: string;
+  isCovered?: boolean;
+  totalSpots?: number;
   amenities: {
     covered: boolean;
     cctv: boolean;
@@ -81,6 +87,7 @@ export interface Facility {
 export interface FacilityClosure {
   id: string;
   facilityId: string;
+  hostId?: string;
   tenantId?: string;
   title?: string;
   reason?: string;
@@ -88,6 +95,12 @@ export interface FacilityClosure {
   endDate?: string;
   startsAt?: string;
   endsAt?: string;
+  startTimeUtc?: string;
+  endTimeUtc?: string;
+  start_time_utc?: string;
+  end_time_utc?: string;
+  startTime?: string;
+  endTime?: string;
   bayId?: string;
   spaceId?: string;
   affectedBayIds?: string[];
@@ -100,6 +113,7 @@ export type MaintenanceStatus = 'scheduled' | 'in_progress' | 'completed' | 'can
 export interface FacilityMaintenance {
   id: string;
   facilityId: string;
+  hostId?: string;
   tenantId?: string;
   bayId?: string | null;
   spaceId?: string | null;
@@ -109,6 +123,12 @@ export interface FacilityMaintenance {
   endTime?: string;
   startsAt?: string;
   endsAt?: string;
+  startTimeUtc?: string;
+  endTimeUtc?: string;
+  start_time_utc?: string;
+  end_time_utc?: string;
+  startDate?: string;
+  endDate?: string;
   status: MaintenanceStatus;
   createdAt: string;
   updatedAt: string;
@@ -120,6 +140,11 @@ export interface ParkingBay {
   id: string;
   facilityId: string;
   identifier: string; // e.g. "Level 1 - Bay A12"
+  bayNumber?: string; // alias for identifier
+  floor?: string;
+  type?: string;
+  pricePerHour?: number;
+  supportedVehicleTypes?: string[];
   zone: string; // e.g. "Level 1", "Zone A"
   vehicleCompatibility: VehicleCompatibility[];
   dimensions: {
@@ -210,6 +235,14 @@ export interface Booking {
   cancellationReason?: string;
   cancelledAt?: string;
   notes?: string;
+  userId?: string;
+  totalPrice?: number;
+  basePrice?: number;
+  serviceFee?: number;
+  totalAmount?: number;
+  paymentStatus?: string;
+  vehiclePlate?: string;
+  vehicleType?: string;
   createdAt: string;
   updatedAt: string;
 }

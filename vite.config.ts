@@ -8,14 +8,14 @@ export default defineConfig(() => {
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
-        '@': path.resolve(import.meta.dirname, '.'),
-        '@parkeazy/config': path.resolve(import.meta.dirname, 'packages/config/src/index.ts'),
-        '@parkeazy/shared-types': path.resolve(import.meta.dirname, 'packages/shared-types/src/index.ts'),
-        '@parkeazy/branding': path.resolve(import.meta.dirname, 'packages/branding/src/index.ts'),
-        '@parkeazy/validation': path.resolve(import.meta.dirname, 'packages/validation/src/index.ts'),
-        '@parkeazy/api-client': path.resolve(import.meta.dirname, 'packages/api-client/src/index.ts'),
-        '@parkeazy/shared-ui': path.resolve(import.meta.dirname, 'packages/shared-ui/src/index.ts'),
-        '@parkeazy/contracts': path.resolve(import.meta.dirname, 'packages/contracts/index.ts'),
+        '@': path.resolve(__dirname, '.'),
+        '@parkeazy/config': path.resolve(__dirname, 'packages/config/src/index.ts'),
+        '@parkeazy/shared-types': path.resolve(__dirname, 'packages/shared-types/src/index.ts'),
+        '@parkeazy/branding': path.resolve(__dirname, 'packages/branding/src/index.ts'),
+        '@parkeazy/validation': path.resolve(__dirname, 'packages/validation/src/index.ts'),
+        '@parkeazy/api-client': path.resolve(__dirname, 'packages/api-client/src/index.ts'),
+        '@parkeazy/shared-ui': path.resolve(__dirname, 'packages/shared-ui/src/index.ts'),
+        '@parkeazy/contracts': path.resolve(__dirname, 'packages/contracts/index.ts'),
       },
     },
     server: {
@@ -71,3 +71,4 @@ export default defineConfig(() => {
     },
   };
 });
+

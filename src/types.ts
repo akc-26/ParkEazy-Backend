@@ -79,6 +79,7 @@ export interface Facility {
 export interface FacilityClosure {
   id: string;
   facilityId: string;
+  hostId?: string;
   tenantId?: string;
   title?: string;
   reason?: string;
@@ -86,6 +87,10 @@ export interface FacilityClosure {
   endDate?: string;
   startsAt?: string;
   endsAt?: string;
+  startTimeUtc?: string;
+  endTimeUtc?: string;
+  startTime?: string;
+  endTime?: string;
   bayId?: string;
   spaceId?: string;
   affectedBayIds?: string[];
@@ -98,6 +103,7 @@ export type MaintenanceStatus = 'scheduled' | 'in_progress' | 'completed' | 'can
 export interface FacilityMaintenance {
   id: string;
   facilityId: string;
+  hostId?: string;
   tenantId?: string;
   bayId?: string | null;
   spaceId?: string | null;
@@ -107,6 +113,10 @@ export interface FacilityMaintenance {
   endTime?: string;
   startsAt?: string;
   endsAt?: string;
+  startTimeUtc?: string;
+  endTimeUtc?: string;
+  startDate?: string;
+  endDate?: string;
   status: MaintenanceStatus;
   createdAt: string;
   updatedAt: string;

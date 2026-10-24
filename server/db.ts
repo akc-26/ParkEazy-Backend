@@ -37,6 +37,13 @@ import {
   validateMaintenance,
   validateMaintenanceTransition
 } from '@parkeazy/validation';
+import {
+  DEFAULT_FACILITY_TIMEZONE,
+  resolveFacilityTimezone,
+  isValidTimezone,
+  getFacilityLocalDateTime,
+  isInstantWithinOperatingHours
+} from './timezone';
 
 const DATA_DIR = path.resolve(process.cwd(), 'data');
 const DB_FILE = path.resolve(DATA_DIR, 'parkeazy-store.json');
@@ -436,6 +443,87 @@ export class Database {
             audit.entityType,
             audit.entityId,
             audit.details || null
+          ]
+        );
+      }
+
+      for (const closure of schema.closures || []) {
+        const fac = schema.facilities?.find(f => f.id === closure.facilityId);
+        const hostId = closure.hostId || fac?.hostId || null;
+        const startsAt = closure.startsAt || closure.startDate || closure.startTimeUtc || closure.startTime;
+        const endsAt = closure.endsAt || closure.endDate || closure.endTimeUtc || closure.endTime;
+        const spaceId = closure.spaceId || closure.bayId || (closure.affectedBayIds && closure.affectedBayIds[0]) || null;
+        await client.query(
+          `INSERT INTO facility_closures (
+            id, facility_id, tenant_id, host_id, space_id, bay_id, title, reason,
+            starts_at, ends_at, start_date, end_date, start_time_utc, end_time_utc,
+            affected_bay_ids, created_at, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+          ON CONFLICT (id) DO UPDATE SET
+            starts_at = COALESCE(facility_closures.starts_at, EXCLUDED.starts_at),
+            ends_at = COALESCE(facility_closures.ends_at, EXCLUDED.ends_at),
+            host_id = COALESCE(facility_closures.host_id, EXCLUDED.host_id),
+            space_id = COALESCE(facility_closures.space_id, EXCLUDED.space_id),
+            bay_id = COALESCE(facility_closures.bay_id, EXCLUDED.bay_id),
+            updated_at = NOW()`,
+          [
+            closure.id,
+            closure.facilityId,
+            closure.tenantId || 'default',
+            hostId,
+            spaceId,
+            spaceId,
+            closure.title || closure.reason || 'Scheduled Facility Closure',
+            closure.reason || 'maintenance',
+            startsAt,
+            endsAt,
+            startsAt,
+            endsAt,
+            startsAt,
+            endsAt,
+            closure.affectedBayIds || null,
+            closure.createdAt || new Date().toISOString(),
+            closure.updatedAt || new Date().toISOString()
+          ]
+        );
+      }
+
+      for (const m of schema.maintenance || []) {
+        const fac = schema.facilities?.find(f => f.id === m.facilityId);
+        const hostId = m.hostId || fac?.hostId || null;
+        const startsAt = m.startsAt || m.startTime || m.startDate || m.startTimeUtc;
+        const endsAt = m.endsAt || m.endTime || m.endDate || m.endTimeUtc;
+        const spaceId = m.spaceId || m.bayId || null;
+        await client.query(
+          `INSERT INTO facility_maintenance_periods (
+            id, facility_id, tenant_id, host_id, space_id, bay_id, title, description,
+            status, starts_at, ends_at, start_time, end_time, start_time_utc, end_time_utc,
+            created_at, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+          ON CONFLICT (id) DO UPDATE SET
+            starts_at = COALESCE(facility_maintenance_periods.starts_at, EXCLUDED.starts_at),
+            ends_at = COALESCE(facility_maintenance_periods.ends_at, EXCLUDED.ends_at),
+            space_id = COALESCE(facility_maintenance_periods.space_id, EXCLUDED.space_id),
+            bay_id = COALESCE(facility_maintenance_periods.bay_id, EXCLUDED.bay_id),
+            updated_at = NOW()`,
+          [
+            m.id,
+            m.facilityId,
+            m.tenantId || 'default',
+            hostId,
+            spaceId,
+            spaceId,
+            m.title || 'Scheduled Maintenance',
+            m.description || null,
+            m.status || 'scheduled',
+            startsAt,
+            endsAt,
+            startsAt,
+            endsAt,
+            startsAt,
+            endsAt,
+            m.createdAt || new Date().toISOString(),
+            m.updatedAt || new Date().toISOString()
           ]
         );
       }
@@ -1468,6 +1556,7 @@ export class Database {
       status: 'draft',
       totalBays: 0,
       activeBays: 0,
+      timezone: resolveFacilityTimezone(data.timezone),
       createdAt: now,
       updatedAt: now
     };
@@ -1520,6 +1609,14 @@ export class Database {
     delete safeUpdates.id;
     delete safeUpdates.hostId;
     delete safeUpdates.createdAt;
+
+    if (safeUpdates.timezone !== undefined) {
+      const tzVal = validateTimezone(safeUpdates.timezone);
+      if (!tzVal.success) {
+        throw new Error(tzVal.errors[0] || 'Invalid timezone');
+      }
+      safeUpdates.timezone = resolveFacilityTimezone(safeUpdates.timezone);
+    }
     Object.assign(facility, safeUpdates, { updatedAt: new Date().toISOString() });
     await this.withTransaction(async (client) => {
       await this.persistEntity('facilities', facilityId, facility, client);
@@ -1834,7 +1931,7 @@ export class Database {
     }
     return {
       operatingHours: facility.operatingHours,
-      timezone: facility.timezone || 'UTC'
+      timezone: resolveFacilityTimezone(facility.timezone)
     };
   }
 
@@ -1855,7 +1952,9 @@ export class Database {
       if (!tzVal.success) {
         throw new Error(tzVal.errors[0] || 'Invalid timezone');
       }
-      facility.timezone = timezone;
+      facility.timezone = resolveFacilityTimezone(timezone);
+    } else if (!facility.timezone) {
+      facility.timezone = DEFAULT_FACILITY_TIMEZONE;
     }
 
     facility.operatingHours = operatingHours;
@@ -1870,7 +1969,7 @@ export class Database {
         'OPERATING_HOURS_UPDATED',
         'facility',
         facilityId,
-        `Operating hours updated for ${facility.name} (Timezone: ${facility.timezone || 'UTC'})`,
+        `Operating hours updated for ${facility.name} (Timezone: ${resolveFacilityTimezone(facility.timezone)})`,
         client
       );
     });
@@ -1976,10 +2075,16 @@ export class Database {
       reason: valid.reason,
       startsAt: start,
       endsAt: end,
+      start_time_utc: start as any,
+      end_time_utc: end as any,
+      startTimeUtc: start,
+      endTimeUtc: end,
+      startTime: start,
+      endTime: end,
       startDate: valid.startDate || start,
       endDate: valid.endDate || end,
-      spaceId: valid.spaceId,
-      bayId: valid.bayId,
+      spaceId: valid.spaceId || valid.bayId,
+      bayId: valid.bayId || valid.spaceId,
       affectedBayIds: data.affectedBayIds && data.affectedBayIds.length > 0 ? data.affectedBayIds : (valid.spaceId ? [valid.spaceId] : undefined),
       createdAt: now,
       updatedAt: now
@@ -1998,6 +2103,29 @@ export class Database {
         client
       );
     });
+
+    // Cross-sync to pricingService store for availability alignment
+    try {
+      const { pricingService } = await import('../apps/api/services/pricing.service');
+      const reasonVal = (['MAINTENANCE', 'EVENT', 'HOLIDAY', 'WEATHER', 'OTHER'].includes((valid.reason || '').toUpperCase() as any) ? valid.reason.toUpperCase() : 'MAINTENANCE');
+      const psClosure = {
+        id: closure.id,
+        hostId: facility.hostId,
+        facilityId,
+        bayId: closure.bayId || closure.spaceId,
+        title: closure.title,
+        reason: reasonVal as any,
+        startTimeUtc: start,
+        endTimeUtc: end,
+        createdAtUtc: now,
+      };
+      const psClosures = (pricingService as any).closures;
+      if (Array.isArray(psClosures)) {
+        const idx = psClosures.findIndex((c: any) => c.id === closure.id);
+        if (idx >= 0) psClosures[idx] = psClosure;
+        else psClosures.unshift(psClosure);
+      }
+    } catch {}
 
     return closure;
   }
@@ -2118,6 +2246,15 @@ export class Database {
       );
     });
 
+    try {
+      const { pricingService } = await import('../apps/api/services/pricing.service');
+      const psClosures = (pricingService as any).closures;
+      if (Array.isArray(psClosures)) {
+        const idx = psClosures.findIndex((c: any) => c.id === closureId);
+        if (idx >= 0) psClosures.splice(idx, 1);
+      }
+    } catch {}
+
     return true;
   }
 
@@ -2204,6 +2341,7 @@ export class Database {
     const maintenance: FacilityMaintenance = {
       id: 'maint_' + crypto.randomUUID().slice(0, 8),
       facilityId,
+      hostId: facility.hostId,
       tenantId: (facility as any).tenantId || 'default',
       bayId: resolvedBayId,
       spaceId: resolvedBayId,
@@ -2213,6 +2351,8 @@ export class Database {
       endTime: valid.endTime || end,
       startsAt: start,
       endsAt: end,
+      startTimeUtc: start,
+      endTimeUtc: end,
       status: initialStatus,
       createdAt: now,
       updatedAt: now
@@ -2241,6 +2381,31 @@ export class Database {
         client
       );
     });
+
+    // Cross-sync to availabilityService store
+    try {
+      const { availabilityService } = await import('../apps/api/services/availability.service');
+      const mbBlock = {
+        id: maintenance.id,
+        hostId: facility.hostId,
+        facilityId,
+        spaceId: resolvedBayId || '',
+        spaceNumber: bay?.identifier || bay?.bayNumber || 'Facility Block',
+        title: maintenance.title,
+        description: maintenance.description,
+        startTimeUtc: start,
+        endTimeUtc: end,
+        status: (initialStatus === 'scheduled' ? 'SCHEDULED' : initialStatus === 'in_progress' ? 'ACTIVE' : 'COMPLETED') as any,
+        createdAtUtc: now,
+        updatedAtUtc: now,
+      };
+      const mbList = (availabilityService as any).maintenanceBlocks;
+      if (Array.isArray(mbList)) {
+        const idx = mbList.findIndex((m: any) => m.id === maintenance.id);
+        if (idx >= 0) mbList[idx] = mbBlock;
+        else mbList.unshift(mbBlock);
+      }
+    } catch {}
 
     return maintenance;
   }
@@ -2379,6 +2544,15 @@ export class Database {
         client
       );
     });
+
+    try {
+      const { availabilityService } = await import('../apps/api/services/availability.service');
+      const mbList = (availabilityService as any).maintenanceBlocks;
+      if (Array.isArray(mbList)) {
+        const idx = mbList.findIndex((m: any) => m.id === maintenanceId);
+        if (idx >= 0) mbList.splice(idx, 1);
+      }
+    } catch {}
 
     return true;
   }

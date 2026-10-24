@@ -34,6 +34,8 @@ export default defineConfig({
       'tests/payout-financial-integrity.test.ts',
       'tests/section-3a-facilities-bays-media.test.ts',
       'tests/section-3b-schedules-closures-maintenance.test.ts',
+      'tests/section-3b-e2e-availability-integration.test.ts',
+      'tests/section-3b-timezone-consistency.test.ts',
     ],
     exclude: ['**/node_modules/**', '**/dist/**', '**/.git/**'],
     env: {

@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { db } from './db';
 import { User, VehicleCompatibility } from './types';
 import { authService } from '../apps/api/services/auth.service';
+import { availabilityService } from '../apps/api/services/availability.service';
 
 export const apiRouter = Router();
 
@@ -555,6 +556,26 @@ apiRouter.delete('/facilities/:id/maintenance/:maintenanceId', requireHost, asyn
     return res.json({ success });
   } catch (err: any) {
     const code = err.message.includes('not found') ? 404 : (err.message.includes('Unauthorized') ? 403 : 400);
+    return res.status(code).json({ error: err.message });
+  }
+});
+
+// ----------------- FACILITY AVAILABILITY -----------------
+apiRouter.get('/facilities/:id/availability', async (req, res) => {
+  try {
+    const { startTimeUtc, endTimeUtc, spaceId } = req.query as { startTimeUtc?: string; endTimeUtc?: string; spaceId?: string };
+    if (!startTimeUtc || !endTimeUtc) {
+      return res.status(400).json({ error: 'startTimeUtc and endTimeUtc are required query parameters.' });
+    }
+    const summary = availabilityService.calculateSpaceAvailability(
+      req.params.id,
+      startTimeUtc,
+      endTimeUtc,
+      spaceId
+    );
+    return res.json(summary);
+  } catch (err: any) {
+    const code = err.message?.includes('not found') ? 404 : 400;
     return res.status(code).json({ error: err.message });
   }
 });
