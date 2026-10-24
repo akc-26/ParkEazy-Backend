@@ -563,7 +563,13 @@ apiRouter.delete('/facilities/:id/maintenance/:maintenanceId', requireHost, asyn
 // ----------------- FACILITY AVAILABILITY -----------------
 apiRouter.get('/facilities/:id/availability', async (req, res) => {
   try {
-    const { startTimeUtc, endTimeUtc, spaceId } = req.query as { startTimeUtc?: string; endTimeUtc?: string; spaceId?: string };
+    const { startTimeUtc, endTimeUtc, spaceId, bayId, vehicleCategory } = req.query as {
+      startTimeUtc?: string;
+      endTimeUtc?: string;
+      spaceId?: string;
+      bayId?: string;
+      vehicleCategory?: string;
+    };
     if (!startTimeUtc || !endTimeUtc) {
       return res.status(400).json({ error: 'startTimeUtc and endTimeUtc are required query parameters.' });
     }
@@ -571,7 +577,8 @@ apiRouter.get('/facilities/:id/availability', async (req, res) => {
       req.params.id,
       startTimeUtc,
       endTimeUtc,
-      spaceId
+      spaceId || bayId,
+      vehicleCategory
     );
     return res.json(summary);
   } catch (err: any) {
@@ -728,7 +735,7 @@ apiRouter.delete('/bays/:id', requireHost, async (req, res) => {
 });
 
 // ----------------- PRICING & QUOTES -----------------
-apiRouter.get('/facilities/:id/pricing-rules', async (req, res) => {
+apiRouter.get(['/facilities/:id/rate-plans', '/facilities/:id/pricing-rules'], async (req, res) => {
   const facility = await db.getFacilityById(req.params.id);
   if (!facility) return res.status(404).json({ error: 'Facility not found' });
   const user = await getAuthenticatedUser(req);
@@ -740,8 +747,56 @@ apiRouter.get('/facilities/:id/pricing-rules', async (req, res) => {
       return res.status(403).json({ error: 'Access denied: You do not own this facility.' });
     }
   }
+  if (req.path.includes('rate-plans')) {
+    const plans = await db.getRatePlans(req.params.id, user || undefined);
+    return res.json(plans);
+  }
   const rules = await db.getPricingRules(req.params.id);
   return res.json(rules);
+});
+
+apiRouter.post('/facilities/:id/rate-plans', requireHost, async (req, res) => {
+  try {
+    const user = (req as any).user as User;
+    const plan = await db.createRatePlan(req.params.id, req.body, user);
+    return res.status(201).json(plan);
+  } catch (err: any) {
+    const isConflict = err.message.includes('conflict') || err.message.includes('already exists') || err.message.includes('Overlapping');
+    const code = err.message.includes('not found') ? 404 : (err.message.includes('Unauthorized') ? 403 : (isConflict ? 409 : 400));
+    return res.status(code).json({ error: err.message });
+  }
+});
+
+apiRouter.get('/rate-plans/:id', async (req, res) => {
+  try {
+    const plan = await db.getRatePlanById(req.params.id);
+    if (!plan) return res.status(404).json({ error: 'Rate plan not found' });
+    return res.json(plan);
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message });
+  }
+});
+
+apiRouter.put('/rate-plans/:id', requireHost, async (req, res) => {
+  try {
+    const user = (req as any).user as User;
+    const plan = await db.updateRatePlan(req.params.id, req.body, user);
+    return res.json(plan);
+  } catch (err: any) {
+    const code = err.message.includes('not found') ? 404 : (err.message.includes('Unauthorized') ? 403 : 400);
+    return res.status(code).json({ error: err.message });
+  }
+});
+
+apiRouter.delete('/rate-plans/:id', requireHost, async (req, res) => {
+  try {
+    const user = (req as any).user as User;
+    const success = await db.deleteRatePlan(req.params.id, user);
+    return res.json({ success });
+  } catch (err: any) {
+    const code = err.message.includes('not found') ? 404 : (err.message.includes('Unauthorized') ? 403 : 400);
+    return res.status(code).json({ error: err.message });
+  }
 });
 
 apiRouter.post('/facilities/:id/pricing-rules', requireHost, async (req, res) => {
@@ -799,16 +854,48 @@ apiRouter.delete('/pricing-rules/:id', requireHost, async (req, res) => {
   }
 });
 
-apiRouter.post('/pricing/estimate', async (req, res) => {
+apiRouter.post(['/pricing/estimate', '/pricing/quote'], async (req, res) => {
   try {
-    const { facilityId, startTime, endTime, bayMultiplier } = req.body;
-    if (!facilityId || !startTime || !endTime) {
-      return res.status(400).json({ error: 'facilityId, startTime, and endTime are required' });
+    const { facilityId, startTime, endTime, startTimeUtc, endTimeUtc, bayMultiplier, bayId, vehicleCategory } = req.body;
+    const resolvedFacilityId = facilityId || req.body.locationId;
+    const resolvedStart = startTimeUtc || startTime;
+    const resolvedEnd = endTimeUtc || endTime;
+    if (!resolvedFacilityId || !resolvedStart || !resolvedEnd) {
+      return res.status(400).json({ error: 'facilityId, startTime (or startTimeUtc), and endTime (or endTimeUtc) are required' });
     }
-    const estimate = await db.calculateQuote(facilityId, startTime, endTime, bayMultiplier || 1.0);
-    return res.json(estimate);
+    const quote = await db.calculateAuthoritativeQuote(resolvedFacilityId, resolvedStart, resolvedEnd, {
+      bayId,
+      vehicleCategory,
+      bayMultiplier: bayMultiplier || 1.0,
+    });
+    const legacy = await db.calculateQuote(resolvedFacilityId, resolvedStart, resolvedEnd, bayMultiplier || 1.0);
+    return res.json({
+      ...legacy,
+      ...quote,
+    });
   } catch (err: any) {
-    return res.status(400).json({ error: err.message });
+    const code = err.message.includes('not found') ? 404 : 400;
+    return res.status(code).json({ error: err.message });
+  }
+});
+
+apiRouter.post('/facilities/:id/quote', async (req, res) => {
+  try {
+    const { startTime, endTime, startTimeUtc, endTimeUtc, bayMultiplier, bayId, vehicleCategory } = req.body;
+    const resolvedStart = startTimeUtc || startTime;
+    const resolvedEnd = endTimeUtc || endTime;
+    if (!resolvedStart || !resolvedEnd) {
+      return res.status(400).json({ error: 'startTime (or startTimeUtc) and endTime (or endTimeUtc) are required' });
+    }
+    const quote = await db.calculateAuthoritativeQuote(req.params.id, resolvedStart, resolvedEnd, {
+      bayId,
+      vehicleCategory,
+      bayMultiplier: bayMultiplier || 1.0,
+    });
+    return res.json(quote);
+  } catch (err: any) {
+    const code = err.message.includes('not found') ? 404 : 400;
+    return res.status(code).json({ error: err.message });
   }
 });
 

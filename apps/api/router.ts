@@ -2434,9 +2434,9 @@ apiV1Router.delete(
   }
 );
 
-// 5c.10 Authoritative Price Estimate (pe_hw_03_06)
+// 5c.10 Authoritative Price Estimate (pe_hw_03_06) & Scope C Unified Response
 apiV1Router.post(
-  '/hosts/:hostId/pricing/estimate',
+  ['/hosts/:hostId/pricing/estimate', '/hosts/:hostId/pricing/quote'],
   authGuard([UserRole.HOST, UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.CUSTOMER]),
   validate([
     { field: 'hostId', location: 'params', required: true, type: 'string', minLength: 1, maxLength: 64 },
@@ -2446,7 +2446,7 @@ apiV1Router.post(
   ]),
   (req: Request, res: Response, next: NextFunction) => {
     try {
-      const estimate = pricingService.calculateAuthoritativeEstimate(req.body);
+      const estimate = pricingService.calculateQuoteAndAvailability(req.body);
       sendSuccess(res, estimate, req.correlationId);
     } catch (err) {
       next(err);
@@ -2554,12 +2554,14 @@ apiV1Router.get(
       const startTimeUtc = req.query.startTimeUtc as string;
       const endTimeUtc = req.query.endTimeUtc as string;
       const spaceId = req.query.spaceId as string | undefined;
+      const vehicleCategory = req.query.vehicleCategory as string | undefined;
 
       const summary = availabilityService.calculateSpaceAvailability(
         facilityId,
         startTimeUtc,
         endTimeUtc,
-        spaceId
+        spaceId,
+        vehicleCategory
       );
       sendSuccess(res, summary, req.correlationId);
     } catch (err) {

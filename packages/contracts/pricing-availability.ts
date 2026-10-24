@@ -336,6 +336,8 @@ export interface SpaceAvailabilitySummary {
   occupiedSpacesCount: number;
   heldSpacesCount: number;
   blockedSpacesCount: number;
+  unavailabilityReason?: string | null;
+  eligibleBayIds?: string[];
   spaces: Array<{
     spaceId: string;
     spaceNumber: string;
@@ -361,4 +363,23 @@ export interface ValidateAvailabilityChangeResponse {
   protectedBookingsCount: number;
   activeHoldsCount: number;
   message: string;
+}
+
+export interface QuoteAndAvailabilityResponse extends PriceEstimateResponse {
+  isAvailable: boolean;
+  availableCapacity: number;
+  totalCapacity: number;
+  eligibleBayIds: string[];
+  eligibleBays?: Array<{
+    spaceId: string;
+    spaceNumber: string;
+    levelOrFloor?: string;
+    isAvailable: boolean;
+    currentStatus: string;
+  }>;
+  applicablePricingRuleId: string;
+  unavailabilityReason?: string | null;
+  isInformationalQuote: boolean;
+  vehicleCategory?: string;
+  precedenceTier?: string;
 }

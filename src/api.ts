@@ -14,7 +14,9 @@ import {
   AuditLog,
   OperatingHours,
   FacilityClosure,
-  FacilityMaintenance
+  FacilityMaintenance,
+  RatePlan,
+  QuoteAndAvailabilityResponse
 } from './types';
 
 class ApiClient {
@@ -439,7 +441,46 @@ class ApiClient {
     });
   }
 
-  // Pricing
+  // Section 3C: Pricing Rules & Rate Plans
+  async getRatePlans(facilityId: string): Promise<RatePlan[]> {
+    return this.request<RatePlan[]>(`/facilities/${facilityId}/rate-plans`);
+  }
+
+  async createRatePlan(facilityId: string, data: Partial<RatePlan>): Promise<RatePlan> {
+    return this.request<RatePlan>(`/facilities/${facilityId}/rate-plans`, {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  }
+
+  async updateRatePlan(id: string, data: Partial<RatePlan>): Promise<RatePlan> {
+    return this.request<RatePlan>(`/rate-plans/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    });
+  }
+
+  async deleteRatePlan(id: string): Promise<{ success: boolean }> {
+    return this.request<{ success: boolean }>(`/rate-plans/${id}`, {
+      method: 'DELETE'
+    });
+  }
+
+  async getAuthoritativeQuote(params: {
+    facilityId: string;
+    startTimeUtc: string;
+    endTimeUtc: string;
+    bayId?: string;
+    vehicleCategory?: string;
+    bayMultiplier?: number;
+  }): Promise<QuoteAndAvailabilityResponse> {
+    return this.request<QuoteAndAvailabilityResponse>('/pricing/estimate', {
+      method: 'POST',
+      body: JSON.stringify(params)
+    });
+  }
+
+  // Pricing (Legacy compatibility)
   async getPricingRules(facilityId: string): Promise<PricingRule[]> {
     return this.request<PricingRule[]>(`/facilities/${facilityId}/pricing-rules`);
   }
@@ -458,20 +499,10 @@ class ApiClient {
     });
   }
 
-  async getPricingEstimate(facilityId: string, startTime: string, endTime: string, bayMultiplier = 1.0) {
-    return this.request<{
-      totalHours: number;
-      baseHourlyRate: number;
-      grossAmount: number;
-      platformFee: number;
-      taxAmount: number;
-      hostNetEarnings: number;
-      discountApplied: number;
-      eventSurcharge: number;
-      appliedSurge: number;
-    }>('/pricing/estimate', {
+  async getPricingEstimate(facilityId: string, startTime: string, endTime: string, bayMultiplier = 1.0, vehicleCategory?: string, bayId?: string) {
+    return this.request<any>('/pricing/estimate', {
       method: 'POST',
-      body: JSON.stringify({ facilityId, startTime, endTime, bayMultiplier })
+      body: JSON.stringify({ facilityId, startTime, endTime, startTimeUtc: startTime, endTimeUtc: endTime, bayMultiplier, vehicleCategory, bayId })
     });
   }
 

@@ -19,6 +19,11 @@ import { inventoryService } from './inventory.service';
 import { bookingService } from './booking.service';
 import { pricingService } from './pricing.service';
 import { db } from '../../../server/db';
+import {
+  isInstantWithinOperatingHours,
+  getFacilityLocalDateTime,
+  resolveFacilityTimezone,
+} from '../../../server/timezone';
 
 export class AvailabilityService {
   private static instance: AvailabilityService;
@@ -98,22 +103,27 @@ export class AvailabilityService {
   }
 
   // --------------------------------------------------------------------------
-  // Authoritative Availability Calculation Engine
-  // --------------------------------------------------------------------------
-
-  // --------------------------------------------------------------------------
   // Authoritative Availability Calculation Engine (Persisted Integration)
   // --------------------------------------------------------------------------
 
   private getFacilityRecord(facilityId: string): any {
     const fromInventory = inventoryService.getLocationById(facilityId);
-    if (fromInventory) return fromInventory;
+    if (fromInventory) {
+      return {
+        ...fromInventory,
+        status: fromInventory.status ? String(fromInventory.status).toLowerCase() : 'active',
+        operatingHours: fromInventory.operatingHours,
+        timezone: fromInventory.timezone || 'Asia/Kolkata',
+      };
+    }
     const dbFac = ((db as any).data?.facilities || []).find((f: any) => f.id === facilityId);
     if (dbFac) {
       return {
         id: dbFac.id,
         hostId: dbFac.hostId,
         name: dbFac.name,
+        status: dbFac.status ? String(dbFac.status).toLowerCase() : 'active',
+        operatingHours: dbFac.operatingHours,
         timezone: dbFac.timezone || 'Asia/Kolkata',
       };
     }
@@ -122,15 +132,31 @@ export class AvailabilityService {
 
   private getFacilityBays(facilityId: string): any[] {
     const bays = inventoryService.getBaysByLocationId(facilityId);
-    if (bays && bays.length > 0) return bays;
-    const dbBays = ((db as any).data?.bays || []).filter((b: any) => b.facilityId === facilityId && b.status !== 'retired');
+    if (bays && bays.length > 0) {
+      return bays.map((b: any) => ({
+        ...b,
+        id: b.id,
+        locationId: b.locationId || facilityId,
+        bayNumber: b.bayNumber || b.identifier || b.id,
+        levelOrFloor: b.levelOrFloor || b.floor || 'Ground',
+        bayType: b.bayType || b.type || 'standard',
+        status: b.status ? String(b.status).toLowerCase() : 'available',
+        vehicleCompatibility: b.vehicleCompatibility || b.supportedVehicleTypes || ['sedan', 'car'],
+        supportedVehicleTypes: b.supportedVehicleTypes || b.vehicleCompatibility || ['sedan', 'car'],
+        isEvCharging: b.hasEvCharger || b.isEvCharging || false,
+      }));
+    }
+    const dbBays = ((db as any).data?.bays || []).filter((b: any) => b.facilityId === facilityId);
     return dbBays.map((b: any) => ({
       id: b.id,
       locationId: b.facilityId,
       bayNumber: b.identifier || b.bayNumber || b.id,
       levelOrFloor: b.zone || b.floor || 'Ground',
       bayType: b.type || 'standard',
-      status: b.status ? b.status.toLowerCase() : 'available',
+      status: b.status ? String(b.status).toLowerCase() : 'available',
+      vehicleCompatibility: b.vehicleCompatibility || b.supportedVehicleTypes || ['sedan', 'car'],
+      supportedVehicleTypes: b.supportedVehicleTypes || b.vehicleCompatibility || ['sedan', 'car'],
+      isEvCharging: b.hasEvCharger || b.isEvCharging || false,
     }));
   }
 
@@ -230,11 +256,79 @@ export class AvailabilityService {
     return Array.from(map.values());
   }
 
+  public isBayCompatibleWithVehicle(bay: any, requestedCategory?: string): boolean {
+    if (!requestedCategory || requestedCategory.toUpperCase() === 'ALL') {
+      return true;
+    }
+    const target = requestedCategory.toLowerCase().trim();
+    const supported: string[] = [
+      ...(bay.supportedVehicleTypes || []),
+      ...(bay.vehicleCompatibility || []),
+    ].map((s: string) => String(s).toLowerCase().trim());
+
+    if (supported.length === 0) return true;
+    if (supported.includes('all') || supported.includes('standard')) return true;
+
+    if (target === 'car' || target === 'sedan' || target === 'compact') {
+      if (
+        supported.includes('car') ||
+        supported.includes('sedan') ||
+        supported.includes('compact') ||
+        supported.includes('standard')
+      ) {
+        return true;
+      }
+    }
+
+    if (target === 'suv') {
+      if (
+        supported.includes('suv') ||
+        supported.includes('oversized') ||
+        supported.includes('van_truck')
+      ) {
+        return true;
+      }
+    }
+
+    if (target === 'ev') {
+      if (
+        bay.isEvCharging ||
+        bay.hasEvCharger ||
+        supported.includes('ev') ||
+        bay.bayType === 'ev' ||
+        bay.bayType === 'EV_CHARGING'
+      ) {
+        return true;
+      }
+    }
+
+    if (target === 'motorcycle' || target === 'two_wheeler') {
+      if (supported.includes('motorcycle') || supported.includes('two_wheeler')) {
+        return true;
+      }
+    }
+
+    if (target === 'truck' || target === 'van' || target === 'bus_truck' || target === 'van_truck') {
+      if (
+        supported.includes('truck') ||
+        supported.includes('van') ||
+        supported.includes('bus_truck') ||
+        supported.includes('van_truck') ||
+        supported.includes('oversized')
+      ) {
+        return true;
+      }
+    }
+
+    return supported.includes(target);
+  }
+
   public calculateSpaceAvailability(
     facilityId: string,
     startTimeUtc: string,
     endTimeUtc: string,
-    spaceId?: string
+    spaceId?: string,
+    vehicleCategory?: string
   ): SpaceAvailabilitySummary {
     const facility = this.getFacilityRecord(facilityId);
     if (!facility) {
@@ -251,6 +345,54 @@ export class AvailabilityService {
       throw new AppError('Invalid time interval: end time must be after start time.', 400, 'INVALID_BOUNDS');
     }
 
+    // 1. Facility publication and operational status check
+    const facilityStatus = (facility.status || 'active').toLowerCase();
+    const isFacilityOperational = facilityStatus === 'active' || facilityStatus === 'published' || facilityStatus === 'approved';
+
+    let unavailabilityReason: string | null = null;
+    if (!isFacilityOperational) {
+      unavailabilityReason = `Facility is currently not operational or published (status: ${facilityStatus}).`;
+    }
+
+    // 2. Facility operating hours and timezone check (Section 3B)
+    const facilityTz = resolveFacilityTimezone(facility.timezone);
+    let operatingHours = facility.operatingHours;
+    if (!operatingHours) {
+      try {
+        const psHours = pricingService.getOperatingHours(facilityId);
+        if (psHours && psHours.length > 0) {
+          operatingHours = psHours;
+        }
+      } catch {}
+    }
+
+    let isOutsideOperatingHours = false;
+    let operatingHoursReason: string | null = null;
+    if (operatingHours && operatingHours !== '24/7' && (operatingHours as any).is24x7 !== true) {
+      const startInHours = isInstantWithinOperatingHours(startTimeUtc, operatingHours, facilityTz);
+      const endInHours = isInstantWithinOperatingHours(endTimeUtc, operatingHours, facilityTz);
+
+      if (!startInHours || !endInHours) {
+        isOutsideOperatingHours = true;
+        operatingHoursReason = 'Requested parking period falls outside facility operating hours.';
+      } else {
+        // Sample intermediate times if duration spans multiple hours
+        const stepMs = 60 * 60 * 1000;
+        for (let t = reqStart + stepMs; t < reqEnd; t += stepMs) {
+          if (!isInstantWithinOperatingHours(new Date(t).toISOString(), operatingHours, facilityTz)) {
+            isOutsideOperatingHours = true;
+            const midLocal = getFacilityLocalDateTime(new Date(t), facilityTz);
+            operatingHoursReason = `Facility is closed during interval on ${midLocal.dayName} at ${midLocal.timeString}.`;
+            break;
+          }
+        }
+      }
+    }
+
+    if (isOutsideOperatingHours && !unavailabilityReason) {
+      unavailabilityReason = operatingHoursReason || 'Requested time window falls outside facility operating hours.';
+    }
+
     const confirmedBookings = this.getAuthoritativeBookings(facilityId);
     const activeHolds = bookingService.getActiveHolds().filter((h) => h.locationId === facilityId);
     const activeClosures = this.getAuthoritativeClosures(facility.hostId, facilityId);
@@ -260,13 +402,78 @@ export class AvailabilityService {
     let occupiedCount = 0;
     let heldCount = 0;
     let blockedCount = 0;
+    const eligibleBayIds: string[] = [];
 
     const spacesList = targetBays.map((bay: any) => {
       let isAvailable = true;
       let status = 'Available';
       let nextBookingStartsUtc: string | undefined;
 
-      // 1. Check facility-wide or space-specific closures
+      // Check facility operational status
+      if (!isFacilityOperational) {
+        blockedCount++;
+        return {
+          spaceId: bay.id,
+          spaceNumber: bay.bayNumber,
+          levelOrFloor: bay.levelOrFloor,
+          isAvailable: false,
+          currentStatus: `Facility Inactive (${facilityStatus})`,
+          nextBookingStartsUtc,
+        };
+      }
+
+      // Check operating hours
+      if (isOutsideOperatingHours) {
+        blockedCount++;
+        return {
+          spaceId: bay.id,
+          spaceNumber: bay.bayNumber,
+          levelOrFloor: bay.levelOrFloor,
+          isAvailable: false,
+          currentStatus: 'Outside Operating Hours',
+          nextBookingStartsUtc,
+        };
+      }
+
+      // Check bay operational status
+      const bayStatus = (bay.status || 'available').toLowerCase();
+      if (bayStatus === 'maintenance') {
+        blockedCount++;
+        return {
+          spaceId: bay.id,
+          spaceNumber: bay.bayNumber,
+          levelOrFloor: bay.levelOrFloor,
+          isAvailable: false,
+          currentStatus: 'Maintenance (Bay Inactive)',
+          nextBookingStartsUtc,
+        };
+      }
+      if (bayStatus === 'retired' || bayStatus === 'suspended') {
+        blockedCount++;
+        return {
+          spaceId: bay.id,
+          spaceNumber: bay.bayNumber,
+          levelOrFloor: bay.levelOrFloor,
+          isAvailable: false,
+          currentStatus: 'Retired',
+          nextBookingStartsUtc,
+        };
+      }
+
+      // Check vehicle category compatibility
+      if (vehicleCategory && !this.isBayCompatibleWithVehicle(bay, vehicleCategory)) {
+        blockedCount++;
+        return {
+          spaceId: bay.id,
+          spaceNumber: bay.bayNumber,
+          levelOrFloor: bay.levelOrFloor,
+          isAvailable: false,
+          currentStatus: `Ineligible (Vehicle Category Mismatch for ${vehicleCategory})`,
+          nextBookingStartsUtc,
+        };
+      }
+
+      // Check facility-wide or bay-specific closures
       const overlappingClosure = activeClosures.find((c: any) => {
         const cBay = c.bayId || c.spaceId;
         if (cBay && cBay !== bay.id) {
@@ -293,7 +500,7 @@ export class AvailabilityService {
         };
       }
 
-      // 2. Check maintenance blocks (bay-specific or facility-wide)
+      // Check maintenance blocks
       const overlappingBlock = activeBlocks.find((m: any) => {
         const mBay = m.spaceId || m.bayId;
         if (mBay && mBay !== bay.id) return false;
@@ -316,7 +523,7 @@ export class AvailabilityService {
         };
       }
 
-      // 3. Check confirmed bookings (with 15m transition buffer)
+      // Check confirmed bookings (with 15m transition buffer)
       const bufferMs = 15 * 60 * 1000;
       const overlappingBooking = confirmedBookings.find((b: any) => {
         if (b.bayId !== bay.id) return false;
@@ -340,7 +547,7 @@ export class AvailabilityService {
         };
       }
 
-      // 4. Check active holds (10-minute hold lock)
+      // Check active holds (10-minute hold lock)
       const overlappingHold = activeHolds.find((h) => {
         if (h.bayId !== bay.id) return false;
         const hStart = new Date(h.startTimeUtc).getTime();
@@ -363,6 +570,7 @@ export class AvailabilityService {
       }
 
       availableCount++;
+      eligibleBayIds.push(bay.id);
       return {
         spaceId: bay.id,
         spaceNumber: bay.bayNumber,
@@ -373,6 +581,33 @@ export class AvailabilityService {
       };
     });
 
+    if (availableCount === 0 && !unavailabilityReason) {
+      const facilityWideClosure = activeClosures.find((c: any) => {
+        const cBay = c.bayId || c.spaceId;
+        if (cBay) return false;
+        const cStart = new Date(c.startTimeUtc || c.startsAt || c.startDate).getTime();
+        const cEnd = new Date(c.endTimeUtc || c.endsAt || c.endDate).getTime();
+        return Math.max(reqStart, cStart) < Math.min(reqEnd, cEnd);
+      });
+      const facilityWideMaintenance = activeBlocks.find((m: any) => {
+        const mBay = m.bayId || m.spaceId;
+        if (mBay) return false;
+        const mStart = new Date(m.startTimeUtc || m.startsAt || m.startTime).getTime();
+        const mEnd = new Date(m.endTimeUtc || m.endsAt || m.endTime).getTime();
+        return Math.max(reqStart, mStart) < Math.min(reqEnd, mEnd);
+      });
+
+      if (facilityWideClosure) {
+        unavailabilityReason = `Facility is closed: ${facilityWideClosure.title || facilityWideClosure.reason || 'Scheduled Facility Closure'}.`;
+      } else if (facilityWideMaintenance) {
+        unavailabilityReason = `Facility is undergoing maintenance: ${facilityWideMaintenance.title || 'Scheduled Maintenance'}.`;
+      } else if (vehicleCategory && targetBays.some((b: any) => !this.isBayCompatibleWithVehicle(b, vehicleCategory))) {
+        unavailabilityReason = `No parking bays at this facility are compatible with vehicle category '${vehicleCategory}'.`;
+      } else {
+        unavailabilityReason = 'All parking bays are currently occupied, reserved, or undergoing maintenance during the requested period.';
+      }
+    }
+
     return {
       facilityId,
       facilityName: facility.name,
@@ -381,6 +616,8 @@ export class AvailabilityService {
       occupiedSpacesCount: occupiedCount,
       heldSpacesCount: heldCount,
       blockedSpacesCount: blockedCount,
+      unavailabilityReason,
+      eligibleBayIds,
       spaces: spacesList,
     };
   }

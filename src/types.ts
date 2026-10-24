@@ -178,6 +178,68 @@ export interface PricingRule {
   updatedAt: string;
 }
 
+export interface RatePlan {
+  id: string;
+  hostId: string;
+  facilityId: string;
+  bayId?: string;
+  spaceId?: string;
+  name: string;
+  hourlyRateCents: number;
+  dailyRateCents: number;
+  minBillableMinutes: number;
+  minBookingMinutes: number;
+  maxBookingMinutes: number;
+  stepMinutes: number;
+  vehicleCategory?: string;
+  isActive: boolean;
+  effectiveFromUtc: string;
+  effectiveUntilUtc?: string;
+  createdAtUtc: string;
+  updatedAtUtc: string;
+}
+
+export interface QuoteAndAvailabilityResponse {
+  quoteId: string;
+  facilityId: string;
+  facilityName: string;
+  bayId?: string;
+  bayNumber?: string;
+  startTimeUtc: string;
+  endTimeUtc: string;
+  durationMinutes: number;
+  billableHours: number;
+  billableDays: number;
+  appliedHourlyRateCents: number;
+  appliedDailyRateCents: number;
+  rateTierApplied: 'HOURLY' | 'DAILY' | 'HYBRID';
+  baseAmountCents: number;
+  securityDepositCents: number;
+  platformFeeCents: number;
+  taxesCents: number;
+  totalPayableCents: number;
+  currency: string;
+  cancellationPolicyTier: 'FLEXIBLE_24H' | 'STANDARD_48H' | 'STRICT_7D';
+  breakdown: Array<{
+    description: string;
+    amountCents: number;
+    unitRateCents?: number;
+    quantity?: number;
+    unitLabel?: string;
+  }>;
+  quotedAtUtc: string;
+  isAvailable: boolean;
+  availableCapacity: number;
+  totalCapacity: number;
+  eligibleBayIds: string[];
+  eligibleBays?: any[];
+  applicablePricingRuleId: string;
+  unavailabilityReason?: string | null;
+  isInformationalQuote: boolean;
+  vehicleCategory?: string;
+  precedenceTier?: string;
+}
+
 export interface AvailabilityHold {
   id: string;
   bayId: string;

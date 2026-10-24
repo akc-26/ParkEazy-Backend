@@ -13,6 +13,7 @@ import {
   CreateFacilityClosureRequest,
   PriceEstimateRequest,
   PriceEstimateResponse,
+  QuoteAndAvailabilityResponse,
   BulkPriceUpdateRequest,
   BulkPriceUpdatePreviewResponse,
   BulkPriceUpdateTargetPreview,
@@ -20,6 +21,11 @@ import {
   PricingAuditRecord,
   BookingStatus,
 } from '../../../packages/contracts';
+import {
+  validateRatePlanInput,
+  resolveApplicablePricingRule,
+  detectPricingRuleConflict,
+} from '@parkeazy/validation';
 import { AppError, ForbiddenError, NotFoundError } from '../middleware/error-handler';
 import { inventoryService } from './inventory.service';
 import { bookingService } from './booking.service';
@@ -336,30 +342,41 @@ export class PricingService {
       }
     }
 
-    if (req.hourlyRateCents < 0 || req.dailyRateCents < 0) {
-      throw new AppError('Rates must be non-negative integer cents.', 400, 'INVALID_RATES');
+    const validation = validateRatePlanInput({
+      ...req,
+      facilityId: req.facilityId,
+    });
+    if (!validation.success) {
+      throw new AppError(validation.errors.join('; '), 400, 'VALIDATION_ERROR');
     }
+    const val = validation.data!;
 
     const nowIso = new Date().toISOString();
     const newPlan: RatePlan = {
       id: 'rp-' + crypto.randomUUID().substring(0, 8),
       hostId,
-      facilityId: req.facilityId,
-      bayId: req.bayId,
-      name: req.name.trim(),
-      hourlyRateCents: Math.round(req.hourlyRateCents),
-      dailyRateCents: Math.round(req.dailyRateCents),
-      minBillableMinutes: req.minBillableMinutes || 60,
-      minBookingMinutes: req.minBookingMinutes || 60,
-      maxBookingMinutes: req.maxBookingMinutes || 4320,
-      stepMinutes: req.stepMinutes || 30,
-      vehicleCategory: req.vehicleCategory || 'ALL',
-      effectiveFromUtc: req.effectiveFromUtc || nowIso,
-      effectiveUntilUtc: req.effectiveUntilUtc,
-      isActive: true,
+      facilityId: val.facilityId,
+      bayId: val.bayId,
+      name: val.name,
+      hourlyRateCents: val.hourlyRateCents,
+      dailyRateCents: val.dailyRateCents,
+      minBillableMinutes: val.minBillableMinutes,
+      minBookingMinutes: val.minBookingMinutes,
+      maxBookingMinutes: val.maxBookingMinutes,
+      stepMinutes: val.stepMinutes,
+      vehicleCategory: val.vehicleCategory as any,
+      effectiveFromUtc: val.effectiveFromUtc,
+      effectiveUntilUtc: val.effectiveUntilUtc,
+      isActive: val.isActive,
       createdAtUtc: nowIso,
       updatedAtUtc: nowIso,
     };
+
+    // Conflict detection
+    const conflict = detectPricingRuleConflict(this.ratePlans, newPlan);
+    if (conflict) {
+      throw new AppError(conflict, 409, 'PRICING_RULE_CONFLICT');
+    }
 
     this.ratePlans.unshift(newPlan);
     this.saveToDisk();
@@ -826,18 +843,49 @@ export class PricingService {
       );
     }
 
-    // Determine applicable rate plan
+    // Determine applicable rate plan using strict 5-tier precedence:
+    // Level 1: Bay + exact vehicle category
+    // Level 2: Bay + ALL vehicle category
+    // Level 3: Facility + exact vehicle category
+    // Level 4: Facility + ALL vehicle category
+    // Level 5: Facility default rate
     const activeRates = this.ratePlans.filter(
       (r) => r.facilityId === req.facilityId && r.isActive
     );
-    // Prefer space-specific rate, otherwise facility default
-    let rate = req.bayId ? activeRates.find((r) => r.bayId === req.bayId) : undefined;
-    if (!rate) {
-      rate = activeRates.find((r) => !r.bayId);
+    const resolved = resolveApplicablePricingRule(
+      activeRates,
+      { hourlyRateCents: facility.hourlyRateCents, dailyRateCents: facility.dailyRateCents },
+      { bayId: req.bayId, vehicleCategory: req.vehicleCategory, queryTime: start }
+    );
+
+    if (!resolved || (resolved.hourlyRateCents <= 0 && resolved.dailyRateCents <= 0)) {
+      throw new AppError(
+        'No applicable pricing rule found for the requested facility, bay, vehicle category, and duration.',
+        400,
+        'NO_APPLICABLE_PRICING_RULE'
+      );
     }
 
-    const hourlyRateCents = rate ? rate.hourlyRateCents : facility.hourlyRateCents;
-    const dailyRateCents = rate ? rate.dailyRateCents : facility.dailyRateCents;
+    // Check duration bounds against the applicable rule's constraints
+    if (resolved.minBookingMinutes && durationMinutes < resolved.minBookingMinutes) {
+      throw new AppError(
+        `Duration ${durationMinutes} mins is below applicable rate plan minimum of ${resolved.minBookingMinutes} mins.`,
+        400,
+        'DURATION_BELOW_MINIMUM'
+      );
+    }
+    if (resolved.maxBookingMinutes && durationMinutes > resolved.maxBookingMinutes) {
+      throw new AppError(
+        `Duration ${durationMinutes} mins exceeds applicable rate plan maximum of ${resolved.maxBookingMinutes} mins.`,
+        400,
+        'DURATION_EXCEEDS_MAXIMUM'
+      );
+    }
+
+    const hourlyRateCents = resolved.hourlyRateCents;
+    const dailyRateCents = resolved.dailyRateCents;
+    const appliedPricingRuleId = resolved.ruleId;
+    const precedenceTier = resolved.precedenceTier;
     const securityDepositCents = policy.securityDepositCents;
 
     // Authoritative Hybrid rate calculation
@@ -921,7 +969,7 @@ export class PricingService {
       amountCents: taxesCents,
     });
 
-    return {
+    const res: PriceEstimateResponse & { applicablePricingRuleId: string; precedenceTier: string } = {
       quoteId: 'est-' + crypto.randomUUID().substring(0, 8),
       facilityId: req.facilityId,
       facilityName: facility.name,
@@ -944,6 +992,45 @@ export class PricingService {
       cancellationPolicyTier: policy.cancellationPolicyTier,
       breakdown,
       quotedAtUtc: new Date().toISOString(),
+      applicablePricingRuleId,
+      precedenceTier,
+    };
+
+    return res;
+  }
+
+  /**
+   * Scope C: Combined Server-side Price Quote & Authoritative Real Availability Response
+   */
+  public calculateQuoteAndAvailability(req: PriceEstimateRequest): QuoteAndAvailabilityResponse {
+    const estimate = this.calculateAuthoritativeEstimate(req);
+    const { availabilityService } = require('./availability.service');
+    const avail = availabilityService.calculateSpaceAvailability(
+      req.facilityId,
+      req.startTimeUtc,
+      req.endTimeUtc,
+      req.bayId,
+      req.vehicleCategory
+    );
+
+    const isAvailable = req.bayId
+      ? avail.spaces.some((s: any) => s.spaceId === req.bayId && s.isAvailable)
+      : avail.availableSpacesCount > 0;
+
+    return {
+      ...estimate,
+      isAvailable,
+      availableCapacity: avail.availableSpacesCount,
+      totalCapacity: avail.totalSpaces,
+      eligibleBayIds: avail.eligibleBayIds || [],
+      eligibleBays: avail.spaces,
+      applicablePricingRuleId: (estimate as any).applicablePricingRuleId || 'facility_default',
+      unavailabilityReason: !isAvailable
+        ? (avail.unavailabilityReason || 'No eligible spaces currently available for this timeframe')
+        : null,
+      isInformationalQuote: true,
+      vehicleCategory: req.vehicleCategory,
+      precedenceTier: (estimate as any).precedenceTier,
     };
   }
 

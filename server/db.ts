@@ -29,13 +29,19 @@ import {
   OperatingHours,
   FacilityClosure,
   FacilityMaintenance,
-  MaintenanceStatus
+  MaintenanceStatus,
+  RatePlan,
+  QuoteAndAvailabilityResponse,
 } from './types';
 import {
   validateTimezone,
   validateClosure,
   validateMaintenance,
-  validateMaintenanceTransition
+  validateMaintenanceTransition,
+  validateRatePlanInput,
+  validatePriceQuoteRequest,
+  resolveApplicablePricingRule,
+  detectPricingRuleConflict,
 } from '@parkeazy/validation';
 import {
   DEFAULT_FACILITY_TIMEZONE,
@@ -2557,7 +2563,330 @@ export class Database {
     return true;
   }
 
-  // ----------------- PRICING & QUOTES -----------------
+  // ----------------- SECTION 3C: RATE PLANS & PRICING RULES -----------------
+  public async getRatePlans(facilityId: string, actor?: User): Promise<RatePlan[]> {
+    const facility = await this.getFacilityById(facilityId);
+    if (!facility) throw new Error('Facility not found');
+    if (actor && facility.status !== 'active') {
+      if (actor.role === 'host' && facility.hostId !== actor.id) {
+        throw new Error('Unauthorized: You do not own this facility.');
+      }
+    }
+
+    const plans = await this.getCollectionFromDb<RatePlan>('ratePlans');
+    let facilityPlans = plans.filter(p => p.facilityId === facilityId);
+
+    // Relational fallback or cross-sync with pricingRules
+    if (facilityPlans.length === 0) {
+      const legacyRules = await this.getPricingRules(facilityId);
+      for (const r of legacyRules) {
+        facilityPlans.push({
+          id: r.id,
+          hostId: facility.hostId,
+          facilityId,
+          name: r.name,
+          hourlyRateCents: Math.round(r.baseHourlyRate * 100),
+          dailyRateCents: Math.round(r.dailyMaxRate * 100),
+          minBillableMinutes: 60,
+          minBookingMinutes: 60,
+          maxBookingMinutes: 4320,
+          stepMinutes: 30,
+          vehicleCategory: 'ALL',
+          effectiveFromUtc: r.createdAt || new Date().toISOString(),
+          isActive: r.isActive,
+          createdAtUtc: r.createdAt || new Date().toISOString(),
+          updatedAtUtc: r.updatedAt || new Date().toISOString(),
+        });
+      }
+    }
+
+    return facilityPlans;
+  }
+
+  public async getRatePlanById(planId: string): Promise<RatePlan | undefined> {
+    const plan = await this.getEntityFromDb<RatePlan>('ratePlans', planId);
+    if (plan) return plan;
+    const rule = await this.getPricingRuleById(planId);
+    if (rule) {
+      return {
+        id: rule.id,
+        hostId: '',
+        facilityId: rule.facilityId,
+        name: rule.name,
+        hourlyRateCents: Math.round(rule.baseHourlyRate * 100),
+        dailyRateCents: Math.round(rule.dailyMaxRate * 100),
+        minBillableMinutes: 60,
+        minBookingMinutes: 60,
+        maxBookingMinutes: 4320,
+        stepMinutes: 30,
+        vehicleCategory: 'ALL',
+        effectiveFromUtc: rule.createdAt,
+        isActive: rule.isActive,
+        createdAtUtc: rule.createdAt,
+        updatedAtUtc: rule.updatedAt,
+      };
+    }
+    return undefined;
+  }
+
+  public async createRatePlan(
+    facilityId: string,
+    planData: Partial<RatePlan>,
+    actor: User
+  ): Promise<RatePlan> {
+    const facility = await this.getFacilityById(facilityId);
+    if (!facility) throw new Error('Facility not found');
+    if (actor.role === 'host' && facility.hostId !== actor.id) {
+      throw new Error('Unauthorized: You do not own this facility.');
+    }
+
+    if (planData.bayId) {
+      const bay = await this.getBayById(planData.bayId);
+      if (!bay || bay.facilityId !== facilityId) {
+        throw new Error('Parking bay not found in this facility');
+      }
+    }
+
+    const validation = validateRatePlanInput({
+      ...planData,
+      facilityId,
+    });
+    if (!validation.success) {
+      throw new Error(validation.errors[0] || 'Invalid rate plan parameters');
+    }
+    const val = validation.data!;
+
+    const storedPlans = await this.getCollectionFromDb<RatePlan>('ratePlans');
+    const existingPlans = storedPlans.filter(p => p.facilityId === facilityId);
+    const conflict = detectPricingRuleConflict(existingPlans, val);
+    if (conflict) {
+      throw new Error(conflict);
+    }
+
+    const now = new Date().toISOString();
+    const newPlan: RatePlan = {
+      id: 'rp_' + crypto.randomUUID().slice(0, 8),
+      hostId: facility.hostId,
+      facilityId,
+      bayId: val.bayId,
+      spaceId: val.bayId,
+      name: val.name,
+      hourlyRateCents: val.hourlyRateCents,
+      dailyRateCents: val.dailyRateCents,
+      minBillableMinutes: val.minBillableMinutes,
+      minBookingMinutes: val.minBookingMinutes,
+      maxBookingMinutes: val.maxBookingMinutes,
+      stepMinutes: val.stepMinutes,
+      vehicleCategory: val.vehicleCategory,
+      effectiveFromUtc: val.effectiveFromUtc,
+      effectiveUntilUtc: val.effectiveUntilUtc,
+      isActive: val.isActive,
+      createdAtUtc: now,
+      updatedAtUtc: now,
+    };
+
+    // Also maintain legacy pricingRule format for backward compatibility
+    const legacyRule: PricingRule = {
+      id: newPlan.id,
+      facilityId,
+      name: newPlan.name,
+      baseHourlyRate: newPlan.hourlyRateCents / 100,
+      dailyMaxRate: newPlan.dailyRateCents / 100,
+      overnightFlatRate: (newPlan.dailyRateCents / 100) * 0.6,
+      surgeMultiplier: 1.0,
+      peakHours: [],
+      specialEvents: [],
+      discounts: [],
+      isActive: newPlan.isActive,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await this.withTransaction(async (client) => {
+      await this.persistEntity('ratePlans', newPlan.id, newPlan, client);
+      await this.persistEntity('pricingRules', newPlan.id, legacyRule, client);
+
+      // Relational PostgreSQL insert if table exists
+      try {
+        await client.query(
+          `INSERT INTO pricing_rate_plans
+           (id, facility_id, host_id, bay_id, space_id, name, hourly_rate_cents, daily_rate_cents, min_billable_minutes, min_booking_minutes, max_booking_minutes, step_minutes, vehicle_category, is_active, effective_from_utc, effective_until_utc, created_at_utc, updated_at_utc)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+           ON CONFLICT (id) DO UPDATE SET
+             name = EXCLUDED.name,
+             hourly_rate_cents = EXCLUDED.hourly_rate_cents,
+             daily_rate_cents = EXCLUDED.daily_rate_cents,
+             is_active = EXCLUDED.is_active,
+             updated_at_utc = EXCLUDED.updated_at_utc`,
+          [
+            newPlan.id,
+            newPlan.facilityId,
+            newPlan.hostId,
+            newPlan.bayId || null,
+            newPlan.spaceId || null,
+            newPlan.name,
+            newPlan.hourlyRateCents,
+            newPlan.dailyRateCents,
+            newPlan.minBillableMinutes,
+            newPlan.minBookingMinutes,
+            newPlan.maxBookingMinutes,
+            newPlan.stepMinutes,
+            newPlan.vehicleCategory || 'ALL',
+            newPlan.isActive,
+            newPlan.effectiveFromUtc,
+            newPlan.effectiveUntilUtc || null,
+            newPlan.createdAtUtc,
+            newPlan.updatedAtUtc,
+          ]
+        );
+      } catch {}
+
+      await this.logAudit(
+        actor.id,
+        actor.fullName,
+        actor.role,
+        'RATE_CREATED',
+        'pricing',
+        newPlan.id,
+        `Created rate plan "${newPlan.name}" ($${(newPlan.hourlyRateCents / 100).toFixed(2)}/hr)`,
+        client
+      );
+    });
+
+    // Cross-sync to pricingService
+    try {
+      const { pricingService } = await import('../apps/api/services/pricing.service');
+      const psRates = (pricingService as any).ratePlans;
+      if (Array.isArray(psRates)) {
+        const idx = psRates.findIndex((r: any) => r.id === newPlan.id);
+        if (idx >= 0) psRates[idx] = newPlan;
+        else psRates.unshift(newPlan);
+      }
+    } catch {}
+
+    return newPlan;
+  }
+
+  public async updateRatePlan(
+    planId: string,
+    updates: Partial<RatePlan>,
+    actor: User
+  ): Promise<RatePlan> {
+    const plan = await this.getRatePlanById(planId);
+    if (!plan) throw new Error('Rate plan not found');
+    const facility = await this.getFacilityById(plan.facilityId);
+    if (!facility) throw new Error('Facility not found');
+    if (actor.role === 'host' && facility.hostId !== actor.id) {
+      throw new Error('Unauthorized: You do not own this facility.');
+    }
+
+    if (updates.hourlyRateCents !== undefined && updates.hourlyRateCents < 0) {
+      throw new Error('Hourly rate cannot be negative');
+    }
+    if (updates.dailyRateCents !== undefined && updates.dailyRateCents < 0) {
+      throw new Error('Daily rate cannot be negative');
+    }
+    if (updates.minBookingMinutes && updates.maxBookingMinutes && updates.maxBookingMinutes < updates.minBookingMinutes) {
+      throw new Error('maxBookingMinutes cannot be less than minBookingMinutes');
+    }
+
+    const merged = { ...plan, ...updates, updatedAtUtc: new Date().toISOString() };
+    delete (merged as any).id;
+    delete (merged as any).facilityId;
+    delete (merged as any).hostId;
+
+    Object.assign(plan, merged);
+
+    await this.withTransaction(async (client) => {
+      await this.persistEntity('ratePlans', planId, plan, client);
+      try {
+        await client.query(
+          `UPDATE pricing_rate_plans SET
+             name = $1,
+             hourly_rate_cents = $2,
+             daily_rate_cents = $3,
+             is_active = $4,
+             updated_at_utc = $5
+           WHERE id = $6`,
+          [
+            plan.name,
+            plan.hourlyRateCents,
+            plan.dailyRateCents,
+            plan.isActive,
+            plan.updatedAtUtc,
+            planId,
+          ]
+        );
+      } catch {}
+
+      await this.logAudit(
+        actor.id,
+        actor.fullName,
+        actor.role,
+        'RATE_UPDATED',
+        'pricing',
+        planId,
+        `Updated rate plan "${plan.name}"`,
+        client
+      );
+    });
+
+    try {
+      const { pricingService } = await import('../apps/api/services/pricing.service');
+      const psRates = (pricingService as any).ratePlans;
+      if (Array.isArray(psRates)) {
+        const idx = psRates.findIndex((r: any) => r.id === planId);
+        if (idx >= 0) psRates[idx] = plan;
+      }
+    } catch {}
+
+    return plan;
+  }
+
+  public async deactivateRatePlan(planId: string, actor: User): Promise<RatePlan> {
+    return this.updateRatePlan(planId, { isActive: false }, actor);
+  }
+
+  public async deleteRatePlan(planId: string, actor: User): Promise<boolean> {
+    const plan = await this.getRatePlanById(planId);
+    if (!plan) return false;
+    const facility = await this.getFacilityById(plan.facilityId);
+    if (facility && actor.role === 'host' && facility.hostId !== actor.id) {
+      throw new Error('Unauthorized: You do not own this facility.');
+    }
+
+    await this.withTransaction(async (client) => {
+      await this.deleteEntity('ratePlans', planId, client);
+      await this.deleteEntity('pricingRules', planId, client);
+      try {
+        await client.query('DELETE FROM pricing_rate_plans WHERE id = $1', [planId]);
+      } catch {}
+
+      await this.logAudit(
+        actor.id,
+        actor.fullName,
+        actor.role,
+        'RATE_DELETED',
+        'pricing',
+        planId,
+        `Deleted rate plan "${plan.name}"`,
+        client
+      );
+    });
+
+    try {
+      const { pricingService } = await import('../apps/api/services/pricing.service');
+      const psRates = (pricingService as any).ratePlans;
+      if (Array.isArray(psRates)) {
+        const idx = psRates.findIndex((r: any) => r.id === planId);
+        if (idx >= 0) psRates.splice(idx, 1);
+      }
+    } catch {}
+
+    return true;
+  }
+
+  // Legacy pricing rules compatibility methods
   public async getPricingRules(facilityId: string): Promise<PricingRule[]> {
     const rules = await this.getCollectionFromDb<PricingRule>('pricingRules');
     return rules.filter(r => r.facilityId === facilityId);
@@ -2632,97 +2961,495 @@ export class Database {
     return true;
   }
 
-  public async calculateQuote(facilityId: string, startTimeIso: string, endTimeIso: string, bayMultiplier = 1.0) {
-    const rules = await this.getPricingRules(facilityId);
-    const activeRule = rules.find(r => r.isActive) || {
-      baseHourlyRate: 5.0,
-      dailyMaxRate: 35.0,
-      overnightFlatRate: 20.0,
-      surgeMultiplier: 1.0,
-      peakHours: [],
-      specialEvents: [],
-      discounts: []
-    } as Partial<PricingRule>;
-
-    const start = new Date(startTimeIso);
-    const end = new Date(endTimeIso);
-    const durationMs = end.getTime() - start.getTime();
-    const totalHours = Math.max(0.5, Math.ceil(durationMs / (1000 * 60 * 60) * 10) / 10);
-
-    let gross = 0;
-    const isOvernight = totalHours >= 8 && start.getHours() >= 19;
-
-    if (isOvernight && activeRule.overnightFlatRate) {
-      gross = activeRule.overnightFlatRate;
-    } else {
-      let hourly = activeRule.baseHourlyRate || 5.0;
-      // Weekend check
-      const day = start.getDay();
-      if ((day === 0 || day === 6) && activeRule.weekendHourlyRate) {
-        hourly = activeRule.weekendHourlyRate;
-      }
-
-      // Peak hour check
-      const hour = start.getHours();
-      const isPeak = activeRule.peakHours?.some(p => {
-        const [pHourStart] = p.start.split(':').map(Number);
-        const [pHourEnd] = p.end.split(':').map(Number);
-        return hour >= pHourStart && hour < pHourEnd;
-      });
-
-      if (isPeak && activeRule.surgeMultiplier) {
-        hourly = hourly * activeRule.surgeMultiplier;
-      }
-
-      gross = hourly * totalHours * bayMultiplier;
-
-      // Check daily max cap
-      const days = Math.ceil(totalHours / 24);
-      const maxCap = (activeRule.dailyMaxRate || 35.0) * days;
-      if (gross > maxCap) {
-        gross = maxCap;
-      }
+  // ----------------- SECTION 3C: REAL AVAILABILITY ENGINE -----------------
+  public async calculateRealAvailability(
+    facilityId: string,
+    startTimeUtc: string,
+    endTimeUtc: string,
+    options?: { spaceId?: string; bayId?: string; vehicleCategory?: string }
+  ) {
+    const facility = await this.getFacilityById(facilityId);
+    if (!facility) {
+      throw new Error(`Facility '${facilityId}' not found`);
     }
 
-    // Apply long-stay discounts if any
-    let discountApplied = 0;
-    if (activeRule.discounts && activeRule.discounts.length > 0) {
-      const applicable = activeRule.discounts
-        .filter(d => totalHours >= d.minHours)
-        .sort((a, b) => b.discountPercent - a.discountPercent)[0];
-      if (applicable) {
-        discountApplied = (gross * applicable.discountPercent) / 100;
-        gross = gross - discountApplied;
-      }
+    const startMs = new Date(startTimeUtc).getTime();
+    const endMs = new Date(endTimeUtc).getTime();
+    if (isNaN(startMs) || isNaN(endMs) || endMs <= startMs) {
+      throw new Error('Invalid time interval: end time must be chronologically after start time.');
     }
 
-    // Check special event surcharge
-    let eventSurcharge = 0;
-    if (activeRule.specialEvents) {
-      for (const ev of activeRule.specialEvents) {
-        if (new Date(ev.startDate) <= end && new Date(ev.endDate) >= start) {
-          eventSurcharge += ev.flatRateSurcharge;
+    const targetBayId = options?.bayId || options?.spaceId;
+    const vehicleCategory = options?.vehicleCategory ? options.vehicleCategory.toUpperCase().trim() : undefined;
+
+    const allBays = await this.getBaysByFacility(facilityId);
+    const targetBays = targetBayId ? allBays.filter(b => b.id === targetBayId) : allBays;
+
+    // 1. Facility operational status
+    const facilityStatus = (facility.status || 'active').toLowerCase();
+    const isOperational = facilityStatus === 'active' || facilityStatus === 'published' || facilityStatus === 'approved';
+
+    let unavailabilityReason: string | null = null;
+    if (!isOperational) {
+      unavailabilityReason = `Facility is not currently active or published (status: ${facilityStatus}).`;
+    }
+
+    // 2. Operating hours & timezone check
+    const timezone = resolveFacilityTimezone(facility.timezone);
+    let isOutsideHours = false;
+    if (facility.operatingHours && facility.operatingHours !== '24/7' && (facility.operatingHours as any).is24x7 !== true) {
+      const startIn = isInstantWithinOperatingHours(startTimeUtc, facility.operatingHours, timezone);
+      const endIn = isInstantWithinOperatingHours(endTimeUtc, facility.operatingHours, timezone);
+      if (!startIn || !endIn) {
+        isOutsideHours = true;
+        unavailabilityReason = 'Requested parking period falls outside facility operating hours.';
+      } else {
+        const stepMs = 60 * 60 * 1000;
+        for (let t = startMs + stepMs; t < endMs; t += stepMs) {
+          if (!isInstantWithinOperatingHours(new Date(t).toISOString(), facility.operatingHours, timezone)) {
+            isOutsideHours = true;
+            const midLocal = getFacilityLocalDateTime(new Date(t), timezone);
+            unavailabilityReason = `Facility is closed during interval on ${midLocal.dayName} at ${midLocal.timeString}.`;
+            break;
+          }
         }
       }
     }
-    gross += eventSurcharge;
 
-    gross = Math.round(gross * 100) / 100;
-    const platformFee = Math.round(gross * 0.12 * 100) / 100; // 12% platform fee
-    const taxAmount = Math.round(gross * 0.08 * 100) / 100; // 8% tax
-    const hostNet = Math.round((gross - platformFee) * 100) / 100; // 88% to host
+    // 3. Closures
+    const closures = await this.getCollectionFromDb<FacilityClosure>('closures');
+    const activeClosures = closures.filter(c => c.facilityId === facilityId);
+
+    // 4. Maintenance
+    const maintenanceList = await this.getCollectionFromDb<FacilityMaintenance>('maintenance');
+    const activeMaintenance = maintenanceList.filter(m => m.facilityId === facilityId && (m.status === 'scheduled' || m.status === 'in_progress'));
+
+    // 5. Bookings & Holds with 15-minute transition buffer
+    const bookings = await this.getCollectionFromDb<Booking>('bookings');
+    const confirmedBookings = bookings.filter(b => b.facilityId === facilityId && (b.status === 'confirmed' || b.status === 'checked_in'));
+
+    const holds = await this.getCollectionFromDb<AvailabilityHold>('holds');
+    const nowIso = new Date().toISOString();
+    const activeHolds = holds.filter(h => h.facilityId === facilityId && h.expiresAt > nowIso);
+
+    const bufferMs = 15 * 60 * 1000;
+    let availableCount = 0;
+    let occupiedCount = 0;
+    let heldCount = 0;
+    let blockedCount = 0;
+    const eligibleBayIds: string[] = [];
+
+    const isBayCompatible = (bay: ParkingBay, category?: string): boolean => {
+      if (!category || category === 'ALL') return true;
+      const cat = category.toLowerCase().trim();
+      const compat = (bay.vehicleCompatibility || (bay as any).supportedVehicleTypes || []).map((v: string) => v.toLowerCase().trim());
+      if (compat.length === 0 || compat.includes('all') || compat.includes('standard')) return true;
+      if (cat === 'car' || cat === 'sedan' || cat === 'compact') {
+        return compat.includes('car') || compat.includes('sedan') || compat.includes('compact');
+      }
+      if (cat === 'suv') return compat.includes('suv') || compat.includes('oversized');
+      if (cat === 'ev') return bay.hasEvCharger || compat.includes('ev');
+      if (cat === 'motorcycle' || cat === 'two_wheeler') return compat.includes('motorcycle') || compat.includes('two_wheeler');
+      if (cat === 'truck' || cat === 'van') return compat.includes('van_truck') || compat.includes('truck') || compat.includes('van');
+      return compat.includes(cat);
+    };
+
+    const spaces = targetBays.map(bay => {
+      let isAvailable = true;
+      let status = 'Available';
+
+      if (!isOperational) {
+        blockedCount++;
+        return {
+          spaceId: bay.id,
+          spaceNumber: bay.identifier,
+          levelOrFloor: bay.zone,
+          isAvailable: false,
+          currentStatus: `Facility Inactive (${facilityStatus})`,
+        };
+      }
+
+      if (isOutsideHours) {
+        blockedCount++;
+        return {
+          spaceId: bay.id,
+          spaceNumber: bay.identifier,
+          levelOrFloor: bay.zone,
+          isAvailable: false,
+          currentStatus: 'Outside Operating Hours',
+        };
+      }
+
+      const bayStatus = (bay.status || 'available').toLowerCase();
+      if (bayStatus === 'maintenance') {
+        blockedCount++;
+        return {
+          spaceId: bay.id,
+          spaceNumber: bay.identifier,
+          levelOrFloor: bay.zone,
+          isAvailable: false,
+          currentStatus: 'Maintenance (Bay Inactive)',
+        };
+      }
+      if (bayStatus === 'retired' || bayStatus === 'suspended') {
+        blockedCount++;
+        return {
+          spaceId: bay.id,
+          spaceNumber: bay.identifier,
+          levelOrFloor: bay.zone,
+          isAvailable: false,
+          currentStatus: 'Retired',
+        };
+      }
+
+      if (vehicleCategory && !isBayCompatible(bay, vehicleCategory)) {
+        blockedCount++;
+        return {
+          spaceId: bay.id,
+          spaceNumber: bay.identifier,
+          levelOrFloor: bay.zone,
+          isAvailable: false,
+          currentStatus: `Ineligible (Vehicle Category Mismatch for ${vehicleCategory})`,
+        };
+      }
+
+      // Check closures
+      const closure = activeClosures.find(c => {
+        const cBay = c.bayId || c.spaceId;
+        if (cBay && cBay !== bay.id) {
+          if (!c.affectedBayIds || !c.affectedBayIds.includes(bay.id)) return false;
+        }
+        const cStart = new Date(c.startsAt || c.startDate || c.startTimeUtc!).getTime();
+        const cEnd = new Date(c.endsAt || c.endDate || c.endTimeUtc!).getTime();
+        return Math.max(startMs, cStart) < Math.min(endMs, cEnd);
+      });
+
+      if (closure) {
+        blockedCount++;
+        return {
+          spaceId: bay.id,
+          spaceNumber: bay.identifier,
+          levelOrFloor: bay.zone,
+          isAvailable: false,
+          currentStatus: `Closed: ${closure.title || closure.reason || 'Scheduled Closure'}`,
+        };
+      }
+
+      // Check maintenance
+      const maint = activeMaintenance.find(m => {
+        const mBay = m.bayId || m.spaceId;
+        if (mBay && mBay !== bay.id) return false;
+        const mStart = new Date(m.startsAt || m.startTime || m.startTimeUtc!).getTime();
+        const mEnd = new Date(m.endsAt || m.endTime || m.endTimeUtc!).getTime();
+        return Math.max(startMs, mStart) < Math.min(endMs, mEnd);
+      });
+
+      if (maint) {
+        blockedCount++;
+        return {
+          spaceId: bay.id,
+          spaceNumber: bay.identifier,
+          levelOrFloor: bay.zone,
+          isAvailable: false,
+          currentStatus: `Maintenance: ${maint.title}`,
+        };
+      }
+
+      // Check bookings with 15m transition buffer
+      const booking = confirmedBookings.find(b => {
+        if (b.bayId !== bay.id) return false;
+        const bStart = new Date(b.startTime).getTime();
+        const bEnd = new Date(b.endTime).getTime() + bufferMs;
+        return Math.max(startMs, bStart) < Math.min(endMs, bEnd);
+      });
+
+      if (booking) {
+        occupiedCount++;
+        return {
+          spaceId: bay.id,
+          spaceNumber: bay.identifier,
+          levelOrFloor: bay.zone,
+          isAvailable: false,
+          currentStatus: `Occupied (Booking ${booking.bookingReference || booking.id})`,
+        };
+      }
+
+      // Check holds
+      const hold = activeHolds.find(h => {
+        if (h.bayId !== bay.id) return false;
+        const hStart = new Date(h.startTime).getTime();
+        const hEnd = new Date(h.endTime).getTime() + bufferMs;
+        return Math.max(startMs, hStart) < Math.min(endMs, hEnd);
+      });
+
+      if (hold) {
+        heldCount++;
+        return {
+          spaceId: bay.id,
+          spaceNumber: bay.identifier,
+          levelOrFloor: bay.zone,
+          isAvailable: false,
+          currentStatus: 'Locked (Active Checkout Hold)',
+        };
+      }
+
+      availableCount++;
+      eligibleBayIds.push(bay.id);
+      return {
+        spaceId: bay.id,
+        spaceNumber: bay.identifier,
+        levelOrFloor: bay.zone,
+        isAvailable: true,
+        currentStatus: 'Available',
+      };
+    });
+
+    if (availableCount === 0 && !unavailabilityReason) {
+      const facilityWideClosure = activeClosures.find(c => {
+        const cBay = c.bayId || c.spaceId;
+        if (cBay) return false;
+        const cStart = new Date(c.startsAt || c.startDate || c.startTimeUtc!).getTime();
+        const cEnd = new Date(c.endsAt || c.endDate || c.endTimeUtc!).getTime();
+        return Math.max(startMs, cStart) < Math.min(endMs, cEnd);
+      });
+      const facilityWideMaintenance = activeMaintenance.find(m => {
+        const mBay = m.bayId || m.spaceId;
+        if (mBay) return false;
+        const mStart = new Date(m.startsAt || m.startTime || m.startTimeUtc!).getTime();
+        const mEnd = new Date(m.endsAt || m.endTime || m.endTimeUtc!).getTime();
+        return Math.max(startMs, mStart) < Math.min(endMs, mEnd);
+      });
+
+      if (facilityWideClosure) {
+        unavailabilityReason = `Facility is closed: ${facilityWideClosure.title || facilityWideClosure.reason || 'Scheduled Facility Closure'}.`;
+      } else if (facilityWideMaintenance) {
+        unavailabilityReason = `Facility is undergoing maintenance: ${facilityWideMaintenance.title || 'Scheduled Maintenance'}.`;
+      } else if (vehicleCategory && targetBays.some(b => !isBayCompatible(b, vehicleCategory))) {
+        unavailabilityReason = `No parking bays at this facility are compatible with vehicle category '${vehicleCategory}'.`;
+      } else {
+        unavailabilityReason = 'All parking bays are currently occupied, reserved, or undergoing maintenance during the requested period.';
+      }
+    }
 
     return {
-      totalHours,
-      baseHourlyRate: activeRule.baseHourlyRate,
-      grossAmount: gross,
-      platformFee,
-      taxAmount,
-      hostNetEarnings: hostNet,
-      discountApplied,
-      eventSurcharge,
-      appliedSurge: activeRule.surgeMultiplier || 1.0
+      facilityId,
+      facilityName: facility.name,
+      totalSpaces: targetBays.length,
+      availableSpacesCount: availableCount,
+      occupiedSpacesCount: occupiedCount,
+      heldSpacesCount: heldCount,
+      blockedSpacesCount: blockedCount,
+      unavailabilityReason,
+      eligibleBayIds,
+      spaces,
     };
+  }
+
+  // ----------------- SECTION 3C: AUTHORITATIVE QUOTE & AVAILABILITY RESPONSE -----------------
+  public async calculateAuthoritativeQuote(
+    facilityId: string,
+    startTimeUtc: string,
+    endTimeUtc: string,
+    options?: { bayId?: string; vehicleCategory?: string; bayMultiplier?: number }
+  ): Promise<QuoteAndAvailabilityResponse> {
+    const facility = await this.getFacilityById(facilityId);
+    if (!facility) throw new Error(`Facility '${facilityId}' not found`);
+
+    const start = new Date(startTimeUtc);
+    const end = new Date(endTimeUtc);
+    if (isNaN(start.getTime()) || isNaN(end.getTime()) || end.getTime() <= start.getTime()) {
+      throw new Error('Invalid time bounds: end time must be chronologically after start time.');
+    }
+
+    const durationMinutes = Math.round((end.getTime() - start.getTime()) / (1000 * 60));
+    const billableHours = Math.ceil(durationMinutes / 60);
+    const billableDays = Math.ceil(durationMinutes / 1440);
+
+    const ratePlans = await this.getRatePlans(facilityId);
+    const fallbackHourlyCents = Math.round((facility.pricingRules?.[0]?.baseHourlyRate || 5.0) * 100);
+    const fallbackDailyCents = Math.round((facility.pricingRules?.[0]?.dailyMaxRate || 35.0) * 100);
+
+    const resolved = resolveApplicablePricingRule(
+      ratePlans,
+      { hourlyRateCents: fallbackHourlyCents, dailyRateCents: fallbackDailyCents },
+      { bayId: options?.bayId, vehicleCategory: options?.vehicleCategory, queryTime: start }
+    );
+
+    if (!resolved || (resolved.hourlyRateCents <= 0 && resolved.dailyRateCents <= 0)) {
+      throw new Error('No applicable pricing rule found for the requested facility, bay, vehicle category, and duration.');
+    }
+
+    if (durationMinutes < resolved.minBookingMinutes) {
+      throw new Error(`Duration ${durationMinutes} mins is below applicable rate plan minimum of ${resolved.minBookingMinutes} mins.`);
+    }
+    if (durationMinutes > resolved.maxBookingMinutes) {
+      throw new Error(`Duration ${durationMinutes} mins exceeds applicable rate plan maximum of ${resolved.maxBookingMinutes} mins.`);
+    }
+
+    const hourlyRateCents = resolved.hourlyRateCents;
+    const dailyRateCents = resolved.dailyRateCents;
+    const bayMultiplier = options?.bayMultiplier || 1.0;
+
+    let baseAmountCents = 0;
+    let rateTierApplied: 'HOURLY' | 'DAILY' | 'HYBRID' = 'HOURLY';
+    const breakdown: any[] = [];
+
+    if (durationMinutes < 1440) {
+      const hourlyTotal = Math.round(billableHours * hourlyRateCents * bayMultiplier);
+      const cappedDaily = Math.round(dailyRateCents * bayMultiplier);
+      if (cappedDaily > 0 && hourlyTotal > cappedDaily) {
+        baseAmountCents = cappedDaily;
+        rateTierApplied = 'DAILY';
+        breakdown.push({
+          description: `Daily Capped Rate (${billableHours} hrs)`,
+          amountCents: baseAmountCents,
+          unitRateCents: dailyRateCents,
+          quantity: 1,
+          unitLabel: 'Day',
+        });
+      } else {
+        baseAmountCents = hourlyTotal;
+        rateTierApplied = 'HOURLY';
+        breakdown.push({
+          description: `Hourly Rate (${billableHours} hrs @ $${(hourlyRateCents / 100).toFixed(2)}/hr)`,
+          amountCents: baseAmountCents,
+          unitRateCents: hourlyRateCents,
+          quantity: billableHours,
+          unitLabel: 'Hour',
+        });
+      }
+    } else {
+      rateTierApplied = 'HYBRID';
+      const fullDays = Math.floor(durationMinutes / 1440);
+      const remainingMinutes = durationMinutes % 1440;
+      const remainingHours = Math.ceil(remainingMinutes / 60);
+      const daysCost = Math.round(fullDays * dailyRateCents * bayMultiplier);
+      const remainingCost = Math.min(Math.round(remainingHours * hourlyRateCents * bayMultiplier), Math.round(dailyRateCents * bayMultiplier));
+      baseAmountCents = daysCost + remainingCost;
+
+      breakdown.push({
+        description: `Daily Rate Tier (${fullDays} full day${fullDays > 1 ? 's' : ''})`,
+        amountCents: daysCost,
+        unitRateCents: dailyRateCents,
+        quantity: fullDays,
+        unitLabel: 'Days',
+      });
+      if (remainingHours > 0) {
+        breakdown.push({
+          description: `Remainder Duration (${remainingHours} hrs)`,
+          amountCents: remainingCost,
+          unitRateCents: hourlyRateCents,
+          quantity: remainingHours,
+          unitLabel: 'Hours',
+        });
+      }
+    }
+
+    const securityDepositCents = 2000; // $20.00 standard deposit
+    const platformFeeCents = Math.round(baseAmountCents * 0.15); // 15%
+    const taxesCents = Math.round(baseAmountCents * 0.10); // 10%
+    const totalPayableCents = baseAmountCents + securityDepositCents + platformFeeCents + taxesCents;
+
+    breakdown.push({
+      description: 'Refundable Security Deposit (Escrowed)',
+      amountCents: securityDepositCents,
+    });
+    breakdown.push({
+      description: 'Platform Service Fee (15%)',
+      amountCents: platformFeeCents,
+    });
+    breakdown.push({
+      description: 'Estimated Taxes (10%)',
+      amountCents: taxesCents,
+    });
+
+    // Calculate real availability
+    const avail = await this.calculateRealAvailability(facilityId, startTimeUtc, endTimeUtc, {
+      bayId: options?.bayId,
+      vehicleCategory: options?.vehicleCategory,
+    });
+
+    const isAvailable = options?.bayId
+      ? avail.spaces.some(s => s.spaceId === options.bayId && s.isAvailable)
+      : avail.availableSpacesCount > 0;
+
+    return {
+      quoteId: 'qt_' + crypto.randomUUID().slice(0, 8),
+      facilityId,
+      facilityName: facility.name,
+      bayId: options?.bayId,
+      startTimeUtc,
+      endTimeUtc,
+      durationMinutes,
+      billableHours,
+      billableDays,
+      appliedHourlyRateCents: hourlyRateCents,
+      appliedDailyRateCents: dailyRateCents,
+      rateTierApplied,
+      baseAmountCents,
+      securityDepositCents,
+      platformFeeCents,
+      taxesCents,
+      totalPayableCents,
+      currency: 'INR',
+      cancellationPolicyTier: 'STANDARD_48H',
+      breakdown,
+      quotedAtUtc: new Date().toISOString(),
+      isAvailable,
+      availableCapacity: avail.availableSpacesCount,
+      totalCapacity: avail.totalSpaces,
+      eligibleBayIds: avail.eligibleBayIds,
+      eligibleBays: avail.spaces,
+      applicablePricingRuleId: resolved.ruleId,
+      unavailabilityReason: !isAvailable ? (avail.unavailabilityReason || 'Capacity unavailable') : null,
+      isInformationalQuote: true,
+      vehicleCategory: options?.vehicleCategory,
+      precedenceTier: resolved.precedenceTier,
+    };
+  }
+
+  // Compatibility calculateQuote for existing booking flows
+  public async calculateQuote(facilityId: string, startTimeIso: string, endTimeIso: string, bayMultiplier = 1.0) {
+    try {
+      const authQuote = await this.calculateAuthoritativeQuote(facilityId, startTimeIso, endTimeIso, { bayMultiplier });
+      const gross = authQuote.baseAmountCents / 100;
+      const platformFee = Math.round(gross * 0.12 * 100) / 100;
+      const taxAmount = Math.round(gross * 0.08 * 100) / 100;
+      const hostNet = Math.round((gross - platformFee) * 100) / 100;
+      return {
+        totalHours: Math.max(0.5, Math.ceil(authQuote.durationMinutes / 60 * 10) / 10),
+        baseHourlyRate: authQuote.appliedHourlyRateCents / 100,
+        grossAmount: gross,
+        platformFee,
+        taxAmount,
+        hostNetEarnings: hostNet,
+        discountApplied: 0,
+        eventSurcharge: 0,
+        appliedSurge: 1.0,
+        authQuote,
+      };
+    } catch {
+      // Fallback calculation if no rate plan is active yet
+      const start = new Date(startTimeIso);
+      const end = new Date(endTimeIso);
+      const durationMs = end.getTime() - start.getTime();
+      const totalHours = Math.max(0.5, Math.ceil(durationMs / (1000 * 60 * 60) * 10) / 10);
+      let gross = Math.round(5.0 * totalHours * bayMultiplier * 100) / 100;
+      const platformFee = Math.round(gross * 0.12 * 100) / 100;
+      const taxAmount = Math.round(gross * 0.08 * 100) / 100;
+      const hostNet = Math.round((gross - platformFee) * 100) / 100;
+      return {
+        totalHours,
+        baseHourlyRate: 5.0,
+        grossAmount: gross,
+        platformFee,
+        taxAmount,
+        hostNetEarnings: hostNet,
+        discountApplied: 0,
+        eventSurcharge: 0,
+        appliedSurge: 1.0,
+      };
+    }
   }
 
   // ----------------- AVAILABILITY & HOLDS -----------------

@@ -686,3 +686,420 @@ export function validateMaintenanceTransition(
   return { success: true, isValid: true, data: nextStatus, errors: [] };
 }
 
+// ----------------------------------------------------------------------------
+// Section 3C: Pricing Rules, Precedence Engine, and Price Quote Validation
+// ----------------------------------------------------------------------------
+
+export const SUPPORTED_VEHICLE_CATEGORIES = [
+  'ALL',
+  'COMPACT',
+  'SEDAN',
+  'SUV',
+  'TRUCK',
+  'VAN',
+  'MOTORCYCLE',
+  'EV',
+  'CAR',
+  'TWO_WHEELER',
+] as const;
+
+export type SupportedVehicleCategory = typeof SUPPORTED_VEHICLE_CATEGORIES[number];
+
+export interface ValidatedRatePlanInput {
+  facilityId: string;
+  bayId?: string;
+  name: string;
+  hourlyRateCents: number;
+  dailyRateCents: number;
+  minBillableMinutes: number;
+  minBookingMinutes: number;
+  maxBookingMinutes: number;
+  stepMinutes: number;
+  vehicleCategory: string;
+  effectiveFromUtc: string;
+  effectiveUntilUtc?: string;
+  isActive: boolean;
+}
+
+export function validateRatePlanInput(input: unknown): ValidationResult<ValidatedRatePlanInput> {
+  const errors: string[] = [];
+
+  if (!input || typeof input !== 'object') {
+    return { success: false, isValid: false, errors: ['Rate plan payload must be a non-null object'] };
+  }
+
+  const p = input as Record<string, any>;
+
+  const facilityId = typeof p.facilityId === 'string' ? p.facilityId.trim() : '';
+  if (!facilityId) {
+    errors.push('facilityId is required');
+  }
+
+  const name = typeof p.name === 'string' ? p.name.trim() : '';
+  if (!name || name.length < 2 || name.length > 255) {
+    errors.push('Rate plan name must be between 2 and 255 characters');
+  }
+
+  const hourlyRateCents = typeof p.hourlyRateCents === 'number'
+    ? Math.round(p.hourlyRateCents)
+    : (typeof p.hourlyRate === 'number' ? Math.round(p.hourlyRate * 100) : NaN);
+
+  const dailyRateCents = typeof p.dailyRateCents === 'number'
+    ? Math.round(p.dailyRateCents)
+    : (typeof p.dailyRate === 'number' ? Math.round(p.dailyRate * 100) : NaN);
+
+  if (isNaN(hourlyRateCents) || hourlyRateCents < 0) {
+    errors.push('hourlyRateCents must be a non-negative integer');
+  }
+
+  if (isNaN(dailyRateCents) || dailyRateCents < 0) {
+    errors.push('dailyRateCents must be a non-negative integer');
+  }
+
+  const isActive = p.isActive !== false;
+  if (isActive && hourlyRateCents === 0 && dailyRateCents === 0) {
+    errors.push('Active rate plan must have a non-zero hourly or daily rate');
+  }
+
+  const minBillableMinutes = typeof p.minBillableMinutes === 'number' && p.minBillableMinutes > 0
+    ? Math.round(p.minBillableMinutes)
+    : 60;
+
+  const minBookingMinutes = typeof p.minBookingMinutes === 'number' && p.minBookingMinutes > 0
+    ? Math.round(p.minBookingMinutes)
+    : 60;
+
+  const maxBookingMinutes = typeof p.maxBookingMinutes === 'number' && p.maxBookingMinutes > 0
+    ? Math.round(p.maxBookingMinutes)
+    : 4320;
+
+  if (maxBookingMinutes < minBookingMinutes) {
+    errors.push(`maxBookingMinutes (${maxBookingMinutes}) cannot be less than minBookingMinutes (${minBookingMinutes})`);
+  }
+
+  const stepMinutes = typeof p.stepMinutes === 'number' && p.stepMinutes > 0
+    ? Math.round(p.stepMinutes)
+    : 30;
+
+  let rawCat = typeof p.vehicleCategory === 'string' ? p.vehicleCategory.trim().toUpperCase() : 'ALL';
+  if (!rawCat) rawCat = 'ALL';
+  if (!SUPPORTED_VEHICLE_CATEGORIES.includes(rawCat as any)) {
+    errors.push(`vehicleCategory '${rawCat}' is not supported. Permitted: ${SUPPORTED_VEHICLE_CATEGORIES.join(', ')}`);
+  }
+
+  const rawFrom = p.effectiveFromUtc || p.effectiveFrom || new Date().toISOString();
+  if (!isValidIsoDateTime(rawFrom)) {
+    errors.push('effectiveFromUtc must be a valid ISO-8601 date-time string');
+  }
+
+  let effectiveUntilUtc: string | undefined;
+  if (p.effectiveUntilUtc || p.effectiveUntil) {
+    const rawUntil = p.effectiveUntilUtc || p.effectiveUntil;
+    if (!isValidIsoDateTime(rawUntil)) {
+      errors.push('effectiveUntilUtc must be a valid ISO-8601 date-time string');
+    } else {
+      const fromMs = Date.parse(rawFrom);
+      const untilMs = Date.parse(rawUntil);
+      if (untilMs <= fromMs) {
+        errors.push('effectiveUntilUtc must be chronologically after effectiveFromUtc');
+      } else {
+        effectiveUntilUtc = new Date(untilMs).toISOString();
+      }
+    }
+  }
+
+  if (errors.length > 0) {
+    return { success: false, isValid: false, errors };
+  }
+
+  return {
+    success: true,
+    isValid: true,
+    data: {
+      facilityId,
+      bayId: p.bayId ? String(p.bayId).trim() : (p.spaceId ? String(p.spaceId).trim() : undefined),
+      name,
+      hourlyRateCents,
+      dailyRateCents,
+      minBillableMinutes,
+      minBookingMinutes,
+      maxBookingMinutes,
+      stepMinutes,
+      vehicleCategory: rawCat,
+      effectiveFromUtc: new Date(Date.parse(rawFrom)).toISOString(),
+      effectiveUntilUtc,
+      isActive,
+    },
+    errors: [],
+  };
+}
+
+/**
+ * Validates a pricing estimate / quote calculation request.
+ */
+export interface ValidatedPriceQuoteRequest {
+  facilityId: string;
+  bayId?: string;
+  spaceId?: string;
+  startTimeUtc: string;
+  endTimeUtc: string;
+  durationMinutes: number;
+  vehicleCategory?: string;
+}
+
+export function validatePriceQuoteRequest(input: unknown): ValidationResult<ValidatedPriceQuoteRequest> {
+  const errors: string[] = [];
+
+  if (!input || typeof input !== 'object') {
+    return { success: false, isValid: false, errors: ['Request body must be a non-null object'] };
+  }
+
+  const b = input as Record<string, any>;
+
+  const facilityId = typeof b.facilityId === 'string' ? b.facilityId.trim() : '';
+  if (!facilityId) {
+    errors.push('facilityId is required');
+  }
+
+  const startRaw = b.startTimeUtc || b.startTime || b.startsAt;
+  const endRaw = b.endTimeUtc || b.endTime || b.endsAt;
+
+  const timeWindow = validateTimeWindow(startRaw, endRaw, { minDurationMinutes: 1, maxDurationDays: 90 });
+  if (!timeWindow.success) {
+    errors.push(...timeWindow.errors);
+  }
+
+  if (errors.length > 0) {
+    return { success: false, isValid: false, errors };
+  }
+
+  const rawCat = typeof b.vehicleCategory === 'string' ? b.vehicleCategory.trim().toUpperCase() : undefined;
+  const bayId = b.bayId ? String(b.bayId).trim() : (b.spaceId ? String(b.spaceId).trim() : undefined);
+
+  return {
+    success: true,
+    isValid: true,
+    data: {
+      facilityId,
+      bayId,
+      spaceId: bayId,
+      startTimeUtc: timeWindow.data!.startsAt,
+      endTimeUtc: timeWindow.data!.endsAt,
+      durationMinutes: timeWindow.data!.durationMinutes,
+      vehicleCategory: rawCat,
+    },
+    errors: [],
+  };
+}
+
+/**
+ * Checks for conflicting rate plans for the same facility/bay/vehicle category with overlapping effective date boundaries.
+ */
+export function detectPricingRuleConflict(
+  existingRules: Array<{
+    id: string;
+    facilityId: string;
+    bayId?: string;
+    vehicleCategory?: string;
+    effectiveFromUtc: string;
+    effectiveUntilUtc?: string;
+    isActive: boolean;
+  }>,
+  candidate: {
+    id?: string;
+    facilityId: string;
+    bayId?: string;
+    vehicleCategory?: string;
+    effectiveFromUtc: string;
+    effectiveUntilUtc?: string;
+    isActive: boolean;
+  }
+): string | null {
+  if (!candidate.isActive) return null;
+
+  const candBay = candidate.bayId || undefined;
+  const candCat = (candidate.vehicleCategory || 'ALL').toUpperCase();
+  const candStart = new Date(candidate.effectiveFromUtc).getTime();
+  const candEnd = candidate.effectiveUntilUtc ? new Date(candidate.effectiveUntilUtc).getTime() : Infinity;
+
+  for (const rule of existingRules) {
+    if (candidate.id && rule.id === candidate.id) continue;
+    if (rule.facilityId !== candidate.facilityId) continue;
+    if (!rule.isActive) continue;
+
+    const ruleBay = rule.bayId || undefined;
+    const ruleCat = (rule.vehicleCategory || 'ALL').toUpperCase();
+
+    // Check scope identity (same bay and same vehicleCategory)
+    if (ruleBay === candBay && ruleCat === candCat) {
+      const ruleStart = new Date(rule.effectiveFromUtc).getTime();
+      const ruleEnd = rule.effectiveUntilUtc ? new Date(rule.effectiveUntilUtc).getTime() : Infinity;
+
+      // Overlap condition
+      if (Math.max(candStart, ruleStart) < Math.min(candEnd, ruleEnd)) {
+        return `Conflicting pricing rule '${rule.id}' already covers the same scope (${candBay ? `Bay ${candBay}` : 'Facility-wide'}, Category ${candCat}) during effective range ${rule.effectiveFromUtc} to ${rule.effectiveUntilUtc || 'indefinite'}.`;
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Strict 5-tier Rule Precedence Resolver:
+ * Level 1: Bay-specific + exact vehicle category match
+ * Level 2: Bay-specific + 'ALL' vehicle category
+ * Level 3: Facility-wide + exact vehicle category match
+ * Level 4: Facility-wide + 'ALL' vehicle category
+ * Level 5: Facility baseline default rate
+ */
+export interface ResolvedPricingRule {
+  rule: any | null;
+  ruleId: string;
+  hourlyRateCents: number;
+  dailyRateCents: number;
+  precedenceTier: 'BAY_VEHICLE' | 'BAY_ALL' | 'FACILITY_VEHICLE' | 'FACILITY_ALL' | 'FACILITY_DEFAULT';
+  minBookingMinutes: number;
+  maxBookingMinutes: number;
+}
+
+export function resolveApplicablePricingRule(
+  rules: Array<{
+    id: string;
+    facilityId: string;
+    bayId?: string;
+    vehicleCategory?: string;
+    hourlyRateCents: number;
+    dailyRateCents: number;
+    minBookingMinutes?: number;
+    maxBookingMinutes?: number;
+    effectiveFromUtc: string;
+    effectiveUntilUtc?: string;
+    isActive: boolean;
+    createdAtUtc?: string;
+  }>,
+  facilityFallback: {
+    hourlyRateCents?: number;
+    dailyRateCents?: number;
+  },
+  context: {
+    bayId?: string;
+    vehicleCategory?: string;
+    queryTime?: Date | string;
+  }
+): ResolvedPricingRule | null {
+  const queryTimeMs = context.queryTime ? new Date(context.queryTime).getTime() : Date.now();
+  const targetBay = context.bayId || undefined;
+  const targetCategory = context.vehicleCategory ? context.vehicleCategory.toUpperCase().trim() : undefined;
+
+  // Filter to currently active rules whose effective date range includes queryTime
+  const validActiveRules = rules.filter((r) => {
+    if (!r.isActive) return false;
+    const startMs = new Date(r.effectiveFromUtc).getTime();
+    const endMs = r.effectiveUntilUtc ? new Date(r.effectiveUntilUtc).getTime() : Infinity;
+    return queryTimeMs >= startMs && queryTimeMs < endMs;
+  });
+
+  // Sort helper: within a tier, most recently effective rule wins
+  const sortByRecency = (a: any, b: any) => {
+    const aFrom = new Date(a.effectiveFromUtc).getTime();
+    const bFrom = new Date(b.effectiveFromUtc).getTime();
+    if (bFrom !== aFrom) return bFrom - aFrom;
+    const aCreated = a.createdAtUtc ? new Date(a.createdAtUtc).getTime() : 0;
+    const bCreated = b.createdAtUtc ? new Date(b.createdAtUtc).getTime() : 0;
+    return bCreated - aCreated;
+  };
+
+  // Tier 1: Bay-specific + exact vehicle category match
+  if (targetBay && targetCategory && targetCategory !== 'ALL') {
+    const tier1 = validActiveRules
+      .filter((r) => r.bayId === targetBay && (r.vehicleCategory || '').toUpperCase() === targetCategory)
+      .sort(sortByRecency);
+    if (tier1.length > 0) {
+      const r = tier1[0];
+      return {
+        rule: r,
+        ruleId: r.id,
+        hourlyRateCents: r.hourlyRateCents,
+        dailyRateCents: r.dailyRateCents,
+        precedenceTier: 'BAY_VEHICLE',
+        minBookingMinutes: r.minBookingMinutes || 60,
+        maxBookingMinutes: r.maxBookingMinutes || 4320,
+      };
+    }
+  }
+
+  // Tier 2: Bay-specific + 'ALL' vehicle category
+  if (targetBay) {
+    const tier2 = validActiveRules
+      .filter((r) => r.bayId === targetBay && (!r.vehicleCategory || r.vehicleCategory.toUpperCase() === 'ALL'))
+      .sort(sortByRecency);
+    if (tier2.length > 0) {
+      const r = tier2[0];
+      return {
+        rule: r,
+        ruleId: r.id,
+        hourlyRateCents: r.hourlyRateCents,
+        dailyRateCents: r.dailyRateCents,
+        precedenceTier: 'BAY_ALL',
+        minBookingMinutes: r.minBookingMinutes || 60,
+        maxBookingMinutes: r.maxBookingMinutes || 4320,
+      };
+    }
+  }
+
+  // Tier 3: Facility-wide + exact vehicle category match
+  if (targetCategory && targetCategory !== 'ALL') {
+    const tier3 = validActiveRules
+      .filter((r) => !r.bayId && (r.vehicleCategory || '').toUpperCase() === targetCategory)
+      .sort(sortByRecency);
+    if (tier3.length > 0) {
+      const r = tier3[0];
+      return {
+        rule: r,
+        ruleId: r.id,
+        hourlyRateCents: r.hourlyRateCents,
+        dailyRateCents: r.dailyRateCents,
+        precedenceTier: 'FACILITY_VEHICLE',
+        minBookingMinutes: r.minBookingMinutes || 60,
+        maxBookingMinutes: r.maxBookingMinutes || 4320,
+      };
+    }
+  }
+
+  // Tier 4: Facility-wide + 'ALL' vehicle category
+  const tier4 = validActiveRules
+    .filter((r) => !r.bayId && (!r.vehicleCategory || r.vehicleCategory.toUpperCase() === 'ALL'))
+    .sort(sortByRecency);
+  if (tier4.length > 0) {
+    const r = tier4[0];
+    return {
+      rule: r,
+      ruleId: r.id,
+      hourlyRateCents: r.hourlyRateCents,
+      dailyRateCents: r.dailyRateCents,
+      precedenceTier: 'FACILITY_ALL',
+      minBookingMinutes: r.minBookingMinutes || 60,
+      maxBookingMinutes: r.maxBookingMinutes || 4320,
+    };
+  }
+
+  // Tier 5: Facility baseline default rate
+  const fallbackHourly = facilityFallback.hourlyRateCents ?? 0;
+  const fallbackDaily = facilityFallback.dailyRateCents ?? 0;
+  if (fallbackHourly > 0 || fallbackDaily > 0) {
+    return {
+      rule: null,
+      ruleId: 'facility_default',
+      hourlyRateCents: fallbackHourly,
+      dailyRateCents: fallbackDaily,
+      precedenceTier: 'FACILITY_DEFAULT',
+      minBookingMinutes: 60,
+      maxBookingMinutes: 4320,
+    };
+  }
+
+  // No applicable rule found
+  return null;
+}
+

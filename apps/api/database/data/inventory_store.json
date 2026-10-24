@@ -25,7 +25,7 @@
       "amenities": [],
       "photos": [],
       "createdAt": "2026-01-12T10:00:00.000Z",
-      "updatedAt": "2026-02-01T12:00:00.000Z"
+      "updatedAt": "2026-10-24T08:53:16.696Z"
     },
     {
       "id": "fac_waterfront_lot",
@@ -100,7 +100,9 @@
       "isAccessible": false,
       "isCovered": false,
       "createdAt": "2026-01-12T10:00:00.000Z",
-      "updatedAt": "2026-01-12T10:00:00.000Z"
+      "updatedAt": "2026-10-24T08:53:16.699Z",
+      "notes": "Verified in 3A automated test",
+      "photos": []
     },
     {
       "id": "bay_m2",
@@ -350,5 +352,5 @@
       "updatedAt": "2026-01-18T10:00:00.000Z"
     }
   ],
-  "updatedAt": "2026-10-24T07:44:02.411Z"
+  "updatedAt": "2026-10-24T08:53:16.699Z"
 }

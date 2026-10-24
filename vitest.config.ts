@@ -36,6 +36,7 @@ export default defineConfig({
       'tests/section-3b-schedules-closures-maintenance.test.ts',
       'tests/section-3b-e2e-availability-integration.test.ts',
       'tests/section-3b-timezone-consistency.test.ts',
+      'tests/section-3c-pricing-rules-availability.test.ts',
     ],
     exclude: ['**/node_modules/**', '**/dist/**', '**/.git/**'],
     env: {

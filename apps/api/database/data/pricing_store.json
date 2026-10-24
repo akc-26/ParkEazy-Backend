@@ -520,6 +520,69 @@
       "openTime": "06:00",
       "closeTime": "22:00",
       "isOvernight": false
+    },
+    {
+      "id": "oph-fac_metro_downtown-0",
+      "facilityId": "fac_metro_downtown",
+      "dayOfWeek": 0,
+      "isClosed": false,
+      "openTime": "06:00",
+      "closeTime": "23:00",
+      "isOvernight": false
+    },
+    {
+      "id": "oph-fac_metro_downtown-1",
+      "facilityId": "fac_metro_downtown",
+      "dayOfWeek": 1,
+      "isClosed": false,
+      "openTime": "06:00",
+      "closeTime": "23:00",
+      "isOvernight": false
+    },
+    {
+      "id": "oph-fac_metro_downtown-2",
+      "facilityId": "fac_metro_downtown",
+      "dayOfWeek": 2,
+      "isClosed": false,
+      "openTime": "06:00",
+      "closeTime": "23:00",
+      "isOvernight": false
+    },
+    {
+      "id": "oph-fac_metro_downtown-3",
+      "facilityId": "fac_metro_downtown",
+      "dayOfWeek": 3,
+      "isClosed": false,
+      "openTime": "06:00",
+      "closeTime": "23:00",
+      "isOvernight": false
+    },
+    {
+      "id": "oph-fac_metro_downtown-4",
+      "facilityId": "fac_metro_downtown",
+      "dayOfWeek": 4,
+      "isClosed": false,
+      "openTime": "06:00",
+      "closeTime": "23:00",
+      "isOvernight": false
+    },
+    {
+      "id": "oph-fac_metro_downtown-5",
+      "facilityId": "fac_metro_downtown",
+      "dayOfWeek": 5,
+      "isClosed": false,
+      "openTime": "06:00",
+      "closeTime": "23:00",
+      "isOvernight": false
+    },
+    {
+      "id": "oph-fac_metro_downtown-6",
+      "facilityId": "fac_metro_downtown",
+      "dayOfWeek": 6,
+      "isClosed": false,
+      "openTime": "06:00",
+      "closeTime": "23:00",
+      "isOvernight": false
     }
   ],
   "policies": [
@@ -590,6 +653,126 @@
     }
   ],
   "closures": [
+    {
+      "id": "cls-1d320d29",
+      "hostId": "usr_host1",
+      "facilityId": "fac_metro_downtown",
+      "title": "Christmas Day Full Garage Deep Clean",
+      "reason": "MAINTENANCE",
+      "startTimeUtc": "2026-12-25T00:00:00.000Z",
+      "endTimeUtc": "2026-12-25T23:59:59.000Z",
+      "createdAtUtc": "2026-10-24T08:54:11.890Z"
+    },
+    {
+      "id": "cls_b4bd4603",
+      "hostId": "usr_host1",
+      "facilityId": "fac_ea95949b",
+      "title": "Host A Closure",
+      "reason": "MAINTENANCE",
+      "startTimeUtc": "2026-11-20T08:00:00.000Z",
+      "endTimeUtc": "2026-11-20T12:00:00.000Z",
+      "createdAtUtc": "2026-10-24T08:54:11.221Z"
+    },
+    {
+      "id": "cls_c1458496",
+      "hostId": "usr_host1",
+      "facilityId": "fac_13f75ea6",
+      "title": "Morning Closure",
+      "reason": "MAINTENANCE",
+      "startTimeUtc": "2026-11-10T08:00:00.000Z",
+      "endTimeUtc": "2026-11-10T14:00:00.000Z",
+      "createdAtUtc": "2026-10-24T08:54:10.935Z"
+    },
+    {
+      "id": "cls_362c84fd",
+      "hostId": "usr_host1",
+      "facilityId": "fac_f27fa920",
+      "title": "Monsoon Facility Maintenance Closure",
+      "reason": "MAINTENANCE",
+      "startTimeUtc": "2026-11-01T08:00:00.000Z",
+      "endTimeUtc": "2026-11-01T18:00:00.000Z",
+      "createdAtUtc": "2026-10-24T08:54:10.698Z"
+    },
+    {
+      "id": "cls-a1403ce2",
+      "hostId": "usr_host1",
+      "facilityId": "fac_metro_downtown",
+      "title": "Christmas Day Full Garage Deep Clean",
+      "reason": "MAINTENANCE",
+      "startTimeUtc": "2026-12-25T00:00:00.000Z",
+      "endTimeUtc": "2026-12-25T23:59:59.000Z",
+      "createdAtUtc": "2026-10-24T08:31:29.149Z"
+    },
+    {
+      "id": "cls_e649c0e7",
+      "hostId": "usr_host1",
+      "facilityId": "fac_80bf7217",
+      "title": "Host A Closure",
+      "reason": "MAINTENANCE",
+      "startTimeUtc": "2026-11-20T08:00:00.000Z",
+      "endTimeUtc": "2026-11-20T12:00:00.000Z",
+      "createdAtUtc": "2026-10-24T08:31:28.372Z"
+    },
+    {
+      "id": "cls_28510d1d",
+      "hostId": "usr_host1",
+      "facilityId": "fac_df98740a",
+      "title": "Morning Closure",
+      "reason": "MAINTENANCE",
+      "startTimeUtc": "2026-11-10T08:00:00.000Z",
+      "endTimeUtc": "2026-11-10T14:00:00.000Z",
+      "createdAtUtc": "2026-10-24T08:31:28.032Z"
+    },
+    {
+      "id": "cls_16b251b6",
+      "hostId": "usr_host1",
+      "facilityId": "fac_abbc9673",
+      "title": "Monsoon Facility Maintenance Closure",
+      "reason": "MAINTENANCE",
+      "startTimeUtc": "2026-11-01T08:00:00.000Z",
+      "endTimeUtc": "2026-11-01T18:00:00.000Z",
+      "createdAtUtc": "2026-10-24T08:31:27.755Z"
+    },
+    {
+      "id": "cls-4fb2752f",
+      "hostId": "usr_host1",
+      "facilityId": "fac_metro_downtown",
+      "title": "Christmas Day Full Garage Deep Clean",
+      "reason": "MAINTENANCE",
+      "startTimeUtc": "2026-12-25T00:00:00.000Z",
+      "endTimeUtc": "2026-12-25T23:59:59.000Z",
+      "createdAtUtc": "2026-10-24T08:28:50.979Z"
+    },
+    {
+      "id": "cls_a0cd62a9",
+      "hostId": "usr_host1",
+      "facilityId": "fac_2b09de91",
+      "title": "Host A Closure",
+      "reason": "MAINTENANCE",
+      "startTimeUtc": "2026-11-20T08:00:00.000Z",
+      "endTimeUtc": "2026-11-20T12:00:00.000Z",
+      "createdAtUtc": "2026-10-24T08:28:50.413Z"
+    },
+    {
+      "id": "cls_505f2654",
+      "hostId": "usr_host1",
+      "facilityId": "fac_339b7343",
+      "title": "Morning Closure",
+      "reason": "MAINTENANCE",
+      "startTimeUtc": "2026-11-10T08:00:00.000Z",
+      "endTimeUtc": "2026-11-10T14:00:00.000Z",
+      "createdAtUtc": "2026-10-24T08:28:50.239Z"
+    },
+    {
+      "id": "cls_ba2fb43f",
+      "hostId": "usr_host1",
+      "facilityId": "fac_a915eab7",
+      "title": "Monsoon Facility Maintenance Closure",
+      "reason": "MAINTENANCE",
+      "startTimeUtc": "2026-11-01T08:00:00.000Z",
+      "endTimeUtc": "2026-11-01T18:00:00.000Z",
+      "createdAtUtc": "2026-10-24T08:28:50.078Z"
+    },
     {
       "id": "cls-bd3147f7",
       "hostId": "usr_host1",
@@ -872,6 +1055,66 @@
     }
   ],
   "auditLogs": [
+    {
+      "id": "aud-0e8342ee",
+      "hostId": "usr_host1",
+      "facilityId": "fac_metro_downtown",
+      "facilityName": "Downtown Metro Tech Center Garage",
+      "action": "CLOSURE_CREATED",
+      "actorId": "usr_host1",
+      "newValue": {
+        "id": "cls-1d320d29",
+        "hostId": "usr_host1",
+        "facilityId": "fac_metro_downtown",
+        "title": "Christmas Day Full Garage Deep Clean",
+        "reason": "MAINTENANCE",
+        "startTimeUtc": "2026-12-25T00:00:00.000Z",
+        "endTimeUtc": "2026-12-25T23:59:59.000Z",
+        "createdAtUtc": "2026-10-24T08:54:11.890Z"
+      },
+      "diffSummary": "Created closure \"Christmas Day Full Garage Deep Clean\" (2026-12-25T00:00:00.000Z to 2026-12-25T23:59:59.000Z)",
+      "createdAtUtc": "2026-10-24T08:54:11.890Z"
+    },
+    {
+      "id": "aud-4e4cf68a",
+      "hostId": "usr_host1",
+      "facilityId": "fac_metro_downtown",
+      "facilityName": "Downtown Metro Tech Center Garage",
+      "action": "CLOSURE_CREATED",
+      "actorId": "usr_host1",
+      "newValue": {
+        "id": "cls-a1403ce2",
+        "hostId": "usr_host1",
+        "facilityId": "fac_metro_downtown",
+        "title": "Christmas Day Full Garage Deep Clean",
+        "reason": "MAINTENANCE",
+        "startTimeUtc": "2026-12-25T00:00:00.000Z",
+        "endTimeUtc": "2026-12-25T23:59:59.000Z",
+        "createdAtUtc": "2026-10-24T08:31:29.149Z"
+      },
+      "diffSummary": "Created closure \"Christmas Day Full Garage Deep Clean\" (2026-12-25T00:00:00.000Z to 2026-12-25T23:59:59.000Z)",
+      "createdAtUtc": "2026-10-24T08:31:29.150Z"
+    },
+    {
+      "id": "aud-2657cb52",
+      "hostId": "usr_host1",
+      "facilityId": "fac_metro_downtown",
+      "facilityName": "Downtown Metro Tech Center Garage",
+      "action": "CLOSURE_CREATED",
+      "actorId": "usr_host1",
+      "newValue": {
+        "id": "cls-4fb2752f",
+        "hostId": "usr_host1",
+        "facilityId": "fac_metro_downtown",
+        "title": "Christmas Day Full Garage Deep Clean",
+        "reason": "MAINTENANCE",
+        "startTimeUtc": "2026-12-25T00:00:00.000Z",
+        "endTimeUtc": "2026-12-25T23:59:59.000Z",
+        "createdAtUtc": "2026-10-24T08:28:50.979Z"
+      },
+      "diffSummary": "Created closure \"Christmas Day Full Garage Deep Clean\" (2026-12-25T00:00:00.000Z to 2026-12-25T23:59:59.000Z)",
+      "createdAtUtc": "2026-10-24T08:28:50.980Z"
+    },
     {
       "id": "aud-6f323632",
       "hostId": "usr_host1",
@@ -2175,5 +2418,5 @@
       "createdAtUtc": "2026-10-20T14:32:34.802Z"
     }
   ],
-  "updatedAt": "2026-10-24T07:26:51.139Z"
+  "updatedAt": "2026-10-24T08:54:11.891Z"
 }
