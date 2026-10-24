@@ -1103,3 +1103,147 @@ export function resolveApplicablePricingRule(
   return null;
 }
 
+// ============================================================================
+// SECTION 4A: BOOKING INTEGRITY & LIFECYCLE VALIDATORS
+// ============================================================================
+
+export interface ValidatedBookingHoldInput {
+  bayId: string;
+  facilityId: string;
+  userId: string;
+  durationMinutes: number;
+  startsAt?: string;
+  endsAt?: string;
+}
+
+export function validateBookingHold(input: unknown): ValidationResult<ValidatedBookingHoldInput> {
+  const errors: string[] = [];
+  if (!input || typeof input !== 'object') {
+    return { success: false, errors: ['Request body must be a non-null object'] };
+  }
+
+  const b = input as Record<string, any>;
+  const bayId = String(b.bayId || b.spaceId || '').trim();
+  const facilityId = String(b.facilityId || b.locationId || '').trim();
+  const userId = String(b.userId || b.customerId || '').trim();
+
+  if (!bayId) errors.push('bayId is required');
+  if (!facilityId) errors.push('facilityId is required');
+  if (!userId) errors.push('userId is required');
+
+  let durationMinutes = Number(b.durationMinutes);
+  if (b.startsAt && b.endsAt) {
+    const startMs = Date.parse(b.startsAt);
+    const endMs = Date.parse(b.endsAt);
+    if (isNaN(startMs) || isNaN(endMs) || endMs <= startMs) {
+      errors.push('endsAt must be chronologically after startsAt');
+    } else {
+      durationMinutes = Math.round((endMs - startMs) / 60000);
+    }
+  }
+
+  if (isNaN(durationMinutes) || durationMinutes < 60 || durationMinutes > 4320) {
+    errors.push('Duration must be between 60 minutes (1 hour) and 4320 minutes (72 hours)');
+  } else if (durationMinutes % 30 !== 0) {
+    errors.push('Duration must be in 30-minute increments');
+  }
+
+  if (errors.length > 0) {
+    return { success: false, errors };
+  }
+
+  return {
+    success: true,
+    data: {
+      bayId,
+      facilityId,
+      userId,
+      durationMinutes,
+      startsAt: b.startsAt ? new Date(b.startsAt).toISOString() : undefined,
+      endsAt: b.endsAt ? new Date(b.endsAt).toISOString() : undefined,
+    },
+    errors: [],
+  };
+}
+
+export interface ValidatedConfirmBookingInput {
+  holdId: string;
+  paymentIntentId: string;
+  idempotencyKey: string;
+  licensePlate: string;
+  paymentProvider?: string;
+}
+
+export function validateConfirmBooking(input: unknown): ValidationResult<ValidatedConfirmBookingInput> {
+  const errors: string[] = [];
+  if (!input || typeof input !== 'object') {
+    return { success: false, errors: ['Request body must be a non-null object'] };
+  }
+
+  const b = input as Record<string, any>;
+  const holdId = String(b.holdId || '').trim();
+  const paymentIntentId = String(b.paymentIntentId || b.transactionId || '').trim();
+  const idempotencyKey = String(b.idempotencyKey || '').trim();
+  const licensePlate = String(b.licensePlate || b.vehiclePlate || '').trim().toUpperCase();
+
+  if (!holdId) errors.push('holdId is required');
+  if (!paymentIntentId) errors.push('paymentIntentId is required');
+  if (!idempotencyKey) errors.push('idempotencyKey is required');
+  if (!licensePlate || licensePlate.length < 2 || licensePlate.length > 16) {
+    errors.push('A valid license plate between 2 and 16 characters is required');
+  }
+
+  if (errors.length > 0) {
+    return { success: false, errors };
+  }
+
+  return {
+    success: true,
+    data: {
+      holdId,
+      paymentIntentId,
+      idempotencyKey,
+      licensePlate,
+      paymentProvider: b.paymentProvider || b.provider,
+    },
+    errors: [],
+  };
+}
+
+export function validateBookingStateTransition(
+  currentStatus: string,
+  targetStatus: string
+): { isValid: boolean; isIdempotent: boolean; error?: string } {
+  const normCurrent = currentStatus.toLowerCase();
+  const normTarget = targetStatus.toLowerCase();
+
+  if (normCurrent === normTarget) {
+    return { isValid: true, isIdempotent: true };
+  }
+
+  const allowedTransitions: Record<string, string[]> = {
+    initiated: ['payment_initiated', 'confirmed', 'payment_failed', 'expired', 'cancelled'],
+    hold_pending: ['payment_initiated', 'confirmed', 'payment_failed', 'expired', 'cancelled'],
+    payment_initiated: ['confirmed', 'payment_failed', 'expired', 'cancelled'],
+    confirmed: ['upcoming', 'active', 'checked_in', 'cancelled'],
+    upcoming: ['active', 'checked_in', 'cancelled'],
+    active: ['completed'],
+    checked_in: ['completed'],
+    completed: [],
+    cancelled: [],
+    expired: [],
+    payment_failed: [],
+  };
+
+  const allowed = allowedTransitions[normCurrent] || [];
+  if (!allowed.includes(normTarget)) {
+    return {
+      isValid: false,
+      isIdempotent: false,
+      error: `Invalid booking status transition from '${currentStatus}' to '${targetStatus}'.`,
+    };
+  }
+
+  return { isValid: true, isIdempotent: false };
+}
+

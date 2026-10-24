@@ -9,7 +9,20 @@ export const BOOKING_STATUSES = [
   'expired',
 ] as const;
 
-export type BookingStatus = (typeof BOOKING_STATUSES)[number];
+export const LIFECYCLE_BOOKING_STATUSES = [
+  'pending',
+  'initiated',
+  'payment_initiated',
+  'confirmed',
+  'upcoming',
+  'active',
+  'completed',
+  'payment_failed',
+  'cancelled',
+  'expired',
+] as const;
+
+export type BookingStatus = (typeof LIFECYCLE_BOOKING_STATUSES)[number];
 
 export interface BookingStub {
   id: string;

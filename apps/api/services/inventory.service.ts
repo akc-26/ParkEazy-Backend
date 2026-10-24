@@ -857,15 +857,17 @@ export class InventoryService {
   }
 
   public getLocationById(id: string): ParkingLocation | undefined {
-    return this.locations.find((l) => l.id === id);
+    return this.locations.find((l) => l.id === id) || this.INITIAL_LOCATIONS.find((l) => l.id === id);
   }
 
   public getBaysByLocationId(locationId: string): ParkingBay[] {
-    return this.bays.filter((b) => b.locationId === locationId);
+    const fromList = this.bays.filter((b) => b.locationId === locationId);
+    if (fromList.length > 0) return fromList;
+    return this.INITIAL_BAYS.filter((b) => b.locationId === locationId);
   }
 
   public getBayById(bayId: string): ParkingBay | undefined {
-    return this.bays.find((b) => b.id === bayId);
+    return this.bays.find((b) => b.id === bayId) || this.INITIAL_BAYS.find((b) => b.id === bayId);
   }
 
   // --------------------------------------------------------------------------

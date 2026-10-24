@@ -3,6 +3,8 @@ import path from 'path';
 import crypto from 'crypto';
 import { PoolClient, dbManager } from '../apps/api/database/connection';
 import { NotificationAdapterFactory } from '../apps/api/services/notification-adapter';
+import { PaymentAdapterFactory } from '../apps/api/services/payment-adapter';
+import { AppError } from '../apps/api/middleware/error-handler';
 import { appConfig } from '../apps/api/config/env';
 import {
   User,
@@ -181,6 +183,9 @@ export class Database {
       this.isPostgresActive = dbManager.isPostgresConnected();
 
       if (this.isPostgresActive) {
+        const { migrationManager } = await import('../apps/api/database/migrator');
+        await migrationManager.runMigrations();
+
         // app_store_entities is created by migration 007. Do not issue a second
         // CREATE TABLE here: pg-mem cannot reliably plan this duplicate DDL.
 
@@ -334,6 +339,29 @@ export class Database {
            VALUES ($1, $2, $3, NOW())
            ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data`,
           [rule.id, rule.facilityId, JSON.stringify(rule)]
+        );
+      }
+
+      for (const hold of schema.holds || []) {
+        await client.query(
+          `INSERT INTO booking_holds (id, bay_id, location_id, user_id, start_time_utc, end_time_utc, hold_expires_at_utc, is_released, quote_snapshot, duration_minutes, hold_duration_seconds, idempotency_key, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+           ON CONFLICT (id) DO NOTHING`,
+          [
+            hold.id,
+            hold.bayId,
+            hold.facilityId,
+            hold.userId,
+            hold.startTime,
+            hold.endTime,
+            hold.expiresAt,
+            Boolean((hold as any).isReleased),
+            (hold as any).quoteSnapshot ? JSON.stringify((hold as any).quoteSnapshot) : null,
+            (hold as any).durationMinutes || 60,
+            (hold as any).holdDurationSeconds || 600,
+            (hold as any).idempotencyKey || null,
+            hold.heldAt || new Date().toISOString()
+          ]
         );
       }
 
@@ -692,10 +720,24 @@ export class Database {
         const hostId = entity.hostId || facility?.hostId || 'usr_host1';
         const userId = entity.customerId || entity.userId || 'usr_cust1';
         await client.query(
-          `INSERT INTO bookings (id, bay_id, location_id, user_id, host_id, start_time_utc, end_time_utc, status, base_amount_cents, security_deposit_cents, platform_fee_cents, taxes_cents, total_payable_cents, currency, license_plate, booking_reference, metadata, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
-           ON CONFLICT (id) DO UPDATE SET
-             status = EXCLUDED.status, metadata = EXCLUDED.metadata, updated_at = NOW()`,
+          `INSERT INTO bookings (
+            id, bay_id, location_id, user_id, host_id, start_time_utc, end_time_utc,
+            status, base_amount_cents, security_deposit_cents, platform_fee_cents,
+            taxes_cents, total_payable_cents, currency, license_plate, booking_reference,
+            hold_id, idempotency_key, quote_snapshot, cancellation_reason, cancelled_at_utc,
+            refund_amount_cents, qr_code_token, gate_access_code, access_instructions,
+            payment_intent_id, payment_provider, payment_status, metadata, created_at, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31)
+          ON CONFLICT (id) DO UPDATE SET
+            status = EXCLUDED.status,
+            cancellation_reason = EXCLUDED.cancellation_reason,
+            cancelled_at_utc = EXCLUDED.cancelled_at_utc,
+            refund_amount_cents = EXCLUDED.refund_amount_cents,
+            end_time_utc = EXCLUDED.end_time_utc,
+            base_amount_cents = EXCLUDED.base_amount_cents,
+            total_payable_cents = EXCLUDED.total_payable_cents,
+            metadata = EXCLUDED.metadata,
+            updated_at = NOW()`,
           [
             entity.id,
             entity.bayId,
@@ -706,16 +748,53 @@ export class Database {
             entity.endTime,
             (entity.status || 'confirmed').toUpperCase(),
             Math.round(((entity as any).grossAmount || (entity as any).totalAmount || 0) * 100),
-            0,
+            Math.round(((entity as any).securityDeposit || 0) * 100),
             Math.round(((entity as any).platformFee || 0) * 100),
             Math.round(((entity as any).taxAmount || 0) * 100),
             Math.round(((entity as any).grossAmount || (entity as any).totalAmount || 0) * 100),
             'USD',
             entity.licensePlate || null,
             (entity as any).bookingReference || (entity as any).reference || ('BK-' + entity.id),
+            (entity as any).holdId || null,
+            (entity as any).idempotencyKey || null,
+            (entity as any).quoteSnapshot ? JSON.stringify((entity as any).quoteSnapshot) : null,
+            (entity as any).cancellationReason || null,
+            (entity as any).cancelledAt || null,
+            Math.round(((entity as any).refundAmount || 0) * 100),
+            (entity as any).qrCodeToken || null,
+            (entity as any).gateAccessCode || null,
+            (entity as any).accessInstructions || null,
+            (entity as any).paymentIntentId || null,
+            (entity as any).paymentProvider || null,
+            (entity as any).paymentStatus || 'SUCCEEDED',
             JSON.stringify(entity),
             entity.createdAt || new Date().toISOString(),
             entity.updatedAt || new Date().toISOString()
+          ]
+        );
+      } else if (collection === 'holds') {
+        await client.query(
+          `INSERT INTO booking_holds (
+            id, bay_id, location_id, user_id, start_time_utc, end_time_utc, hold_expires_at_utc,
+            is_released, quote_snapshot, duration_minutes, hold_duration_seconds, idempotency_key, created_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+          ON CONFLICT (id) DO UPDATE SET
+            is_released = EXCLUDED.is_released,
+            hold_expires_at_utc = EXCLUDED.hold_expires_at_utc`,
+          [
+            entity.id,
+            entity.bayId,
+            entity.facilityId || entity.locationId,
+            entity.userId,
+            entity.startTime || entity.startTimeUtc,
+            entity.endTime || entity.endTimeUtc,
+            entity.expiresAt || entity.holdExpiresAtUtc,
+            Boolean(entity.isReleased),
+            entity.quoteSnapshot ? JSON.stringify(entity.quoteSnapshot) : null,
+            entity.durationMinutes || 60,
+            entity.holdDurationSeconds || 600,
+            entity.idempotencyKey || null,
+            entity.heldAt || entity.createdAt || new Date().toISOString()
           ]
         );
       } else if (collection === 'ledger') {
@@ -974,6 +1053,8 @@ export class Database {
           await client.query(`DELETE FROM facility_closures WHERE id = $1`, [id]).catch(() => {});
         } else if (collection === 'maintenance') {
           await client.query(`DELETE FROM facility_maintenance_periods WHERE id = $1`, [id]).catch(() => {});
+        } else if (collection === 'holds') {
+          await client.query(`DELETE FROM booking_holds WHERE id = $1`, [id]).catch(() => {});
         }
         if (isInternalTx) await client.query('COMMIT');
       } catch (err: any) {
@@ -3454,35 +3535,204 @@ export class Database {
     }
   }
 
-  // ----------------- AVAILABILITY & HOLDS -----------------
-  public async createHold(bayId: string, facilityId: string, userId: string, startTime: string, endTime: string): Promise<AvailabilityHold> {
+  // ----------------- SECTION 4A: BOOKING INTEGRITY & LIFECYCLE -----------------
+
+  public async recordBookingLifecycleEvent(
+    bookingId: string,
+    eventType: string,
+    actorId?: string,
+    actorRole: string = 'customer',
+    metadata?: any,
+    client?: PoolClient
+  ): Promise<void> {
+    const eventId = 'evt_' + crypto.randomUUID().slice(0, 10);
+    if (this.isPostgresActive && client) {
+      try {
+        await client.query(
+          `INSERT INTO booking_lifecycle_events (id, booking_id, tenant_id, event_type, actor_id, actor_role, metadata, created_at)
+           VALUES ($1, $2, 'default', $3, $4, $5, $6, NOW())`,
+          [
+            eventId,
+            bookingId,
+            eventType,
+            actorId || null,
+            actorRole,
+            metadata ? (typeof metadata === 'string' ? metadata : JSON.stringify(metadata)) : null
+          ]
+        );
+      } catch (err: any) {
+        console.warn('[ParkEazy-Store] Lifecycle event insert warning:', err.message);
+      }
+    }
+  }
+
+  public async inspectHold(holdId: string): Promise<{ hold: AvailabilityHold | null; isExpired: boolean }> {
+    const hold = await this.getEntityFromDb<AvailabilityHold>('holds', holdId);
+    if (!hold) return { hold: null, isExpired: false };
+    const isExpired = new Date(hold.expiresAt).getTime() <= Date.now() || hold.isReleased === true;
+    if (isExpired && !hold.isReleased) {
+      hold.isReleased = true;
+      await this.withTransaction(async (client) => {
+        await this.persistEntity('holds', hold.id, hold, client);
+        const bay = await this.getEntityFromDb<ParkingBay>('bays', hold.bayId);
+        if (bay && bay.status === 'held') {
+          bay.status = 'available';
+          bay.updatedAt = new Date().toISOString();
+          await this.persistEntity('bays', bay.id, bay, client);
+        }
+        await this.logAudit(
+          hold.userId,
+          'System Hold Reaper',
+          'customer',
+          'BOOKING_HOLD_EXPIRED',
+          'hold',
+          hold.id,
+          `Hold ${hold.id} on bay ${hold.bayId} expired at ${hold.expiresAt}`,
+          client
+        );
+      });
+    }
+    return { hold, isExpired };
+  }
+
+  public async createHold(
+    bayId: string,
+    facilityId: string,
+    userId: string,
+    startTime: string,
+    endTime: string,
+    options?: {
+      durationMinutes?: number;
+      idempotencyKey?: string;
+      vehicleCategory?: string;
+      holdDurationSeconds?: number;
+    }
+  ): Promise<AvailabilityHold> {
     await this.cleanExpiredHolds();
 
+    // 1. Facility validation
+    const facility = await this.getFacilityById(facilityId);
+    if (!facility) {
+      throw new AppError(`Specified parking facility '${facilityId}' does not exist.`, 404, 'NOT_FOUND');
+    }
+
+    const facStatus = (facility.status || 'active').toLowerCase();
+    if (facStatus !== 'active' && facStatus !== 'published' && facStatus !== 'approved') {
+      throw new AppError(`Facility is not currently active or published (status: ${facStatus}).`, 400, 'FACILITY_INACTIVE');
+    }
+
+    const start = new Date(startTime);
+    const end = new Date(endTime);
+    if (isNaN(start.getTime()) || isNaN(end.getTime()) || end.getTime() <= start.getTime()) {
+      throw new AppError('Invalid time interval: end time must be chronologically after start time.', 400, 'INVALID_TIME_BOUNDS');
+    }
+
+    const startMs = start.getTime();
+    const endMs = end.getTime();
+    const durationMinutes = options?.durationMinutes || Math.round((endMs - startMs) / 60000);
+
+    if (durationMinutes < 60 || durationMinutes > 72 * 60) {
+      throw new AppError('Duration must be between 1 hour and 72 continuous hours.', 400, 'INVALID_DURATION');
+    }
+    if (durationMinutes % 30 !== 0) {
+      throw new AppError('Booking duration must be in 30-minute increments.', 400, 'INVALID_INCREMENT');
+    }
+
+    const horizonMs = 30 * 24 * 60 * 60 * 1000;
+    if (startMs > Date.now() + horizonMs) {
+      throw new AppError('Booking start time exceeds maximum 30-day booking horizon.', 400, 'EXCEEDS_BOOKING_HORIZON');
+    }
+
+    // 2. Operating hours check
+    const timezone = resolveFacilityTimezone(facility.timezone);
+    if (facility.operatingHours && facility.operatingHours !== '24/7' && (facility.operatingHours as any).is24x7 !== true) {
+      const startIn = isInstantWithinOperatingHours(startTime, facility.operatingHours, timezone);
+      const endIn = isInstantWithinOperatingHours(endTime, facility.operatingHours, timezone);
+      if (!startIn || !endIn) {
+        throw new AppError('Requested parking period falls outside facility operating hours.', 400, 'OUTSIDE_OPERATING_HOURS');
+      }
+      const stepMs = 60 * 60 * 1000;
+      for (let t = startMs + stepMs; t < endMs; t += stepMs) {
+        if (!isInstantWithinOperatingHours(new Date(t).toISOString(), facility.operatingHours, timezone)) {
+          const midLocal = getFacilityLocalDateTime(new Date(t), timezone);
+          throw new AppError(`Facility is closed during requested window on ${midLocal.dayName} at ${midLocal.timeString}.`, 400, 'OUTSIDE_OPERATING_HOURS');
+        }
+      }
+    }
+
+    // 3. Closures check
+    const closures = await this.getCollectionFromDb<FacilityClosure>('closures');
+    const closureConflict = closures.find(c => {
+      if (c.facilityId !== facilityId) return false;
+      const cBay = c.bayId || c.spaceId;
+      if (cBay && cBay !== bayId) {
+        if (!c.affectedBayIds || !c.affectedBayIds.includes(bayId)) return false;
+      }
+      const cStart = new Date(c.startsAt || c.startDate || c.startTimeUtc!).getTime();
+      const cEnd = new Date(c.endsAt || c.endDate || c.endTimeUtc!).getTime();
+      return Math.max(startMs, cStart) < Math.min(endMs, cEnd);
+    });
+    if (closureConflict) {
+      throw new AppError(`Facility or bay is closed: ${closureConflict.title || closureConflict.reason || 'Scheduled Facility Closure'}.`, 409, 'FACILITY_CLOSED');
+    }
+
+    // 4. Maintenance check
+    const maintenanceList = await this.getCollectionFromDb<FacilityMaintenance>('maintenance');
+    const maintConflict = maintenanceList.find(m => {
+      if (m.facilityId !== facilityId) return false;
+      if (m.status !== 'scheduled' && m.status !== 'in_progress') return false;
+      const mBay = m.bayId || m.spaceId;
+      if (mBay && mBay !== bayId) return false;
+      const mStart = new Date(m.startsAt || m.startTime || m.startTimeUtc!).getTime();
+      const mEnd = new Date(m.endsAt || m.endTime || m.endTimeUtc!).getTime();
+      return Math.max(startMs, mStart) < Math.min(endMs, mEnd);
+    });
+    if (maintConflict) {
+      throw new AppError(`Facility or bay is undergoing maintenance: ${maintConflict.title || 'Scheduled Maintenance'}.`, 409, 'FACILITY_MAINTENANCE');
+    }
+
+    // 5. Bay validation
     const bay = await this.getBayById(bayId);
-    if (!bay) throw new Error('Parking bay not found');
-    if (bay.status === 'maintenance' || bay.status === 'retired') {
-      throw new Error(`Bay is currently marked as ${bay.status}.`);
+    if (!bay || bay.facilityId !== facilityId) {
+      throw new AppError(`Specified parking bay '${bayId}' does not exist in this facility.`, 404, 'INVENTORY_NOT_FOUND');
+    }
+    if (bay.status === 'maintenance' || bay.status === 'retired' || bay.status === 'suspended') {
+      throw new AppError(`Bay is currently unavailable (status: ${bay.status}).`, 409, 'BAY_UNAVAILABLE');
     }
 
-    const holds = await this.getCollectionFromDb<AvailabilityHold>('holds');
-    const existingHold = holds.find(h => h.bayId === bayId && h.expiresAt > new Date().toISOString());
-    if (existingHold && existingHold.userId !== userId) {
-      throw new Error('This bay is temporarily held by another customer. Please choose another bay or wait 15 minutes.');
+    // 6. Idempotency Check: if active hold exists with identical idempotencyKey, return it
+    if (options?.idempotencyKey) {
+      const existingHolds = await this.getCollectionFromDb<AvailabilityHold>('holds');
+      const matched = existingHolds.find(h => h.idempotencyKey === options.idempotencyKey && !h.isReleased && new Date(h.expiresAt).getTime() > Date.now());
+      if (matched) {
+        return matched;
+      }
     }
 
-    const bookings = await this.getCollectionFromDb<Booking>('bookings');
-    const hasOverlap = bookings.some(b => {
-      if (b.bayId !== bayId) return false;
-      if (b.status === 'cancelled' || b.status === 'refunded' || b.status === 'completed') return false;
-      return new Date(b.startTime) < new Date(endTime) && new Date(b.endTime) > new Date(startTime);
+    // 7. Authoritative Transaction with Row Locking & 10-Minute Transition Buffer
+    const bufferMs = 10 * 60 * 1000; // 10 minutes transition buffer required by specification
+    const holdDurationSec = options?.holdDurationSeconds || 600; // 10 minutes (600s) lease TTL
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + holdDurationSec * 1000).toISOString();
+
+    const authQuote = await this.calculateAuthoritativeQuote(facilityId, startTime, endTime, {
+      bayId,
+      vehicleCategory: options?.vehicleCategory,
+      bayMultiplier: bay.hourlyRateMultiplier,
     });
 
-    if (hasOverlap) {
-      throw new Error('This bay is already booked for the selected time window.');
-    }
-
-    const now = new Date();
-    const expiresAt = new Date(now.getTime() + 15 * 60 * 1000).toISOString();
+    const quoteSnapshot = {
+      quoteId: authQuote.quoteId,
+      baseAmountCents: authQuote.baseAmountCents,
+      securityDepositCents: authQuote.securityDepositCents,
+      platformFeeCents: authQuote.platformFeeCents,
+      taxesCents: authQuote.taxesCents,
+      totalPayableCents: authQuote.totalPayableCents,
+      currency: 'USD',
+      durationMinutes,
+      cancellationPolicyTier: authQuote.cancellationPolicyTier || 'STANDARD_48H',
+      quotedAtUtc: now.toISOString(),
+    };
 
     const hold: AvailabilityHold = {
       id: 'hld_' + crypto.randomUUID().slice(0, 8),
@@ -3492,26 +3742,77 @@ export class Database {
       startTime,
       endTime,
       heldAt: now.toISOString(),
-      expiresAt
+      expiresAt,
+      isReleased: false,
+      durationMinutes,
+      holdDurationSeconds: holdDurationSec,
+      quoteSnapshot,
+      idempotencyKey: options?.idempotencyKey,
     };
 
     await this.withTransaction(async (client) => {
-      const userPrevHolds = holds.filter(h => h.bayId === bayId && h.userId === userId);
-      for (const h of userPrevHolds) {
-        await this.deleteEntity('holds', h.id, client);
+      // In PostgreSQL, acquire row lock on parking bay to serialize concurrent reservation requests
+      if (client && this.isPostgresActive) {
+        await client.query('SELECT id, status FROM parking_bays WHERE id = $1 FOR UPDATE', [bayId]);
       }
+
+      // Concurrency check against active bookings with transition buffer
+      const bookings = await this.getCollectionFromDb<Booking>('bookings');
+      for (const b of bookings) {
+        if (b.bayId === bayId) {
+          const bStatus = (b.status || '').toLowerCase();
+          if (bStatus !== 'cancelled' && bStatus !== 'refunded' && bStatus !== 'payment_failed' && bStatus !== 'expired') {
+            const bStart = new Date(b.startTime).getTime();
+            const bEnd = new Date(b.endTime).getTime();
+            if (startMs < (bEnd + bufferMs) && (endMs + bufferMs) > bStart) {
+              throw new AppError('This parking bay is already booked during the requested time slot (including buffer).', 409, 'BAY_UNAVAILABLE');
+            }
+          }
+        }
+      }
+
+      // Concurrency check against active holds with transition buffer
+      const holds = await this.getCollectionFromDb<AvailabilityHold>('holds');
+      const nowIso = new Date().toISOString();
+      for (const h of holds) {
+        if (h.bayId === bayId && !h.isReleased && h.expiresAt > nowIso) {
+          const hStart = new Date(h.startTime).getTime();
+          const hEnd = new Date(h.endTime).getTime();
+          if (startMs < (hEnd + bufferMs) && (endMs + bufferMs) > hStart) {
+            if (h.userId !== userId) {
+              throw new AppError('This parking bay is temporarily locked by another reservation hold. Please try again in a few minutes or choose another bay.', 409, 'BAY_HELD');
+            } else {
+              // Same user re-holding: safely release old hold
+              await this.deleteEntity('holds', h.id, client);
+            }
+          }
+        }
+      }
+
       await this.persistEntity('holds', hold.id, hold, client);
       bay.status = 'held';
       bay.updatedAt = now.toISOString();
       await this.persistEntity('bays', bay.id, bay, client);
+
+      await this.logAudit(
+        userId,
+        'Customer Driver',
+        'customer',
+        'BOOKING_HOLD_CREATED',
+        'hold',
+        hold.id,
+        `Created 10-minute hold for bay ${bay.identifier} (Facility: ${facility.name}, Duration: ${durationMinutes}m)`,
+        client
+      );
     });
 
     return hold;
   }
 
-  public async releaseHold(holdId: string): Promise<void> {
+  public async releaseHold(holdId: string, actorId?: string, actorRole: string = 'customer'): Promise<void> {
     const hold = await this.getEntityFromDb<AvailabilityHold>('holds', holdId);
-    if (hold) {
+    if (hold && !hold.isReleased) {
+      hold.isReleased = true;
       await this.withTransaction(async (client) => {
         await this.deleteEntity('holds', holdId, client);
         const bay = await this.getBayById(hold.bayId);
@@ -3520,20 +3821,272 @@ export class Database {
           bay.updatedAt = new Date().toISOString();
           await this.persistEntity('bays', bay.id, bay, client);
         }
+        await this.logAudit(
+          actorId || hold.userId,
+          actorId || 'Customer Driver',
+          (actorRole as any) || 'customer',
+          'BOOKING_HOLD_RELEASED',
+          'hold',
+          hold.id,
+          `Hold ${hold.id} released on bay ${hold.bayId}`,
+          client
+        );
       });
     }
   }
 
-  // ----------------- BOOKINGS & GATE ACCESS -----------------
+  public async confirmBookingFromHold(params: {
+    holdId: string;
+    paymentIntentId: string;
+    idempotencyKey: string;
+    licensePlate: string;
+    userId: string;
+    userName?: string;
+    paymentProvider?: string;
+  }): Promise<Booking> {
+    const { holdId, paymentIntentId, idempotencyKey, licensePlate, userId, userName, paymentProvider } = params;
+
+    // 1. Idempotency Check: if request was already completed with this key, return existing confirmed booking
+    const bookings = await this.getCollectionFromDb<Booking>('bookings');
+    const existingByIdemp = bookings.find(b => b.idempotencyKey === idempotencyKey);
+    if (existingByIdemp) {
+      return existingByIdemp;
+    }
+
+    const existingByHold = bookings.find(b => (b as any).holdId === holdId);
+    if (existingByHold) {
+      return existingByHold;
+    }
+
+    // 2. Validate Hold existence and server-side expiration
+    const { hold, isExpired } = await this.inspectHold(holdId);
+    if (!hold || isExpired || hold.isReleased) {
+      throw new AppError(
+        'The 10-minute hold reservation has expired or does not exist. Please re-select your preferred parking bay.',
+        410,
+        'HOLD_EXPIRED'
+      );
+    }
+
+    // 2b. Validate Hold Ownership: prevent cross-account hold hijacking
+    if (hold.userId && hold.userId !== userId) {
+      throw new AppError(
+        'You do not have permission to confirm a reservation hold created by another user.',
+        403,
+        'FORBIDDEN'
+      );
+    }
+
+    // 3. Validate License Plate
+    const cleanedPlate = (licensePlate || '').trim().toUpperCase();
+    if (!cleanedPlate || cleanedPlate.length < 2 || cleanedPlate.length > 16) {
+      throw new AppError('A valid vehicle license plate (2-16 alphanumeric characters) is required.', 400, 'INVALID_LICENSE_PLATE');
+    }
+
+    // 4. Validate Location and Bay still exist
+    const facility = await this.getFacilityById(hold.facilityId);
+    const bay = await this.getBayById(hold.bayId);
+    if (!facility || !bay) {
+      throw new AppError('Referenced parking facility or bay no longer exists in inventory.', 404, 'INVENTORY_NOT_FOUND');
+    }
+
+    // 5. Authoritative Payment Verification with active payment adapter
+    const activeProvider = paymentProvider || process.env.PAYMENT_PROVIDER || 'STRIPE';
+    const adapter = PaymentAdapterFactory.getAdapter(activeProvider);
+    const paymentStatus = await adapter.getPaymentStatus(paymentIntentId);
+
+    if (paymentStatus.status !== 'SUCCEEDED') {
+      throw new AppError(
+        `Payment has not been confirmed by payment provider (status: ${paymentStatus.status}). Booking cannot be finalized.`,
+        402,
+        'PAYMENT_UNVERIFIED'
+      );
+    }
+
+    // Replay attack prevention: A payment intent ID can only be applied to a single confirmed reservation
+    const alreadyUsedPayment = bookings.find(b => (b as any).paymentIntentId === paymentIntentId);
+    if (alreadyUsedPayment) {
+      throw new AppError(
+        'This payment transaction has already been applied to another confirmed reservation.',
+        409,
+        'PAYMENT_ALREADY_USED'
+      );
+    }
+
+    const quoteSnapshot = hold.quoteSnapshot || {
+      quoteId: 'qt_' + crypto.randomUUID().slice(0, 8),
+      baseAmountCents: 2600,
+      securityDepositCents: 2000,
+      platformFeeCents: 390,
+      taxesCents: 260,
+      totalPayableCents: 5250,
+      currency: 'USD',
+      durationMinutes: hold.durationMinutes || 60,
+      cancellationPolicyTier: 'STANDARD_48H',
+      quotedAtUtc: new Date().toISOString()
+    };
+
+    // Amount & currency verification
+    if (paymentStatus.currency && paymentStatus.currency.toUpperCase() !== quoteSnapshot.currency.toUpperCase()) {
+      throw new AppError(
+        `Payment currency (${paymentStatus.currency}) does not match authoritative quote currency (${quoteSnapshot.currency}).`,
+        400,
+        'PAYMENT_CURRENCY_MISMATCH'
+      );
+    }
+
+    if (paymentStatus.amountCents && paymentStatus.amountCents !== quoteSnapshot.totalPayableCents) {
+      throw new AppError(
+        `Payment amount (${paymentStatus.amountCents} cents) does not match authoritative quote total (${quoteSnapshot.totalPayableCents} cents).`,
+        400,
+        'PAYMENT_AMOUNT_MISMATCH'
+      );
+    }
+
+    // 6. Concurrency re-check and booking creation inside database transaction
+    const bufferMs = 10 * 60 * 1000;
+    const reqStart = new Date(hold.startTime).getTime();
+    const reqEnd = new Date(hold.endTime).getTime();
+    const bookingRef = 'PKZ-' + Math.floor(100000 + Math.random() * 900000);
+    const qrToken = 'PKZ_QR_' + crypto.randomBytes(16).toString('hex');
+    const gatePin = Math.floor(1000 + Math.random() * 9000) + '#';
+    const now = new Date().toISOString();
+
+    const grossAmount = (quoteSnapshot.baseAmountCents || 2600) / 100;
+    const platformFee = (quoteSnapshot.platformFeeCents || 390) / 100;
+    const taxAmount = (quoteSnapshot.taxesCents || 260) / 100;
+    const hostNetEarnings = Math.round((grossAmount - platformFee) * 100) / 100;
+
+    const confirmedBooking: Booking = {
+      id: 'bk_' + crypto.randomUUID().slice(0, 8),
+      bookingReference: bookingRef,
+      holdId: hold.id,
+      facilityId: hold.facilityId,
+      bayId: hold.bayId,
+      customerId: userId,
+      customerName: userName || 'Driver',
+      customerPhone: '+1 (206) 555-0188',
+      customerEmail: 'driver@example.com',
+      licensePlate: cleanedPlate,
+      vehicleMakeModel: 'Standard Vehicle',
+      startTime: hold.startTime,
+      endTime: hold.endTime,
+      grossAmount,
+      platformFee,
+      hostNetEarnings,
+      taxAmount,
+      status: 'confirmed',
+      qrCodeToken: qrToken,
+      gateAccessCode: gatePin,
+      accessInstructions: facility.accessInstructions || 'Drive to entry barrier gate and scan mobile pass QR code.',
+      idempotencyKey,
+      quoteSnapshot,
+      cancellationPolicyTier: quoteSnapshot.cancellationPolicyTier || 'STANDARD_48H',
+      paymentIntentId,
+      paymentProvider: activeProvider,
+      paymentStatus: 'SUCCEEDED',
+      createdAt: now,
+      updatedAt: now
+    };
+
+    await this.withTransaction(async (client) => {
+      // PostgreSQL bay row lock to serialize concurrent checkouts on the same physical bay
+      if (client && this.isPostgresActive) {
+        await client.query('SELECT id, status FROM parking_bays WHERE id = $1 FOR UPDATE', [hold.bayId]);
+      }
+
+      // Double-booking concurrency check across confirmed bookings with 10-minute transition buffer
+      const currentBookings = await this.getCollectionFromDb<Booking>('bookings');
+      for (const b of currentBookings) {
+        if (b.bayId === hold.bayId) {
+          const bStatus = (b.status || '').toLowerCase();
+          if (bStatus !== 'cancelled' && bStatus !== 'refunded' && bStatus !== 'payment_failed' && bStatus !== 'expired') {
+            const bStart = new Date(b.startTime).getTime();
+            const bEnd = new Date(b.endTime).getTime();
+            if (reqStart < (bEnd + bufferMs) && (reqEnd + bufferMs) > bStart) {
+              throw new AppError('This bay was simultaneously confirmed by another reservation.', 409, 'BAY_UNAVAILABLE');
+            }
+          }
+        }
+      }
+
+      // Mark bay reserved
+      bay.status = 'reserved';
+      bay.updatedAt = now;
+      await this.persistEntity('bays', bay.id, bay, client);
+
+      // Persist confirmed booking
+      await this.persistEntity('bookings', confirmedBooking.id, confirmedBooking, client);
+
+      // Safely release hold
+      hold.isReleased = true;
+      await this.deleteEntity('holds', hold.id, client);
+
+      // Balanced Double-Entry Financial Ledger Posting
+      await this.recordLedgerEntry({
+        idempotencyKey: `ledg_${idempotencyKey}_fee`,
+        hostId: facility.hostId,
+        facilityId: facility.id,
+        bookingId: confirmedBooking.id,
+        type: 'booking_income',
+        amount: confirmedBooking.hostNetEarnings,
+        currency: quoteSnapshot.currency,
+        description: `Net earnings for booking ${confirmedBooking.bookingReference} (${bay.identifier})`,
+        status: 'completed'
+      }, client);
+
+      // Record Lifecycle Audit & Notification
+      await this.recordBookingLifecycleEvent(
+        confirmedBooking.id,
+        'BOOKING_CONFIRMED',
+        userId,
+        'customer',
+        { quoteSnapshot, paymentIntentId, bayId: hold.bayId },
+        client
+      );
+
+      await this.logAudit(
+        userId,
+        userName || 'Customer Driver',
+        'customer',
+        'BOOKING_CONFIRMED',
+        'booking',
+        confirmedBooking.id,
+        `Booking ${confirmedBooking.bookingReference} confirmed for bay ${bay.identifier} ($${grossAmount.toFixed(2)} gross locked)`,
+        client
+      );
+
+      await this.createNotification(
+        facility.hostId,
+        'New Booking Received',
+        `${userName || 'Driver'} booked ${bay.identifier} at ${facility.name} for $${confirmedBooking.grossAmount.toFixed(2)}.`,
+        'booking',
+        '/host/bookings',
+        client
+      );
+
+      await this.createNotification(
+        userId,
+        'Booking Confirmed!',
+        `Your reservation ${confirmedBooking.bookingReference} is confirmed. Gate code: ${gatePin}`,
+        'booking',
+        '/customer/bookings',
+        client
+      );
+    });
+
+    return confirmedBooking;
+  }
+
   public async createBooking(data: {
     facilityId: string;
     bayId: string;
     customerId: string;
     customerName: string;
-    customerPhone: string;
-    customerEmail: string;
+    customerPhone?: string;
+    customerEmail?: string;
     licensePlate: string;
-    vehicleMakeModel: string;
+    vehicleMakeModel?: string;
     startTime: string;
     endTime: string;
     idempotencyKey?: string;
@@ -3555,29 +4108,97 @@ export class Database {
     }
 
     const facility = await this.getFacilityById(data.facilityId);
-    if (!facility) throw new Error('Facility not found');
+    if (!facility) throw new AppError('Facility not found', 404, 'NOT_FOUND');
     const bay = await this.getBayById(data.bayId);
-    if (!bay) throw new Error('Parking bay not found');
+    if (!bay || bay.facilityId !== data.facilityId) throw new AppError('Parking bay not found in facility', 404, 'INVENTORY_NOT_FOUND');
 
     const start = new Date(data.startTime);
     const end = new Date(data.endTime);
-    if (isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) {
-      throw new Error('Valid start and end times required, and end time must be after start time.');
+    if (isNaN(start.getTime()) || isNaN(end.getTime()) || end.getTime() <= start.getTime()) {
+      throw new AppError('Valid start and end times required, and end time must be after start time.', 400, 'INVALID_TIME_BOUNDS');
     }
 
-    const bookings = await this.getCollectionFromDb<Booking>('bookings');
-    const conflict = bookings.find(b => {
-      if (b.bayId !== data.bayId) return false;
-      if (b.status === 'cancelled' || b.status === 'refunded' || b.status === 'completed') return false;
-      return new Date(b.startTime) < end && new Date(b.endTime) > start;
+    const startMs = start.getTime();
+    const endMs = end.getTime();
+    const durationMinutes = Math.round((endMs - startMs) / 60000);
+    if (durationMinutes < 60 || durationMinutes > 72 * 60) {
+      throw new AppError('Duration must be between 1 hour and 72 continuous hours.', 400, 'INVALID_DURATION');
+    }
+    if (durationMinutes % 30 !== 0) {
+      throw new AppError('Booking duration must be in 30-minute increments.', 400, 'INVALID_INCREMENT');
+    }
+
+    // Operational checks
+    const facStatus = (facility.status || 'active').toLowerCase();
+    if (facStatus !== 'active' && facStatus !== 'published' && facStatus !== 'approved') {
+      throw new AppError(`Facility is not currently active (status: ${facStatus}).`, 400, 'FACILITY_INACTIVE');
+    }
+
+    // Operating hours check
+    const timezone = resolveFacilityTimezone(facility.timezone);
+    if (facility.operatingHours && facility.operatingHours !== '24/7' && (facility.operatingHours as any).is24x7 !== true) {
+      const startIn = isInstantWithinOperatingHours(data.startTime, facility.operatingHours, timezone);
+      const endIn = isInstantWithinOperatingHours(data.endTime, facility.operatingHours, timezone);
+      if (!startIn || !endIn) {
+        throw new AppError('Requested parking period falls outside facility operating hours.', 400, 'OUTSIDE_OPERATING_HOURS');
+      }
+    }
+
+    // Closures and maintenance check
+    const closures = await this.getCollectionFromDb<FacilityClosure>('closures');
+    const closureConflict = closures.find(c => {
+      if (c.facilityId !== data.facilityId) return false;
+      const cBay = c.bayId || c.spaceId;
+      if (cBay && cBay !== data.bayId) {
+        if (!c.affectedBayIds || !c.affectedBayIds.includes(data.bayId)) return false;
+      }
+      const cStart = new Date(c.startsAt || c.startDate || c.startTimeUtc!).getTime();
+      const cEnd = new Date(c.endsAt || c.endDate || c.endTimeUtc!).getTime();
+      return Math.max(startMs, cStart) < Math.min(endMs, cEnd);
+    });
+    if (closureConflict) {
+      throw new AppError(`Facility or bay is closed: ${closureConflict.title || closureConflict.reason}.`, 409, 'FACILITY_CLOSED');
+    }
+
+    const maintenanceList = await this.getCollectionFromDb<FacilityMaintenance>('maintenance');
+    const maintConflict = maintenanceList.find(m => {
+      if (m.facilityId !== data.facilityId) return false;
+      if (m.status !== 'scheduled' && m.status !== 'in_progress') return false;
+      const mBay = m.bayId || m.spaceId;
+      if (mBay && mBay !== data.bayId) return false;
+      const mStart = new Date(m.startsAt || m.startTime || m.startTimeUtc!).getTime();
+      const mEnd = new Date(m.endsAt || m.endTime || m.endTimeUtc!).getTime();
+      return Math.max(startMs, mStart) < Math.min(endMs, mEnd);
+    });
+    if (maintConflict) {
+      throw new AppError(`Facility or bay is undergoing maintenance: ${maintConflict.title}.`, 409, 'FACILITY_MAINTENANCE');
+    }
+
+    // Authoritative quote locking
+    const authQuote = await this.calculateAuthoritativeQuote(data.facilityId, data.startTime, data.endTime, {
+      bayId: data.bayId,
+      bayMultiplier: bay.hourlyRateMultiplier
     });
 
-    if (conflict) {
-      throw new Error('Selected parking bay is already booked for this timeframe.');
-    }
+    const quoteSnapshot = {
+      quoteId: authQuote.quoteId,
+      baseAmountCents: authQuote.baseAmountCents,
+      securityDepositCents: authQuote.securityDepositCents,
+      platformFeeCents: authQuote.platformFeeCents,
+      taxesCents: authQuote.taxesCents,
+      totalPayableCents: authQuote.totalPayableCents,
+      currency: 'USD',
+      durationMinutes,
+      cancellationPolicyTier: authQuote.cancellationPolicyTier || 'STANDARD_48H',
+      quotedAtUtc: new Date().toISOString()
+    };
 
-    const quote = await this.calculateQuote(data.facilityId, data.startTime, data.endTime, bay.hourlyRateMultiplier);
+    const grossAmount = data.grossAmount !== undefined ? data.grossAmount : (authQuote.baseAmountCents / 100);
+    const platformFee = data.platformFee !== undefined ? data.platformFee : (authQuote.platformFeeCents / 100);
+    const taxAmount = data.taxAmount !== undefined ? data.taxAmount : (authQuote.taxesCents / 100);
+    const hostNetEarnings = data.hostNetEarnings !== undefined ? data.hostNetEarnings : Math.round((grossAmount - platformFee) * 100) / 100;
 
+    const bufferMs = 10 * 60 * 1000;
     const bookingRef = 'PKZ-' + Math.floor(100000 + Math.random() * 900000);
     const qrToken = 'PKZ_QR_' + crypto.randomBytes(16).toString('hex');
     const gatePin = Math.floor(1000 + Math.random() * 9000) + '#';
@@ -3590,28 +4211,60 @@ export class Database {
       bayId: data.bayId,
       customerId: data.customerId,
       customerName: data.customerName,
-      customerPhone: data.customerPhone,
-      customerEmail: data.customerEmail,
+      customerPhone: data.customerPhone || '+1 555-0100',
+      customerEmail: data.customerEmail || 'driver@example.com',
       licensePlate: data.licensePlate.toUpperCase(),
-      vehicleMakeModel: data.vehicleMakeModel,
+      vehicleMakeModel: data.vehicleMakeModel || 'Standard Vehicle',
       startTime: data.startTime,
       endTime: data.endTime,
-      grossAmount: quote.grossAmount,
-      platformFee: quote.platformFee,
-      hostNetEarnings: quote.hostNetEarnings,
-      taxAmount: quote.taxAmount,
+      grossAmount,
+      platformFee,
+      hostNetEarnings,
+      taxAmount,
       status: 'confirmed',
       qrCodeToken: qrToken,
       gateAccessCode: gatePin,
+      accessInstructions: facility.accessInstructions || 'Drive to entry gate and scan QR code.',
       idempotencyKey: data.idempotencyKey,
+      quoteSnapshot,
+      cancellationPolicyTier: quoteSnapshot.cancellationPolicyTier,
       createdAt: now,
       updatedAt: now
     };
 
     await this.withTransaction(async (client) => {
+      if (client && this.isPostgresActive) {
+        await client.query('SELECT id, status FROM parking_bays WHERE id = $1 FOR UPDATE', [data.bayId]);
+      }
+
+      // Conflict validation with 10-minute transition buffer
+      const bookings = await this.getCollectionFromDb<Booking>('bookings');
+      for (const b of bookings) {
+        if (b.bayId === data.bayId) {
+          const bStatus = (b.status || '').toLowerCase();
+          if (bStatus !== 'cancelled' && bStatus !== 'refunded' && bStatus !== 'payment_failed' && bStatus !== 'expired') {
+            const bStart = new Date(b.startTime).getTime();
+            const bEnd = new Date(b.endTime).getTime();
+            if (startMs < (bEnd + bufferMs) && (endMs + bufferMs) > bStart) {
+              throw new AppError('Selected parking bay is already booked for this timeframe (including transition buffer).', 409, 'BAY_UNAVAILABLE');
+            }
+          }
+        }
+      }
+
       const holds = await this.getCollectionFromDb<AvailabilityHold>('holds');
-      for (const h of holds.filter(h => h.bayId === data.bayId)) {
-        await this.deleteEntity('holds', h.id, client);
+      for (const h of holds) {
+        if (h.bayId === data.bayId && !h.isReleased && new Date(h.expiresAt).getTime() > Date.now()) {
+          const hStart = new Date(h.startTime).getTime();
+          const hEnd = new Date(h.endTime).getTime();
+          if (startMs < (hEnd + bufferMs) && (endMs + bufferMs) > hStart) {
+            if (h.userId !== data.customerId) {
+              throw new AppError('Selected parking bay is held by another reservation.', 409, 'BAY_HELD');
+            } else {
+              await this.deleteEntity('holds', h.id, client);
+            }
+          }
+        }
       }
 
       bay.status = 'reserved';
@@ -3631,12 +4284,21 @@ export class Database {
         status: 'completed'
       }, client);
 
+      await this.recordBookingLifecycleEvent(
+        booking.id,
+        'BOOKING_CONFIRMED',
+        data.customerId,
+        'customer',
+        { grossAmount, quoteSnapshot },
+        client
+      );
+
       await this.createNotification(
         facility.hostId,
         'New Booking Received',
         `${data.customerName} booked ${bay.identifier} at ${facility.name} for $${booking.grossAmount.toFixed(2)}.`,
         'booking',
-        `/host/bookings`,
+        '/host/bookings',
         client
       );
 
@@ -3645,7 +4307,7 @@ export class Database {
         'Booking Confirmed!',
         `Your reservation ${booking.bookingReference} is confirmed. Gate code: ${gatePin}`,
         'booking',
-        `/customer/bookings`,
+        '/customer/bookings',
         client
       );
 
@@ -3653,10 +4315,10 @@ export class Database {
         data.customerId,
         data.customerName,
         'customer',
-        'BOOKING_CREATED',
+        'BOOKING_CONFIRMED',
         'booking',
         booking.id,
-        `Created booking ${booking.bookingReference} for ${quote.grossAmount} USD`,
+        `Created booking ${booking.bookingReference} for ${grossAmount} USD`,
         client
       );
     });
@@ -3689,9 +4351,20 @@ export class Database {
 
   public async checkInBooking(bookingId: string, actor: User): Promise<Booking> {
     const booking = await this.getBookingById(bookingId);
-    if (!booking) throw new Error('Booking not found');
-    if (booking.status !== 'confirmed') {
-      throw new Error(`Cannot check in. Booking is already ${booking.status}`);
+    if (!booking) throw new AppError('Booking not found', 404, 'NOT_FOUND');
+
+    // Idempotent retry: if already checked in, return cleanly
+    if (booking.status === 'checked_in' || booking.status === 'active') {
+      return booking;
+    }
+    if (booking.status === 'cancelled') {
+      throw new AppError('Cannot check in to a cancelled reservation.', 400, 'INVALID_STATE');
+    }
+    if (booking.status === 'completed') {
+      throw new AppError('Cannot check in to a completed reservation.', 400, 'INVALID_STATE');
+    }
+    if (booking.status !== 'confirmed' && booking.status !== 'upcoming') {
+      throw new AppError(`Cannot check in. Booking is currently in status '${booking.status}'.`, 400, 'INVALID_STATE');
     }
 
     const now = new Date().toISOString();
@@ -3708,6 +4381,7 @@ export class Database {
     await this.withTransaction(async (client) => {
       await this.persistEntity('bookings', booking.id, booking, client);
       if (bay) await this.persistEntity('bays', bay.id, bay, client);
+      await this.recordBookingLifecycleEvent(booking.id, 'GATE_CHECK_IN', actor.id, actor.role, { checkedInAt: now }, client);
       await this.logAudit(actor.id, actor.fullName, actor.role, 'GATE_CHECK_IN', 'booking', bookingId, `Customer checked in to bay ${bay?.identifier || ''}`, client);
     });
 
@@ -3716,50 +4390,92 @@ export class Database {
 
   public async checkOutBooking(bookingId: string, actor: User): Promise<Booking> {
     const booking = await this.getBookingById(bookingId);
-    if (!booking) throw new Error('Booking not found');
-    if (booking.status !== 'checked_in') {
-      throw new Error(`Cannot check out. Booking is ${booking.status}`);
+    if (!booking) throw new AppError('Booking not found', 404, 'NOT_FOUND');
+
+    // Idempotent retry: if already completed, return cleanly
+    if (booking.status === 'completed') {
+      return booking;
+    }
+    if (booking.status === 'cancelled') {
+      throw new AppError('Cannot check out a cancelled reservation.', 400, 'INVALID_STATE');
+    }
+    if (booking.status !== 'checked_in' && booking.status !== 'active') {
+      throw new AppError(`Check-out is only allowed for an active parking session (current status: '${booking.status}').`, 400, 'INVALID_STATE');
     }
 
-    const now = new Date().toISOString();
+    const now = new Date();
+    const nowIso = now.toISOString();
     booking.status = 'completed';
-    booking.actualCheckOutTime = now;
-    booking.updatedAt = now;
+    booking.actualCheckOutTime = nowIso;
+    booking.updatedAt = nowIso;
+
+    // Check for overstay beyond 15-minute grace period
+    const scheduledEnd = new Date(booking.endTime);
+    const diffMinutes = Math.floor((now.getTime() - scheduledEnd.getTime()) / (1000 * 60));
+    if (diffMinutes > 15) {
+      const hourlyRate = (booking.quoteSnapshot?.baseAmountCents ? booking.quoteSnapshot.baseAmountCents / 100 : 5) / Math.max(1, (booking.quoteSnapshot?.durationMinutes || 60) / 60);
+      const overstayFee = Math.round((diffMinutes / 60) * (hourlyRate * 1.5) * 100) / 100;
+      (booking as any).overstayDetails = {
+        overstayMinutes: diffMinutes,
+        overstayFee,
+        status: 'CHARGED'
+      };
+    } else if (diffMinutes > 0) {
+      (booking as any).overstayDetails = {
+        overstayMinutes: diffMinutes,
+        overstayFee: 0,
+        status: 'GRACE_PERIOD'
+      };
+    }
 
     const bay = await this.getBayById(booking.bayId);
     if (bay) {
       bay.status = 'available';
-      bay.updatedAt = now;
+      bay.updatedAt = nowIso;
     }
 
     await this.withTransaction(async (client) => {
       await this.persistEntity('bookings', booking.id, booking, client);
       if (bay) await this.persistEntity('bays', bay.id, bay, client);
+      await this.recordBookingLifecycleEvent(booking.id, 'GATE_CHECK_OUT', actor.id, actor.role, { checkedOutAt: nowIso, diffMinutes }, client);
       await this.logAudit(actor.id, actor.fullName, actor.role, 'GATE_CHECK_OUT', 'booking', bookingId, `Customer checked out from bay ${bay?.identifier || ''}`, client);
     });
 
     return booking;
   }
 
-  public async extendBooking(bookingId: string, additionalHours: number, actor: User): Promise<Booking> {
+  public async extendBooking(bookingId: string, additionalMinutesOrHours: number, actor: User, paymentIntentId?: string): Promise<Booking> {
     const booking = await this.getBookingById(bookingId);
-    if (!booking) throw new Error('Booking not found');
-    if (booking.status !== 'confirmed' && booking.status !== 'checked_in') {
-      throw new Error('Only active or confirmed bookings can be extended.');
+    if (!booking) throw new AppError('Booking not found', 404, 'NOT_FOUND');
+    if (booking.status !== 'confirmed' && booking.status !== 'checked_in' && booking.status !== 'active') {
+      throw new AppError(`Cannot extend reservation in status '${booking.status}'.`, 400, 'INVALID_STATE');
+    }
+
+    // Additional duration handling: support minutes (e.g. 30, 60) or hours (1, 2)
+    const additionalMinutes = additionalMinutesOrHours < 24 ? additionalMinutesOrHours * 60 : additionalMinutesOrHours;
+    if (additionalMinutes < 30 || additionalMinutes > 1440) {
+      throw new AppError('Extension duration must be between 30 minutes and 24 hours.', 400, 'INVALID_DURATION');
+    }
+    if (additionalMinutes % 30 !== 0) {
+      throw new AppError('Extension must be in 30-minute increments.', 400, 'INVALID_INCREMENT');
     }
 
     const currentEnd = new Date(booking.endTime);
-    const newEnd = new Date(currentEnd.getTime() + additionalHours * 60 * 60 * 1000);
+    const newEnd = new Date(currentEnd.getTime() + additionalMinutes * 60 * 1000);
+    const bufferMs = 10 * 60 * 1000;
 
     const bookings = await this.getCollectionFromDb<Booking>('bookings');
     const conflict = bookings.some(b => {
       if (b.id === bookingId || b.bayId !== booking.bayId) return false;
-      if (b.status === 'cancelled' || b.status === 'refunded' || b.status === 'completed') return false;
-      return new Date(b.startTime) < newEnd && new Date(b.endTime) > currentEnd;
+      const bStatus = (b.status || '').toLowerCase();
+      if (bStatus === 'cancelled' || bStatus === 'refunded' || bStatus === 'payment_failed' || bStatus === 'expired') return false;
+      const bStart = new Date(b.startTime).getTime();
+      const bEnd = new Date(b.endTime).getTime();
+      return currentEnd.getTime() < (bEnd + bufferMs) && (newEnd.getTime() + bufferMs) > bStart;
     });
 
     if (conflict) {
-      throw new Error('Cannot extend booking: bay is booked by another customer immediately afterwards.');
+      throw new AppError('Cannot extend booking: bay is booked by another customer immediately afterwards (including transition buffer).', 409, 'EXTENSION_CONFLICT');
     }
 
     const quote = await this.calculateQuote(booking.facilityId, currentEnd.toISOString(), newEnd.toISOString());
@@ -3770,6 +4486,14 @@ export class Database {
     booking.hostNetEarnings += quote.hostNetEarnings;
     booking.taxAmount += quote.taxAmount;
     booking.updatedAt = new Date().toISOString();
+
+    if (booking.quoteSnapshot) {
+      booking.quoteSnapshot.durationMinutes = (booking.quoteSnapshot.durationMinutes || 60) + additionalMinutes;
+      booking.quoteSnapshot.baseAmountCents += Math.round(quote.grossAmount * 100);
+      booking.quoteSnapshot.platformFeeCents += Math.round(quote.platformFee * 100);
+      booking.quoteSnapshot.taxesCents += Math.round(quote.taxAmount * 100);
+      booking.quoteSnapshot.totalPayableCents += Math.round((quote.grossAmount + quote.taxAmount) * 100);
+    }
 
     const facility = await this.getFacilityById(booking.facilityId);
 
@@ -3784,42 +4508,87 @@ export class Database {
           type: 'booking_income',
           amount: quote.hostNetEarnings,
           currency: 'USD',
-          description: `Extension +${additionalHours}h for ${booking.bookingReference}`,
+          description: `Extension +${additionalMinutes}m for ${booking.bookingReference}`,
           status: 'completed'
         }, client);
       }
-      await this.logAudit(actor.id, actor.fullName, actor.role, 'BOOKING_EXTENDED', 'booking', bookingId, `Extended booking by ${additionalHours}h`, client);
+      await this.recordBookingLifecycleEvent(
+        booking.id,
+        'BOOKING_EXTENDED',
+        actor.id,
+        actor.role,
+        { additionalMinutes, newEndTime: newEnd.toISOString() },
+        client
+      );
+      await this.logAudit(actor.id, actor.fullName, actor.role, 'BOOKING_EXTENDED', 'booking', bookingId, `Extended booking by ${additionalMinutes}m`, client);
     });
 
     return booking;
   }
 
-  public async cancelBooking(bookingId: string, reason: string, actor: User): Promise<Booking> {
+  public async cancelBooking(
+    bookingId: string,
+    reason: string,
+    actor: User,
+    options?: { idempotencyKey?: string }
+  ): Promise<Booking> {
     const booking = await this.getBookingById(bookingId);
-    if (!booking) throw new Error('Booking not found');
+    if (!booking) throw new AppError('Booking not found', 404, 'NOT_FOUND');
+
+    // Authorization check: Actor must be customer, host of facility, or admin
+    const facility = await this.getFacilityById(booking.facilityId);
+    const isCustomer = booking.customerId === actor.id;
+    const isHost = facility && facility.hostId === actor.id;
+    const isAdmin = actor.role === 'admin';
+
+    if (!isCustomer && !isHost && !isAdmin) {
+      throw new AppError('Access denied. You do not have permission to cancel this reservation.', 403, 'FORBIDDEN');
+    }
+
+    // Idempotent retry: if already cancelled, return cleanly without duplicate refund
     if (booking.status === 'cancelled' || booking.status === 'refunded') {
-      throw new Error('Booking is already cancelled');
+      return booking;
     }
     if (booking.status === 'completed') {
-      throw new Error('Cannot cancel an already completed booking');
+      throw new AppError('Cannot cancel an already completed booking.', 400, 'INVALID_STATE');
+    }
+    if (booking.status === 'checked_in' || booking.status === 'active') {
+      throw new AppError('Cannot cancel an active parking session. Please check out instead.', 400, 'INVALID_STATE');
     }
 
     const now = new Date();
     const startTime = new Date(booking.startTime);
     const hoursUntilStart = (startTime.getTime() - now.getTime()) / (1000 * 60 * 60);
 
-    let refundPercent = 100;
-    if (hoursUntilStart < 2 && hoursUntilStart > 0) {
-      refundPercent = 50;
-    } else if (hoursUntilStart <= 0) {
-      refundPercent = 0;
+    // Locked Cancellation Policy calculation
+    const policyTier = (booking.quoteSnapshot?.cancellationPolicyTier || booking.cancellationPolicyTier || 'STANDARD_48H').toUpperCase();
+    let refundRatio = 0;
+
+    if (isHost || isAdmin) {
+      // Host or Admin cancellation provides 100% full customer refund
+      refundRatio = 1.0;
+    } else if (policyTier === 'FLEXIBLE_24H') {
+      if (hoursUntilStart >= 24) refundRatio = 1.0;
+      else if (hoursUntilStart >= 0) refundRatio = 0.5;
+      else refundRatio = 0;
+    } else if (policyTier === 'STRICT_7D') {
+      if (hoursUntilStart >= 168) refundRatio = 1.0;
+      else if (hoursUntilStart >= 48) refundRatio = 0.5;
+      else refundRatio = 0;
+    } else {
+      // STANDARD_48H (default)
+      if (hoursUntilStart >= 48) refundRatio = 1.0;
+      else if (hoursUntilStart >= 24) refundRatio = 0.5;
+      else refundRatio = 0;
     }
 
-    const refundAmount = Math.round((booking.grossAmount * (refundPercent / 100)) * 100) / 100;
-    const hostDebit = Math.round((booking.hostNetEarnings * (refundPercent / 100)) * 100) / 100;
+    const refundPercent = Math.round(refundRatio * 100);
+    const refundAmount = Math.round((booking.grossAmount * refundRatio) * 100) / 100;
+    const hostDebit = Math.round((booking.hostNetEarnings * refundRatio) * 100) / 100;
 
+    // Commercial terms invariant: grossAmount is LOCKED and NEVER modified upon cancellation
     booking.status = 'cancelled';
-    booking.cancellationReason = reason;
+    booking.cancellationReason = reason || 'Customer requested cancellation';
     booking.cancelledAt = now.toISOString();
     booking.refundAmount = refundAmount;
     booking.updatedAt = now.toISOString();
@@ -3830,25 +4599,64 @@ export class Database {
       bay.updatedAt = now.toISOString();
     }
 
-    const facility = await this.getFacilityById(booking.facilityId);
-
     await this.withTransaction(async (client) => {
       await this.persistEntity('bookings', booking.id, booking, client);
       if (bay) await this.persistEntity('bays', bay.id, bay, client);
+
       if (facility && hostDebit > 0) {
         await this.recordLedgerEntry({
-          idempotencyKey: 'ref_' + crypto.randomUUID().slice(0, 8),
+          idempotencyKey: 'ref_' + (options?.idempotencyKey || crypto.randomUUID().slice(0, 8)),
           hostId: facility.hostId,
           facilityId: facility.id,
           bookingId: booking.id,
           type: 'booking_refund',
           amount: -hostDebit,
           currency: 'USD',
-          description: `Refund debit for cancelled booking ${booking.bookingReference} (${refundPercent}% refund)`,
+          description: `Refund debit for cancelled booking ${booking.bookingReference} (${refundPercent}% refund under ${policyTier})`,
           status: 'completed'
         }, client);
       }
-      await this.logAudit(actor.id, actor.fullName, actor.role, 'BOOKING_CANCELLED', 'booking', bookingId, `Cancelled with ${refundPercent}% refund ($${refundAmount})`, client);
+
+      await this.recordBookingLifecycleEvent(
+        booking.id,
+        'BOOKING_CANCELLED',
+        actor.id,
+        actor.role,
+        { reason, refundPercent, refundAmount, policyTier },
+        client
+      );
+
+      await this.logAudit(
+        actor.id,
+        actor.fullName,
+        actor.role,
+        'BOOKING_CANCELLED',
+        'booking',
+        bookingId,
+        `Cancelled reservation with ${refundPercent}% refund ($${refundAmount.toFixed(2)}) under policy ${policyTier}`,
+        client
+      );
+
+      // Notifications
+      if (isCustomer) {
+        await this.createNotification(
+          facility?.hostId || 'usr_host1',
+          'Booking Cancelled',
+          `Reservation ${booking.bookingReference} was cancelled by driver. Bay ${bay?.identifier || ''} is now available.`,
+          'booking',
+          '/host/bookings',
+          client
+        );
+      } else {
+        await this.createNotification(
+          booking.customerId,
+          'Booking Cancelled',
+          `Your reservation ${booking.bookingReference} was cancelled (${reason}). A ${refundPercent}% refund ($${refundAmount.toFixed(2)}) has been initiated.`,
+          'booking',
+          '/customer/bookings',
+          client
+        );
+      }
     });
 
     return booking;

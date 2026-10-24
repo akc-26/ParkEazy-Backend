@@ -259,22 +259,49 @@ export interface QuoteAndAvailabilityResponse {
 
 export interface AvailabilityHold {
   id: string;
+  holdId?: string;
   bayId: string;
   facilityId: string;
+  locationId?: string;
   userId: string;
   startTime: string;
+  startTimeUtc?: string;
   endTime: string;
+  endTimeUtc?: string;
   heldAt: string;
-  expiresAt: string; // 15 mins from heldAt
+  createdAt?: string;
+  expiresAt: string; // 10 mins from heldAt
+  holdExpiresAtUtc?: string;
+  holdDurationSeconds?: number;
+  durationMinutes?: number;
+  quoteSnapshot?: any;
+  isReleased?: boolean;
+  status?: string;
 }
 
-export type BookingStatus = 'confirmed' | 'checked_in' | 'completed' | 'cancelled' | 'refunded';
+export type BookingStatus =
+  | 'initiated'
+  | 'payment_initiated'
+  | 'confirmed'
+  | 'upcoming'
+  | 'active'
+  | 'checked_in'
+  | 'completed'
+  | 'payment_failed'
+  | 'expired'
+  | 'cancelled'
+  | 'refunded'
+  | 'overstayed'
+  | 'disputed';
 
 export interface Booking {
   id: string;
+  holdId?: string;
   bookingReference: string; // PKZ-XXXXX
   facilityId: string;
+  locationId?: string;
   bayId: string;
+  bayNumber?: string;
   customerId: string;
   customerName: string;
   customerPhone: string;
@@ -283,16 +310,24 @@ export interface Booking {
   vehicleMakeModel: string;
   startTime: string;
   endTime: string;
+  startsAt?: string;
+  endsAt?: string;
+  startTimeUtc?: string;
+  endTimeUtc?: string;
   actualCheckInTime?: string;
   actualCheckOutTime?: string;
+  actualCheckInAt?: string;
+  actualCheckOutAt?: string;
   grossAmount: number;
   platformFee: number;
   hostNetEarnings: number;
   taxAmount: number;
+  securityDeposit?: number;
   refundAmount?: number;
   status: BookingStatus;
   qrCodeToken: string;
   gateAccessCode: string;
+  accessInstructions?: string;
   idempotencyKey?: string;
   cancellationReason?: string;
   cancelledAt?: string;
@@ -303,6 +338,16 @@ export interface Booking {
   serviceFee?: number;
   totalAmount?: number;
   paymentStatus?: string;
+  paymentDetails?: {
+    transactionId: string;
+    provider: string;
+    amountCents: number;
+    currency: string;
+    paidAtUtc: string;
+  };
+  refundDetails?: any;
+  quote?: any;
+  quoteSnapshot?: any;
   vehiclePlate?: string;
   vehicleType?: string;
   createdAt: string;
