@@ -132,7 +132,10 @@ async function startServer() {
 
   // 2. Apply required migrations through existing migration process
   console.log('[ParkEazy] Applying database migrations...');
-  await migrationManager.runMigrations();
+  const migrationResult = await migrationManager.runMigrations();
+  if (migrationResult.errors.length > 0) {
+    throw new Error(`Database migration failed: ${migrationResult.errors.join('; ')}`);
+  }
 
   // 3. Initialize active database persistence store
   console.log('[ParkEazy] Initializing active application data layer...');

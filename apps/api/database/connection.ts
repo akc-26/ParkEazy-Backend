@@ -71,7 +71,10 @@ export class DatabaseManager {
 
   private initPgMem(): void {
     try {
-      const db = newDb();
+      // pg-mem is a limited PostgreSQL emulator. Disable its AST coverage warning
+      // for supported PostgreSQL DDL, and register the small set of PostgreSQL
+      // functions used by this project's migrations.
+      const db = newDb({ noAstCoverageCheck: true });
       db.public.registerFunction({
         name: 'gen_random_uuid',
         implementation: () => crypto.randomUUID(),
@@ -86,43 +89,14 @@ export class DatabaseManager {
       this.isPgMem = true;
       this.isConnected = true;
 
-      // Run migrations synchronously or immediately
-      this.executeMigrationsOnPool(this.pool);
-      console.log('[ParkEazy-DB] Authoritative PostgreSQL engine initialized via pg-mem with all migrations applied.');
+      // Schema changes are owned exclusively by MigrationManager in server.ts.
+      // Never run migrations here: doing so caused a second, error-suppressing pass.
+      console.log('[ParkEazy-DB] Development/test pg-mem adapter initialized; migrations pending.');
     } catch (err: any) {
       console.error('[ParkEazy-DB] Failed to initialize in-process PostgreSQL engine:', err.message);
     }
   }
 
-  private executeMigrationsOnPool(targetPool: any): void {
-    try {
-      const migrationsDir = path.resolve(process.cwd(), 'apps/api/database/migrations');
-      if (!fs.existsSync(migrationsDir)) return;
-
-      const files = fs
-        .readdirSync(migrationsDir)
-        .filter((f) => f.endsWith('.sql'))
-        .sort((a, b) => a.localeCompare(b));
-
-      for (const file of files) {
-        const filePath = path.join(migrationsDir, file);
-        const sql = fs.readFileSync(filePath, 'utf8');
-        try {
-          const res = targetPool.query(sql);
-          if (res && typeof res.catch === 'function') {
-            res.catch((mErr: any) => {
-              console.warn(`[ParkEazy-DB] Migration statement note in ${file}:`, mErr.message);
-            });
-          }
-        } catch (mErr: any) {
-          // If statement batch error, ignore if idempotent IF NOT EXISTS
-          console.warn(`[ParkEazy-DB] Migration statement note in ${file}:`, mErr.message);
-        }
-      }
-    } catch (err: any) {
-      console.error('[ParkEazy-DB] Error applying migrations:', err.message);
-    }
-  }
 
   /**
    * Initializes the database connection and verifies connectivity.

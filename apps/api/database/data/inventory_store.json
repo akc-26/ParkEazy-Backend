@@ -15,7 +15,7 @@
         "latitude": 47.6115,
         "longitude": -122.3364
       },
-      "timezone": "America/Los_Angeles",
+      "timezone": "Asia/Kolkata",
       "accessMethod": "OPEN_ACCESS",
       "status": "ACTIVE",
       "totalBays": 8,
@@ -42,7 +42,7 @@
         "latitude": 47.608,
         "longitude": -122.3415
       },
-      "timezone": "America/Los_Angeles",
+      "timezone": "Asia/Kolkata",
       "accessMethod": "OPEN_ACCESS",
       "status": "ACTIVE",
       "totalBays": 6,
@@ -69,7 +69,7 @@
         "latitude": 47.6151,
         "longitude": -122.3195
       },
-      "timezone": "America/Los_Angeles",
+      "timezone": "Asia/Kolkata",
       "accessMethod": "OPEN_ACCESS",
       "status": "UNDER_REVIEW",
       "totalBays": 0,
@@ -350,5 +350,5 @@
       "updatedAt": "2026-01-18T10:00:00.000Z"
     }
   ],
-  "updatedAt": "2026-10-24T10:44:42.897Z"
+  "updatedAt": "2026-10-24T14:53:58.283Z"
 }

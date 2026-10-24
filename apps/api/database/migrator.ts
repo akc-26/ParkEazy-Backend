@@ -73,19 +73,24 @@ export class MigrationManager {
 
     try {
       const res = await dbManager.query(
-        'SELECT migration_name FROM schema_migrations ORDER BY migration_name ASC'
+        'SELECT migration_name, checksum FROM schema_migrations ORDER BY migration_name ASC'
       );
       const applied = res.rows.map((r: any) => r.migration_name);
+      const appliedChecksums = new Map(res.rows.map((r: any) => [r.migration_name, r.checksum]));
+      const availableByName = new Map(available.map((f) => [f.name, f]));
+      for (const [name, storedChecksum] of appliedChecksums) {
+        const file = availableByName.get(name);
+        if (file) {
+          const currentChecksum = this.calculateChecksum(fs.readFileSync(file.path, 'utf8'));
+          if (storedChecksum && storedChecksum !== currentChecksum) {
+            throw new Error(`Applied migration checksum mismatch: ${name}. Do not edit applied migrations; create a new migration.`);
+          }
+        }
+      }
       const appliedSet = new Set(applied);
-      const pending = available
-        .filter((f) => !appliedSet.has(f.name))
-        .map((f) => f.name);
+      const pending = available.filter((f) => !appliedSet.has(f.name)).map((f) => f.name);
 
-      return {
-        isConfigured: true,
-        applied,
-        pending,
-      };
+      return { isConfigured: true, applied, pending };
     } catch (err) {
       return {
         isConfigured: true,
